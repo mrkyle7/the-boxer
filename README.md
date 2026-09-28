@@ -28,6 +28,16 @@ Phones and tablets get on-screen buttons.
 
 Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` while pressing `A`, for a tummy punch. A block only covers the height you're aiming at: guard the head and a tummy kick goes straight in. Head shots do more damage; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with no stamina left breaks, and hitting someone mid-attack is a counter worth 40% more.
 
+## Deployment
+
+Live at **https://boxer.cheetahmoongames.com**, one of the games linked from [cheetahmoongames.com](https://cheetahmoongames.com).
+
+It runs as the `the-boxer` Cloud Run service in the same Google Cloud project as [Bartenders of Corfu](https://github.com/mrkyle7/bartenders-of-corfu). That repo's `terraform/main.tf` defines the service, its subdomain and DNS, and lets this repo deploy through Workload Identity Federation, so there are no keys to manage here.
+
+`.github/workflows/ci-cd.yml` runs the tests and a container smoke test on every push and pull request. On `main` it builds the `Dockerfile`, pushes the image to Artifact Registry (`docker-us/the-boxer`) and deploys it, independently of Bartenders. If a deploy fails it rolls traffic back to the last healthy revision.
+
+The service is capped at **one instance**: rooms live in memory, so both fighters have to reach the same server. One instance holds hundreds of WebSocket connections. Scaling past that would need shared room state (for example Redis) first.
+
 ## How it works
 
 - `public/game.js`: the fight simulation (punch/kick frame data, head/tummy aim, stamina, blocking, counters, rounds). Pure and deterministic, shared by server and browser.
