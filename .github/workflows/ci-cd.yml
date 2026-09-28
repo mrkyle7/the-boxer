@@ -1,0 +1,119 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+# Shares the Cloud Run project with Bartenders of Corfu; the service, its
+# domain and this repo's deploy access are defined in
+# mrkyle7/bartenders-of-corfu/terraform/main.tf.
+env:
+  PROJECT_ID: bartenders-464918
+  REGION: us-east1
+  REPOSITORY: docker-us
+  IMAGE_NAME: the-boxer
+  SERVICE_NAME: the-boxer
+  WIF_PROVIDER: projects/987774112216/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+  CI_SERVICE_ACCOUNT: github-terraform@bartenders-464918.iam.gserviceaccount.com
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npm test
+
+      - name: Container starts and serves the game
+        run: |
+          docker build -t the-boxer:ci .
+          docker run -d --name boxer -p 8080:8080 the-boxer:ci
+          for i in $(seq 1 20); do
+            curl -fsS http://localhost:8080/ | grep -q "The Boxer" && exit 0
+            sleep 1
+          done
+          docker logs boxer
+          exit 1
+
+  deploy:
+    needs: test
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via OIDC
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ env.WIF_PROVIDER }}
+          service_account: ${{ env.CI_SERVICE_ACCOUNT }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Build and push image
+        run: |
+          gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+          IMAGE_URI=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          IMAGE_URI=$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}
+          gcloud run deploy $SERVICE_NAME \
+            --image="$IMAGE_URI" \
+            --region="$REGION" \
+            --project="$PROJECT_ID" \
+            --quiet
+
+      - name: Verify deployment
+        run: |
+          EXPECTED="$REGION-docker.pkg.dev/$PROJECT_ID/$REPOSITORY/$IMAGE_NAME:${{ github.sha }}"
+          ACTIVE=$(gcloud run services describe $SERVICE_NAME \
+            --region="$REGION" --project="$PROJECT_ID" \
+            --format='value(spec.template.spec.containers[0].image)')
+          URL=$(gcloud run services describe $SERVICE_NAME \
+            --region="$REGION" --project="$PROJECT_ID" \
+            --format='value(status.url)')
+          echo "Expected: $EXPECTED"
+          echo "Active:   $ACTIVE"
+          [ "$ACTIVE" = "$EXPECTED" ] || { echo "Active image does not match"; exit 1; }
+          curl -fsS "$URL/" | grep -q "The Boxer" || { echo "Service did not serve the game"; exit 1; }
+          echo "Deployment verified at $URL"
+
+      - name: Roll back on failure
+        if: failure() && steps.deploy.outcome == 'failure'
+        run: |
+          FAILED_REV=$(gcloud run services describe $SERVICE_NAME \
+            --region="$REGION" --project="$PROJECT_ID" \
+            --format='value(status.latestCreatedRevisionName)')
+          PREV_REV=$(gcloud run revisions list \
+            --service="$SERVICE_NAME" --region="$REGION" --project="$PROJECT_ID" \
+            --filter="status.conditions.type:Ready AND status.conditions.status:True AND metadata.name!=$FAILED_REV" \
+            --sort-by="~metadata.creationTimestamp" --limit=1 \
+            --format='value(metadata.name)')
+          if [ -z "$PREV_REV" ]; then
+            echo "No previous healthy revision to roll back to"
+            exit 1
+          fi
+          echo "Rolling back to $PREV_REV"
+          gcloud run services update-traffic $SERVICE_NAME \
+            --region="$REGION" --project="$PROJECT_ID" \
+            --to-revisions="$PREV_REV=100"

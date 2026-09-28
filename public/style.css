@@ -115,6 +115,9 @@ input:focus { outline: 2px solid var(--gold); outline-offset: 1px; border-color:
 .howto { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 14px; }
 .howto summary { cursor: pointer; font-weight: 700; }
 .howto p { color: var(--muted); line-height: 1.5; font-size: 15px; }
+
+.more-games { display: inline-block; margin-top: 16px; color: var(--muted); font-size: 14px; font-weight: 600; }
+.more-games:hover, .more-games:focus-visible { color: var(--text); }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; margin: 14px 0; font-size: 15px; }
 .keys dt { font-weight: 700; }
 .keys dd { margin: 0; color: var(--muted); }
