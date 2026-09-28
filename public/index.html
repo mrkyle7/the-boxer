@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>The Boxer</title>
+  <meta name="description" content="Two boxers, one ring, played live over the internet.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2311161f'/%3E%3Cpath d='M18 24c0-7 6-12 14-12h6c8 0 12 6 12 13v10c0 9-7 16-16 16h-4c-7 0-12-5-12-12z' fill='%23e03a3e'/%3E%3Crect x='16' y='44' width='26' height='10' rx='3' fill='%23f2f2f2'/%3E%3C/svg%3E">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Anton&family=Barlow:wght@400;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main id="app">
+    <section id="lobby" class="screen active" aria-labelledby="title">
+      <div class="poster">
+        <div class="corner corner-red" aria-hidden="true"></div>
+        <div class="corner corner-blue" aria-hidden="true"></div>
+        <h1 id="title">The Boxer</h1>
+        <p class="tagline">Two fighters. Three rounds. One of you walks out with the belt.</p>
+
+        <label class="field">
+          <span>Fighter name</span>
+          <input id="name" maxlength="16" autocomplete="nickname" placeholder="Kid Dynamite">
+        </label>
+
+        <div class="actions">
+          <button id="quick" class="btn btn-primary">Find an opponent</button>
+          <button id="create" class="btn">Private fight</button>
+        </div>
+
+        <form id="join-form" class="join">
+          <label class="field">
+            <span>Have a room code?</span>
+            <input id="code" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD">
+          </label>
+          <button class="btn" type="submit">Join</button>
+        </form>
+
+        <p id="lobby-error" class="error" role="alert"></p>
+
+        <details class="howto">
+          <summary>How to fight</summary>
+          <dl class="keys">
+            <dt>Move</dt><dd><kbd>A</kbd> <kbd>D</kbd> or arrow keys</dd>
+            <dt>Block</dt><dd>hold <kbd>S</kbd>, <kbd>↓</kbd> or <kbd>Shift</kbd></dd>
+            <dt>Jab</dt><dd><kbd>J</kbd> fast, long reach, light</dd>
+            <dt>Hook</dt><dd><kbd>K</kbd> slower, hurts, chips through a guard</dd>
+            <dt>Uppercut</dt><dd><kbd>L</kbd> short range, huge damage, cracks guards</dd>
+            <dt>Slip</dt><dd><kbd>Space</kbd> dodge everything for a moment</dd>
+          </dl>
+          <p>Every punch and slip costs stamina. Blocking drains it too, and a guard with no stamina left breaks open. Hitting someone mid-punch is a counter and does 40% more.</p>
+        </details>
+      </div>
+    </section>
+
+    <section id="waiting" class="screen" aria-live="polite">
+      <div class="poster">
+        <h2 id="waiting-title">Waiting for an opponent</h2>
+        <div id="share" class="share">
+          <p>Send this to a friend:</p>
+          <div class="code" id="room-code">----</div>
+          <div class="share-row">
+            <input id="share-link" readonly aria-label="Invite link">
+            <button id="copy" class="btn">Copy link</button>
+          </div>
+        </div>
+        <div class="spinner" aria-hidden="true"></div>
+        <button id="cancel" class="btn btn-ghost">Back</button>
+      </div>
+    </section>
+
+    <section id="fight" class="screen">
+      <div class="stage">
+        <canvas id="canvas" width="1000" height="560" aria-label="Boxing ring"></canvas>
+        <div id="result" class="result" hidden>
+          <h2 id="result-title"></h2>
+          <table class="stats">
+            <thead><tr><th></th><th id="stat-a"></th><th id="stat-b"></th></tr></thead>
+            <tbody id="stat-body"></tbody>
+          </table>
+          <p id="rematch-note" class="note"></p>
+          <div class="actions">
+            <button id="rematch" class="btn btn-primary">Rematch</button>
+            <button id="leave" class="btn">Leave ring</button>
+          </div>
+        </div>
+        <div id="notice" class="notice" hidden>
+          <p id="notice-text"></p>
+          <button id="notice-ok" class="btn btn-primary">Back to lobby</button>
+        </div>
+      </div>
+      <div class="touch" id="touch" aria-hidden="true">
+        <div class="pad">
+          <button data-hold="left">◀</button>
+          <button data-hold="block">Guard</button>
+          <button data-hold="right">▶</button>
+        </div>
+        <div class="pad">
+          <button data-act="slip">Slip</button>
+          <button data-act="jab">Jab</button>
+          <button data-act="hook">Hook</button>
+          <button data-act="upper">Upper</button>
+        </div>
+      </div>
+      <p class="hint">A/D move · S guard · J jab · K hook · L uppercut · Space slip · M sound</p>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+  <script src="client.js"></script>
+</body>
+</html>
