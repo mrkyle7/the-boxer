@@ -109,6 +109,8 @@
         lastPhase = null;
         effects.length = 0;
         texts.length = 0;
+        held.aim = 'head';
+        syncTouch();
         $('result').hidden = true;
         $('notice').hidden = true;
         $('rematch').disabled = false;
@@ -200,10 +202,10 @@
     banner = { text, sub: sub || '', life, max: life, color };
   }
 
-  function headPos(i) {
+  function targetPos(i, height) {
     const f = snap.fighters[i];
     const x = display ? display[i].x : f.x;
-    return { x: x + f.facing * 6, y: FLOOR - 222 };
+    return { x: x + f.facing * 6, y: FLOOR - (height === 'body' ? 150 : 222) };
   }
 
   function sparks(x, y, color, count, speed) {
@@ -233,16 +235,17 @@
     }
     if (e.type === 'matchEnd') return;
 
-    const p = headPos(e.target);
+    const p = targetPos(e.target, e.height);
     const attackerFacing = snap.fighters[1 - e.target].facing;
     const hx = p.x - attackerFacing * 18;
     if (e.type === 'hit') {
-      const heavy = e.move !== 'jab';
+      const heavy = e.move === 'kick';
       sparks(hx, p.y, e.counter ? '#f4c542' : '#ffffff', heavy ? 18 : 9, heavy ? 6 : 4);
-      shake = Math.max(shake, (e.move === 'upper' ? 11 : e.move === 'hook' ? 7 : 2.5) + (e.counter ? 4 : 0));
+      shake = Math.max(shake, (heavy ? 8 : 3) + (e.height === 'head' ? 2 : 0) + (e.counter ? 4 : 0));
       floatText(p.x, p.y - 40, `-${e.damage}`, '#ffffff', heavy ? 28 : 20);
-      if (e.counter) floatText(p.x, p.y - 72, 'Counter!', '#f4c542', 26);
-      sound.hit(e.move === 'jab' ? 0.5 : e.move === 'hook' ? 0.8 : 1);
+      const label = e.counter ? 'Counter!' : e.wrongGuard ? 'Wrong guard!' : e.height === 'head' ? 'Head!' : 'Tummy!';
+      floatText(p.x, p.y - 72, label, e.counter || e.wrongGuard ? '#f4c542' : '#ffffff', 22);
+      sound.hit(heavy ? 1 : 0.55);
     } else if (e.type === 'block') {
       sparks(hx, p.y + 14, '#9cc4ff', 6, 3);
       floatText(p.x, p.y - 40, 'Blocked', '#9cc4ff', 18);
@@ -252,9 +255,6 @@
       shake = Math.max(shake, 9);
       floatText(p.x, p.y - 60, 'Guard break!', '#f4c542', 28);
       sound.hit(0.9);
-    } else if (e.type === 'slipped') {
-      floatText(p.x, p.y - 40, 'Slipped', '#b8f0c8', 20);
-      sound.whoosh();
     } else if (e.type === 'ko') {
       shake = 16;
       flash = 1;
@@ -314,10 +314,6 @@
         const a = ctxOk(); if (!a) return;
         noise(a, 0.07, 2400, 0.3);
       },
-      whoosh() {
-        const a = ctxOk(); if (!a) return;
-        noise(a, 0.2, 700, 0.15);
-      },
       bell() {
         const a = ctxOk(); if (!a) return;
         [1, 2.76, 5.4].forEach((m, i) => tone(a, 820 * m, 1.4 - i * 0.3, 0.12 / (i + 1)));
@@ -327,12 +323,11 @@
 
   // ---- Input -----------------------------------------------------------------
 
-  const held = { left: false, right: false, block: false };
-  const KEY_HOLD = {
-    KeyA: 'left', ArrowLeft: 'left', KeyD: 'right', ArrowRight: 'right',
-    KeyS: 'block', ArrowDown: 'block', ShiftLeft: 'block', ShiftRight: 'block',
-  };
-  const KEY_ACT = { KeyJ: 'jab', KeyK: 'hook', KeyL: 'upper', Space: 'slip', KeyZ: 'jab', KeyX: 'hook', KeyC: 'upper', ArrowUp: 'slip' };
+  const held = { left: false, right: false, block: false, aim: 'head' };
+  const KEY_HOLD = { ArrowLeft: 'left', ArrowRight: 'right', KeyC: 'block' };
+  const KEY_ACT = { KeyA: 'punch', KeyB: 'kick' };
+  // Aim sticks until changed, so D/E can be tapped before or held during a move.
+  const KEY_AIM = { KeyD: 'head', KeyE: 'body' };
 
   function fighting() { return $('fight').classList.contains('active') && snap; }
 
@@ -340,6 +335,11 @@
     if (held[key] === value) return;
     held[key] = value;
     send({ t: 'input', ...held });
+    syncTouch();
+  }
+
+  function syncTouch() {
+    document.querySelectorAll('#touch [data-aim]').forEach((b) => b.classList.toggle('on', b.dataset.aim === held.aim));
   }
 
   window.addEventListener('keydown', (e) => {
@@ -347,6 +347,7 @@
     sound.unlock();
     if (e.code === 'KeyM') { sound.toggle(); return; }
     if (KEY_HOLD[e.code]) { setHold(KEY_HOLD[e.code], true); e.preventDefault(); }
+    if (KEY_AIM[e.code]) { setHold('aim', KEY_AIM[e.code]); e.preventDefault(); }
     if (KEY_ACT[e.code]) {
       e.preventDefault();
       if (!e.repeat) send({ t: 'action', a: KEY_ACT[e.code] });
@@ -355,19 +356,22 @@
   window.addEventListener('keyup', (e) => {
     if (KEY_HOLD[e.code]) setHold(KEY_HOLD[e.code], false);
   });
-  window.addEventListener('blur', () => Object.keys(held).forEach((k) => setHold(k, false)));
+  window.addEventListener('blur', () => ['left', 'right', 'block'].forEach((k) => setHold(k, false)));
 
   document.querySelectorAll('#touch button').forEach((btn) => {
     const hold = btn.dataset.hold;
     const act = btn.dataset.act;
+    const aim = btn.dataset.aim;
     btn.addEventListener('pointerdown', (e) => {
       e.preventDefault();
       sound.unlock();
+      if (aim) { setHold('aim', aim); return; }
       btn.classList.add('on');
       if (hold) setHold(hold, true);
       if (act) send({ t: 'action', a: act });
     });
     const release = () => {
+      if (aim) return;
       btn.classList.remove('on');
       if (hold) setHold(hold, false);
     };
@@ -447,80 +451,82 @@
     return { phase: 'recovery', p: 1 - clamp01((t - m.startup - m.active) / m.recovery) };
   }
 
-  function pose(f, t, reach, clock) {
+  function pose(f, t, reach, kickReach, clock) {
     const bob = Math.sin(clock * 5 + f.x * 0.01) * 3;
     const P = {
-      crouch: 4 + bob, lean: 0, headX: 4, headY: 0,
+      crouch: 4 + bob, lean: 0, headX: 4, headY: 0, stepX: 0,
       front: { x: 42, y: -212 }, back: { x: 24, y: -200 },
-      stride: 0, fall: 0, wobble: 0,
+      kick: null, stride: 0, fall: 0, wobble: 0,
     };
+    const low = f.aim === 'body';
     switch (f.state) {
       case 'walk':
         P.stride = Math.sin(clock * 14) * 9;
         break;
       case 'block':
-        P.front = { x: 34, y: -226 };
-        P.back = { x: 30, y: -208 };
-        P.lean = -4; P.crouch = 12; P.headX = 0;
-        break;
       case 'blockstun': {
-        P.front = { x: 28, y: -224 };
-        P.back = { x: 26, y: -206 };
-        P.lean = -10; P.crouch = 14; P.headX = -4;
+        const shove = f.state === 'blockstun' ? 1 : 0;
+        if (low) {
+          P.front = { x: 36 - shove * 6, y: -158 };
+          P.back = { x: 30 - shove * 6, y: -144 };
+          P.crouch = 16 + shove * 2;
+          P.lean = 4 - shove * 8;
+        } else {
+          P.front = { x: 34 - shove * 6, y: -226 };
+          P.back = { x: 30 - shove * 4, y: -208 };
+          P.crouch = 12 + shove * 2;
+          P.lean = -4 - shove * 6;
+          P.headX = -shove * 4;
+        }
         break;
       }
       case 'attack': {
         const { phase, p } = attackProgress(f, t);
-        if (f.move === 'jab') {
-          const e = phase === 'startup' ? easeOut(p) : p;
-          P.front = { x: lerp(42, reach, e), y: lerp(-212, -214, e) };
-          P.lean = e * 8;
-        } else if (f.move === 'hook') {
-          if (phase === 'startup' && p < 0.5) {
-            const w = p / 0.5;
-            P.back = { x: lerp(24, -6, w), y: lerp(-200, -206, w) };
-            P.lean = -w * 6;
+        const e = phase === 'startup' ? easeOut(p) : p;
+        if (f.move === 'punch') {
+          P.front = { x: lerp(42, reach, e), y: lerp(-212, low ? -150 : -214, e) };
+          P.lean = e * (low ? 12 : 8);
+          if (low) P.crouch += e * 14;
+        } else {
+          // Kick: chamber the knee, snap the front foot out, bring it back.
+          const footY = low ? -128 : -204;
+          const chamber = { x: 34, y: low ? -96 : -140 };
+          let foot;
+          if (phase === 'startup' && p < 0.6) {
+            const c = p / 0.6;
+            foot = { x: lerp(26, chamber.x, c), y: lerp(0, chamber.y, c) };
           } else if (phase === 'startup') {
-            const s = (p - 0.5) / 0.5;
-            const arc = Math.sin(s * Math.PI) * 26;
-            P.back = { x: lerp(-6, reach - 8, s), y: -214 - arc * 0.3 };
-            P.backArc = arc;
-            P.lean = lerp(-6, 14, s);
+            const c = (p - 0.6) / 0.4;
+            foot = { x: lerp(chamber.x, kickReach, c), y: lerp(chamber.y, footY, c) };
           } else {
-            P.back = { x: lerp(24, reach - 8, p), y: lerp(-200, -214, p) };
-            P.lean = 14 * p;
+            foot = { x: lerp(26, kickReach, p), y: lerp(0, footY, p) };
           }
-        } else if (f.move === 'upper') {
-          if (phase === 'startup') {
-            P.crouch = lerp(4, 30, p);
-            P.back = { x: lerp(24, 36, p), y: lerp(-200, -140, p) };
-            P.lean = p * 4;
-          } else if (phase === 'active') {
-            P.crouch = -2;
-            P.back = { x: Math.min(reach, 96), y: -236 };
-            P.lean = 12;
-          } else {
-            P.crouch = lerp(4, -2, p);
-            P.back = { x: lerp(24, Math.min(reach, 96), p), y: lerp(-200, -236, p) };
-            P.lean = 12 * p;
-          }
+          P.kick = foot;
+          const k = clamp01(-foot.y / 140);
+          P.lean = -k * (low ? 12 : 22);
+          P.stepX = k * 22;
+          P.crouch = 2 - k * 4;
+          P.front = { x: 34, y: -206 };
+          P.back = { x: 14, y: -196 };
         }
-        break;
-      }
-      case 'slip': {
-        const s = Math.sin(clamp01(t / G.SLIP.duration) * Math.PI);
-        P.crouch = 4 + s * 34;
-        P.lean = -s * 24;
-        P.headX = 4 - s * 10;
         break;
       }
       case 'hitstun': {
         const k = 1 - clamp01(t / 18);
-        P.lean = -22 * k;
-        P.headX = 4 - 16 * k;
-        P.headY = 6 * k;
-        P.front = { x: 30, y: -196 };
-        P.back = { x: 14, y: -186 };
+        if (f.hitHeight === 'body') {
+          P.lean = 16 * k;
+          P.crouch = 4 + 22 * k;
+          P.headX = 10 * k;
+          P.headY = 10 * k;
+          P.front = { x: 30, y: -150 };
+          P.back = { x: 18, y: -140 };
+        } else {
+          P.lean = -22 * k;
+          P.headX = 4 - 16 * k;
+          P.headY = 6 * k;
+          P.front = { x: 30, y: -196 };
+          P.back = { x: 14, y: -186 };
+        }
         break;
       }
       case 'guardbreak':
@@ -553,8 +559,10 @@
 
   function drawFighter(i, f, x, t, clock, opponentX) {
     const c = PALETTE[i];
-    const reach = Math.max(60, Math.min(140, Math.abs(opponentX - x) - 36));
-    const P = pose(f, t, reach, clock);
+    const dist = Math.abs(opponentX - x);
+    const reach = Math.max(60, Math.min(140, dist - 36));
+    const kickReach = Math.max(70, Math.min(170, dist - 40));
+    const P = pose(f, t, reach, kickReach, clock);
     const hurt = f.state === 'hitstun' && t < 5;
 
     ctx.save();
@@ -567,6 +575,7 @@
     ctx.fill();
 
     ctx.scale(f.facing, 1);
+    if (P.stepX) ctx.translate(P.stepX, 0);
     if (P.fall) ctx.rotate(-P.fall * Math.PI * 0.5);
     if (P.wobble) ctx.rotate(P.wobble);
 
@@ -589,9 +598,10 @@
 
     // Legs
     const feetBack = { x: -24 - P.stride, y: 0 };
-    const feetFront = { x: 26 + P.stride, y: 0 };
+    const feetFront = P.kick || { x: 26 + P.stride, y: 0 };
     drawLeg({ x: hipX - 10, y: hipY }, feetBack, skinDark);
-    drawLeg({ x: hipX + 10, y: hipY }, feetFront, skin);
+    // A kicking leg is drawn over the torso below so it stays visible up close.
+    if (!P.kick) drawLeg({ x: hipX + 10, y: hipY }, feetFront, skin);
 
     // Trunks
     ctx.fillStyle = c.trunks;
@@ -651,6 +661,12 @@
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(hx + 6, hy + 10, 10, 3);
 
+    if (P.kick) {
+      drawLeg({ x: hipX + 10, y: hipY }, feetFront, skin, true);
+      ctx.fillStyle = c.trunks;
+      ctx.fillRect(hipX - 4, hipY - 20, 30, 34);
+    }
+
     // Front arm
     drawArm(frontSh, gF, skin, c.glove);
 
@@ -665,8 +681,10 @@
     return `rgb(${out.join(',')})`;
   }
 
-  function drawLeg(hip, foot, color) {
-    const knee = limb(hip.x, hip.y, foot.x, foot.y - 6, 52, false);
+  function drawLeg(hip, foot, color, kicking) {
+    // A kicking leg is allowed to straighten all the way out.
+    const len = kicking ? Math.max(52, Math.hypot(foot.x - hip.x, foot.y - hip.y) / 2 + 1) : 52;
+    const knee = limb(hip.x, hip.y, foot.x, foot.y - 6, len, kicking);
     ctx.strokeStyle = color;
     ctx.lineCap = 'round';
     ctx.lineWidth = 17;
@@ -870,6 +888,11 @@
       ctx.fillStyle = c.name;
       const label = f.name.toUpperCase() + (i === me ? '  (YOU)' : '');
       ctx.fillText(label, left ? x0 : x0 + barW, top + 64);
+      if (i === me) {
+        ctx.font = '700 15px Barlow, sans-serif';
+        ctx.fillStyle = '#f4c542';
+        ctx.fillText(`Aiming at the ${held.aim === 'body' ? 'tummy' : 'head'}`, left ? x0 : x0 + barW, top + 86);
+      }
       for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
         const px = left ? x0 + barW - 10 - r * 22 : x0 + 10 + r * 22;
         ctx.beginPath();

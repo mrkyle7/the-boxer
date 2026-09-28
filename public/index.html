@@ -43,14 +43,14 @@
         <details class="howto">
           <summary>How to fight</summary>
           <dl class="keys">
-            <dt>Move</dt><dd><kbd>A</kbd> <kbd>D</kbd> or arrow keys</dd>
-            <dt>Block</dt><dd>hold <kbd>S</kbd>, <kbd>↓</kbd> or <kbd>Shift</kbd></dd>
-            <dt>Jab</dt><dd><kbd>J</kbd> fast, long reach, light</dd>
-            <dt>Hook</dt><dd><kbd>K</kbd> slower, hurts, chips through a guard</dd>
-            <dt>Uppercut</dt><dd><kbd>L</kbd> short range, huge damage, cracks guards</dd>
-            <dt>Slip</dt><dd><kbd>Space</kbd> dodge everything for a moment</dd>
+            <dt>Punch</dt><dd><kbd>A</kbd> fast and cheap</dd>
+            <dt>Kick</dt><dd><kbd>B</kbd> slow, long reach, hits hard</dd>
+            <dt>Block</dt><dd>hold <kbd>C</kbd></dd>
+            <dt>Head</dt><dd><kbd>D</kbd> aim punches, kicks and blocks high</dd>
+            <dt>Tummy</dt><dd><kbd>E</kbd> aim punches, kicks and blocks low</dd>
+            <dt>Move</dt><dd><kbd>←</kbd> <kbd>→</kbd></dd>
           </dl>
-          <p>Every punch and slip costs stamina. Blocking drains it too, and a guard with no stamina left breaks open. Hitting someone mid-punch is a counter and does 40% more.</p>
+          <p>Your aim stays where you last set it. A block only covers the height you're aiming at, so guard the head and a tummy kick goes straight in. Head shots hurt more; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with none left breaks open, and hitting someone mid-attack is a counter for 40% more.</p>
         </details>
       </div>
     </section>
@@ -94,17 +94,17 @@
       <div class="touch" id="touch" aria-hidden="true">
         <div class="pad">
           <button data-hold="left">◀</button>
-          <button data-hold="block">Guard</button>
+          <button data-hold="block">Block</button>
           <button data-hold="right">▶</button>
         </div>
         <div class="pad">
-          <button data-act="slip">Slip</button>
-          <button data-act="jab">Jab</button>
-          <button data-act="hook">Hook</button>
-          <button data-act="upper">Upper</button>
+          <button data-aim="head" class="on">Head</button>
+          <button data-aim="body">Tummy</button>
+          <button data-act="punch">Punch</button>
+          <button data-act="kick">Kick</button>
         </div>
       </div>
-      <p class="hint">A/D move · S guard · J jab · K hook · L uppercut · Space slip · M sound</p>
+      <p class="hint">A punch · B kick · C block · D aim head · E aim tummy · ← → move · M sound</p>
     </section>
   </main>
 

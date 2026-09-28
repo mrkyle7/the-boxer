@@ -73,15 +73,17 @@ test('two players meet in a private room and trade punches', async () => {
     assert.deepStrictEqual(sa.names, ['Aliscript', 'Frazier']);
 
     await a.next((m) => m.t === 'state' && m.s.phase === 'fight');
-    // Walk into range, then jab.
+    // Walk into range, then punch the tummy.
     a.send({ t: 'input', right: true });
     b.send({ t: 'input', left: true });
     await new Promise((r) => setTimeout(r, 1200));
     a.send({ t: 'input', right: false });
     b.send({ t: 'input', left: false });
-    a.send({ t: 'action', a: 'jab' });
+    a.send({ t: 'input', aim: 'body' });
+    a.send({ t: 'action', a: 'punch' });
     const hit = await b.next((m) => m.t === 'state' && m.e.some((e) => e.type === 'hit' && e.target === 1));
     assert.ok(hit.s.fighters[1].hp < 100);
+    assert.ok(hit.e.some((e) => e.type === 'hit' && e.height === 'body'));
   });
 });
 
@@ -134,7 +136,7 @@ test('junk messages do not crash the server', async () => {
     a.ws.send('not json');
     a.ws.send('null');
     a.send({ t: 'constructor' });
-    a.send({ t: 'action', a: 'jab' });
+    a.send({ t: 'action', a: 'punch' });
     a.send({ t: 'ping', id: 7 });
     const pong = await a.next((m) => m.t === 'pong');
     assert.strictEqual(pong.id, 7);

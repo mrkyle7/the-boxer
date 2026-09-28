@@ -24,26 +24,26 @@
   const KNOCKBACK_FRICTION = 0.82;
 
   // Frame data. Range is measured centre-to-centre between fighters.
+  // Every attack goes to the head or the tummy, whichever the attacker is
+  // aiming at when it starts. A guard only covers the height it is held at.
+  // Head shots hurt more; tummy shots also wind the defender (drain stamina).
   const MOVES = {
-    jab: {
-      startup: 5, active: 3, recovery: 9, range: 165,
-      damage: 4, stamina: 7, hitstun: 13, blockstun: 9, knockback: 7,
-      blockDamage: 0, blockStamina: 5,
+    punch: {
+      startup: 6, active: 3, recovery: 10, range: 160, stamina: 8,
+      blockstun: 10, blockDamage: 0, blockStamina: 6, blockKnockback: 5,
+      head: { damage: 6, hitstun: 16, knockback: 10, winded: 0 },
+      body: { damage: 5, hitstun: 14, knockback: 6, winded: 10 },
     },
-    hook: {
-      startup: 13, active: 4, recovery: 20, range: 140,
-      damage: 11, stamina: 18, hitstun: 24, blockstun: 15, knockback: 18,
-      blockDamage: 2, blockStamina: 14,
-    },
-    upper: {
-      startup: 17, active: 3, recovery: 26, range: 115,
-      damage: 16, stamina: 26, hitstun: 34, blockstun: 20, knockback: 26,
-      blockDamage: 8, blockStamina: 22,
+    kick: {
+      startup: 14, active: 4, recovery: 22, range: 205, stamina: 18,
+      blockstun: 18, blockDamage: 2, blockStamina: 16, blockKnockback: 12,
+      head: { damage: 14, hitstun: 30, knockback: 24, winded: 0 },
+      body: { damage: 10, hitstun: 26, knockback: 18, winded: 20 },
     },
   };
 
-  const SLIP = { duration: 18, invulnFrom: 2, invulnTo: 13, cooldown: 36, stamina: 10 };
-  const ACTIONS = ['jab', 'hook', 'upper', 'slip'];
+  const AIMS = ['head', 'body'];
+  const ACTIONS = ['punch', 'kick'];
 
   function createFighter(index, name) {
     return {
@@ -55,16 +55,17 @@
       stamina: MAX_STAMINA,
       state: 'idle',
       move: null,
+      aim: 'head',
+      hitHeight: null,
       t: 0,
       hitLanded: false,
-      slipCooldown: 0,
       roundsWon: 0,
       stats: { thrown: 0, landed: 0, blocked: 0, damage: 0 },
     };
   }
 
   function createInput() {
-    return { left: false, right: false, block: false, buffered: null, bufferAge: 0 };
+    return { left: false, right: false, block: false, aim: 'head', buffered: null, bufferAge: 0 };
   }
 
   function createGame(names) {
@@ -98,6 +99,7 @@
     input.left = !!held.left;
     input.right = !!held.right;
     input.block = !!held.block;
+    if (AIMS.includes(held.aim)) input.aim = held.aim;
   }
 
   function pressAction(game, index, action) {
@@ -105,10 +107,6 @@
     const input = game.inputs[index];
     input.buffered = action;
     input.bufferAge = 0;
-  }
-
-  function isInvulnerable(f) {
-    return f.state === 'slip' && f.t >= SLIP.invulnFrom && f.t <= SLIP.invulnTo;
   }
 
   function isActionable(f) {
@@ -133,18 +131,13 @@
   function tryStartAction(game, f, input) {
     const action = input.buffered;
     if (!action) return;
-    if (action === 'slip') {
-      if (f.slipCooldown > 0 || f.stamina < SLIP.stamina) return;
-      f.stamina -= SLIP.stamina;
-      f.slipCooldown = SLIP.cooldown;
-      setState(f, 'slip');
-    } else {
-      const m = MOVES[action];
-      if (f.stamina < m.stamina) return;
-      f.stamina -= m.stamina;
-      f.stats.thrown++;
-      setState(f, 'attack', action);
-    }
+    const m = MOVES[action];
+    if (f.stamina < m.stamina) return;
+    f.stamina -= m.stamina;
+    f.stats.thrown++;
+    setState(f, 'attack', action);
+    // The attack's height is locked in when it starts.
+    f.aim = input.aim;
     input.buffered = null;
   }
 
@@ -157,15 +150,12 @@
       input.bufferAge++;
       if (input.bufferAge > INPUT_BUFFER_TICKS) input.buffered = null;
     }
-    if (f.slipCooldown > 0) f.slipCooldown--;
     f.t++;
 
     // Timed states resolve back to neutral.
     if (f.state === 'attack') {
       const m = MOVES[f.move];
       if (f.t >= m.startup + m.active + m.recovery) setState(f, 'idle');
-    } else if (f.state === 'slip' && f.t >= SLIP.duration) {
-      setState(f, 'idle');
     } else if (f.state === 'hitstun' && f.t >= f.stun) {
       setState(f, 'idle');
     } else if (f.state === 'blockstun' && f.t >= f.stun) {
@@ -177,6 +167,7 @@
     if (!fighting || f.state === 'ko') return;
 
     if (isActionable(f)) {
+      f.aim = input.aim;
       tryStartAction(game, f, input);
     }
 
@@ -231,13 +222,11 @@
       const m = MOVES[att.move];
       if (Math.abs(def.x - att.x) > m.range) return;
       if (def.state === 'ko') return;
-      if (isInvulnerable(def)) {
-        att.hitLanded = true;
-        game.events.push({ type: 'slipped', target: 1 - i, move: att.move });
-        return;
-      }
       att.hitLanded = true;
-      pending.push({ attacker: i, defender: 1 - i, move: att.move, defPhase: movePhase(def), defState: def.state });
+      pending.push({
+        attacker: i, defender: 1 - i, move: att.move, height: att.aim,
+        defPhase: movePhase(def), defState: def.state, defAim: def.aim,
+      });
     });
 
     // Resolve simultaneously so trades are symmetric.
@@ -246,34 +235,40 @@
       const def = game.fighters[hit.defender];
       const m = MOVES[hit.move];
       const pushDir = def.x >= att.x ? 1 : -1;
-      const blocking = hit.defState === 'block' || hit.defState === 'blockstun';
+      const guarding = hit.defState === 'block' || hit.defState === 'blockstun';
+      const blocking = guarding && hit.defAim === hit.height;
+      const ev = { target: hit.defender, move: hit.move, height: hit.height };
 
       if (blocking) {
         def.hp = Math.max(0, def.hp - m.blockDamage);
         def.stamina -= m.blockStamina;
         att.stats.blocked++;
         att.stats.damage += m.blockDamage;
-        def.vx += pushDir * m.knockback * 0.5;
+        def.vx += pushDir * m.blockKnockback;
         if (def.stamina <= 0) {
           def.stamina = 0;
           setState(def, 'guardbreak');
-          game.events.push({ type: 'guardbreak', target: hit.defender, move: hit.move });
+          game.events.push({ type: 'guardbreak', ...ev });
         } else {
           setState(def, 'blockstun');
           def.stun = m.blockstun;
-          game.events.push({ type: 'block', target: hit.defender, move: hit.move });
+          game.events.push({ type: 'block', ...ev });
         }
       } else {
+        const h = m[hit.height];
         const counter = hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak';
-        const damage = Math.round(m.damage * (counter ? COUNTER_MULTIPLIER : 1));
+        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1));
         def.hp = Math.max(0, def.hp - damage);
+        def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
         att.stats.damage += damage;
-        def.vx += pushDir * m.knockback;
+        def.vx += pushDir * h.knockback;
         setState(def, 'hitstun');
-        def.stun = m.hitstun;
-        game.events.push({ type: 'hit', target: hit.defender, move: hit.move, damage, counter });
+        def.stun = h.hitstun;
+        def.hitHeight = hit.height;
+        // Guarding the wrong height is worth telling the defender about.
+        game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding });
       }
       if (def.hp <= 0) {
         setState(def, 'ko');
@@ -363,8 +358,9 @@
         stamina: Math.round(f.stamina),
         state: f.state,
         move: f.move,
+        aim: f.aim,
+        hitHeight: f.hitHeight,
         t: f.t,
-        slipCooldown: f.slipCooldown,
         roundsWon: f.roundsWon,
         stats: f.stats,
       })),
@@ -374,7 +370,7 @@
   const api = {
     TICK_RATE, RING_LEFT, RING_RIGHT, MIN_SEPARATION, MAX_HP, MAX_STAMINA,
     ROUND_TICKS, COUNTDOWN_TICKS, ROUND_END_TICKS, ROUNDS_TO_WIN, MAX_ROUNDS,
-    MOVES, SLIP, ACTIONS, GUARD_BREAK_TICKS,
+    MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     createGame, step, setHeld, pressAction, snapshot, movePhase,
   };
 
