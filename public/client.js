@@ -388,6 +388,24 @@
   }
 
   $('name').value = load('boxer-name') || '';
+
+  // Signed in to Cheetah Moon: fight under that name. Otherwise offer to.
+  fetch('/api/me').then((r) => r.json()).then((me) => {
+    const account = $('account');
+    account.textContent = '';
+    if (me.signedIn) {
+      $('name').value = me.name;
+      $('name-field').hidden = true;
+      const b = document.createElement('strong');
+      b.textContent = me.name;
+      account.append('Fighting as ', b);
+    } else {
+      const a = document.createElement('a');
+      a.href = `${me.loginUrl}?next=${encodeURIComponent(location.href)}`;
+      a.textContent = 'Sign in';
+      account.append(a, ' to fight under your Cheetah Moon name.');
+    }
+  }).catch(() => {});
   $('name').addEventListener('change', () => {
     save('boxer-name', $('name').value.trim());
     send({ t: 'hello', name: playerName() });

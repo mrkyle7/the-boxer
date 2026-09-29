@@ -5,8 +5,17 @@ const assert = require('node:assert');
 const WebSocket = require('ws');
 const { createServer } = require('../server.js');
 
-function client(port) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}`);
+// Stands in for auth.js: the cookie "userjwt=<name>" is that player signed in.
+const fakeAuth = {
+  player: async (req) => {
+    const m = /userjwt=([^;]+)/.exec(req.headers.cookie || '');
+    return m ? { id: `id-${m[1]}`, name: decodeURIComponent(m[1]) } : null;
+  },
+  loginUrl: () => 'https://cheetahmoongames.com/login',
+};
+
+function client(port, cookie) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}`, cookie ? { headers: { cookie } } : undefined);
   const inbox = [];
   const waiters = [];
   ws.on('message', (d) => {
@@ -32,12 +41,12 @@ function client(port) {
 }
 
 async function withServer(fn) {
-  const server = createServer();
+  const server = createServer({ auth: fakeAuth });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const clients = [];
   try {
-    await fn(port, async () => { const c = client(port); clients.push(c); await c.open(); return c; });
+    await fn(port, async (cookie) => { const c = client(port, cookie); clients.push(c); await c.open(); return c; });
   } finally {
     clients.forEach((c) => c.ws.terminate());
     await new Promise((r) => server.close(r));
@@ -140,5 +149,28 @@ test('junk messages do not crash the server', async () => {
     a.send({ t: 'ping', id: 7 });
     const pong = await a.next((m) => m.t === 'pong');
     assert.strictEqual(pong.id, 7);
+  });
+});
+
+test('signed-in players fight under their account name, guests under the one they type', async () => {
+  await withServer(async (port, connect) => {
+    const kyle = await connect('userjwt=Kyle%20H');
+    const guest = await connect();
+    kyle.send({ t: 'hello', name: 'Imposter' });
+    guest.send({ t: 'hello', name: 'Guesty' });
+    kyle.send({ t: 'create' });
+    const { code } = await kyle.next((m) => m.t === 'waiting');
+    guest.send({ t: 'join', code });
+    const start = await kyle.next((m) => m.t === 'start');
+    assert.deepStrictEqual(start.names, ['Kyle H', 'Guesty']);
+  });
+});
+
+test('/api/me says who is signed in', async () => {
+  await withServer(async (port) => {
+    const me = await (await fetch(`http://127.0.0.1:${port}/api/me`, { headers: { cookie: 'userjwt=Ann' } })).json();
+    assert.deepStrictEqual(me, { signedIn: true, name: 'Ann' });
+    const guest = await (await fetch(`http://127.0.0.1:${port}/api/me`)).json();
+    assert.deepStrictEqual(guest, { signedIn: false, loginUrl: 'https://cheetahmoongames.com/login' });
   });
 });

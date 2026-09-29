@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const Game = require('./public/game.js');
+const { createAuth } = require('./auth');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -125,7 +126,8 @@ function cleanName(raw) {
 
 const handlers = {
   hello(ws, msg) {
-    ws.name = cleanName(msg.name);
+    // A signed-in player's name is their account's.
+    if (!ws.account) ws.name = cleanName(msg.name);
   },
   create(ws) {
     leaveRoom(ws);
@@ -182,23 +184,47 @@ const handlers = {
   },
 };
 
-function createServer() {
-  const server = http.createServer(serveStatic);
+// Players signed in to their Cheetah Moon account fight under its name;
+// everyone else picks a name in the lobby.
+async function serveMe(auth, req, res) {
+  const player = await auth.player(req);
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(player
+    ? { signedIn: true, name: cleanName(player.name) }
+    : { signedIn: false, loginUrl: auth.loginUrl() }));
+}
+
+function createServer({ auth = createAuth() } = {}) {
+  const server = http.createServer((req, res) => {
+    if (new URL(req.url, 'http://x').pathname === '/api/me') {
+      serveMe(auth, req, res).catch(() => res.writeHead(500).end());
+      return;
+    }
+    serveStatic(req, res);
+  });
   const wss = new WebSocketServer({ server, maxPayload: 1024 });
 
-  wss.on('connection', (ws) => {
+  wss.on('connection', (ws, req) => {
     ws.name = 'Boxer';
+    ws.account = null;
     ws.room = null;
     ws.isAlive = true;
+    // The upgrade request carries the login cookie. Messages wait until it's
+    // checked, so a fight never starts under the wrong name.
+    const ready = auth.player(req).then((player) => {
+      if (!player) return;
+      ws.account = player;
+      ws.name = cleanName(player.name);
+    }, () => {});
     ws.on('pong', () => { ws.isAlive = true; });
     ws.on('message', (data) => {
       let msg;
       try { msg = JSON.parse(data); } catch { return; }
       if (!msg || typeof msg !== 'object') return;
       const handler = Object.prototype.hasOwnProperty.call(handlers, msg.t) && handlers[msg.t];
-      if (handler) handler(ws, msg);
+      if (handler) ready.then(() => handler(ws, msg));
     });
-    ws.on('close', () => leaveRoom(ws));
+    ws.on('close', () => ready.then(() => leaveRoom(ws)));
   });
 
   // Drop connections that stop answering heartbeats.
