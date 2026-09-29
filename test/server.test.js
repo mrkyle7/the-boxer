@@ -174,3 +174,30 @@ test('/api/me says who is signed in', async () => {
     assert.deepStrictEqual(guest, { signedIn: false, loginUrl: 'https://cheetahmoongames.com/login' });
   });
 });
+
+test('installable: icons, manifest and service worker are served and linked', async () => {
+  await withServer(async (port) => {
+    const base = `http://127.0.0.1:${port}`;
+    const html = await (await fetch(`${base}/`)).text();
+    for (const ref of ['/icon.svg', '/icons/apple-touch-icon.png', '/manifest.webmanifest']) {
+      assert.ok(html.includes(`href="${ref}"`), `page links ${ref}`);
+    }
+    assert.match(html, /href="https:\/\/cheetahmoongames\.com\/"/, 'links back to Cheetah Moon Games');
+    assert.match(html, /serviceWorker\.register\('\/sw\.js'\)/);
+    const res = await fetch(`${base}/manifest.webmanifest`);
+    assert.strictEqual(res.headers.get('content-type'), 'application/manifest+json');
+    const manifest = await res.json();
+    assert.strictEqual(manifest.display, 'standalone');
+    const sizes = manifest.icons.map((i) => i.sizes);
+    assert.ok(sizes.includes('192x192') && sizes.includes('512x512'));
+    for (const icon of [...manifest.icons, { src: '/icons/apple-touch-icon.png' }]) {
+      const r = await fetch(base + icon.src);
+      assert.strictEqual(r.status, 200, icon.src);
+      if (icon.src.endsWith('.png')) assert.strictEqual(r.headers.get('content-type'), 'image/png');
+    }
+    const sw = await fetch(`${base}/sw.js`);
+    assert.match(sw.headers.get('content-type'), /javascript/);
+    assert.match(await sw.text(), /mode !== 'navigate'/);
+    assert.strictEqual((await fetch(`${base}/offline.html`)).status, 200);
+  });
+});
