@@ -32,9 +32,9 @@ Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` w
 
 Live at **https://boxer.cheetahmoongames.com**, one of the games linked from [cheetahmoongames.com](https://cheetahmoongames.com).
 
-It runs as the `the-boxer` Cloud Run service in the same Google Cloud project as [Bartenders of Corfu](https://github.com/mrkyle7/bartenders-of-corfu). That repo's `terraform/main.tf` defines the service, its subdomain and DNS, and lets this repo deploy through Workload Identity Federation, so there are no keys to manage here.
+It runs as the `the-boxer` Cloud Run service, alongside the other games on the site. Its infrastructure is defined in [mrkyle7/cheetahmoongames](https://github.com/mrkyle7/cheetahmoongames): the `boxer` entry in `terraform/games.tf` covers the service, its settings, subdomain and DNS. That entry also lets this repo deploy through Workload Identity Federation, so there are no keys to manage here. Change the service's settings there, not here.
 
-`.github/workflows/ci-cd.yml` runs the tests and a container smoke test on every push and pull request. On `main` it builds the `Dockerfile`, pushes the image to Artifact Registry (`docker-us/the-boxer`) and deploys it, independently of Bartenders. If a deploy fails it rolls traffic back to the last healthy revision.
+`.github/workflows/ci-cd.yml` runs the tests and a container smoke test on every push and pull request. On `main` it builds the `Dockerfile`, pushes the image to the game's own Artifact Registry repository (`the-boxer`) and deploys it as `the-boxer-deploy`, an account that can deploy only this service, independently of Bartenders. If a deploy fails it rolls traffic back to the last healthy revision.
 
 The service is capped at **one instance**: rooms live in memory, so both fighters have to reach the same server. One instance holds hundreds of WebSocket connections. Scaling past that would need shared room state (for example Redis) first.
 
