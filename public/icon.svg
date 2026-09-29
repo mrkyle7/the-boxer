@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- The Boxer: a red glove. Also the favicon. -->
+  <rect width="64" height="64" fill="#11161f"/>
+  <path d="M18 24c0-7 6-12 14-12h6c8 0 12 6 12 13v10c0 9-7 16-16 16h-4c-7 0-12-5-12-12z" fill="#e03a3e"/>
+  <path d="M26 20c3-2 8-3 12-1" fill="none" stroke="#ff8a8d" stroke-width="2.5" stroke-linecap="round"/>
+  <rect x="16" y="44" width="26" height="10" rx="3" fill="#f2f2f2"/>
+  <rect x="16" y="47" width="26" height="2.5" fill="#2f76e8"/>
+</svg>
