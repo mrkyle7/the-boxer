@@ -12,7 +12,7 @@ permissions:
 
 # Shares the Cloud Run project with Bartenders of Corfu; the service, its
 # domain and this repo's deploy access are defined in
-# mrkyle7/bartenders-of-corfu/terraform/main.tf.
+# mrkyle7/cheetahmoongames (the `boxer` entry in terraform/games.tf).
 env:
   PROJECT_ID: bartenders-464918
   REGION: us-east1
