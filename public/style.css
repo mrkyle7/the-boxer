@@ -70,6 +70,10 @@ h2 { font-size: 34px; }
 
 .field { display: flex; flex-direction: column; gap: 6px; flex: 1; }
 .field span { font-weight: 600; font-size: 14px; color: var(--muted); }
+.field[hidden] { display: none; }
+.account { margin: 0; font-size: 15px; color: var(--muted); }
+.account strong { color: var(--text); }
+.account a { color: var(--gold); font-weight: 600; text-underline-offset: 3px; }
 
 input {
   font: inherit;
