@@ -33,7 +33,7 @@
 
         <div class="actions">
           <button id="quick" class="btn btn-primary">Find an opponent</button>
-          <button id="create" class="btn">Private fight</button>
+          <button id="create" class="btn">Private fight <span class="sub">2–4 players</span></button>
         </div>
 
         <form id="join-form" class="join">
@@ -54,9 +54,10 @@
             <dt>Block</dt><dd>hold <kbd>C</kbd></dd>
             <dt>Head</dt><dd><kbd>D</kbd> aim punches, kicks and blocks high</dd>
             <dt>Tummy</dt><dd><kbd>E</kbd> aim punches, kicks and blocks low</dd>
-            <dt>Move</dt><dd><kbd>←</kbd> <kbd>→</kbd></dd>
+            <dt>Move</dt><dd><kbd>←</kbd> <kbd>→</kbd>, and <kbd>↑</kbd> <kbd>↓</kbd> in the ring</dd>
           </dl>
           <p>Your aim stays where you last set it. A block only covers the height you're aiming at, so guard the head and a tummy kick goes straight in. Head shots hurt more; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with none left breaks open, and hitting someone mid-attack is a counter for 40% more.</p>
+          <p>Three or four in a private fight is a free-for-all in the ring, seen from above. You always face whoever's nearest, and an attack lands on whoever is in front of you. A guard only covers the front, so watch your back. The last one standing takes the round.</p>
         </details>
 
         <a class="more-games" href="https://cheetahmoongames.com/">More games from Cheetah Moon</a>
@@ -66,6 +67,9 @@
     <section id="waiting" class="screen" aria-live="polite">
       <div class="poster">
         <h2 id="waiting-title">Waiting for an opponent</h2>
+        <ul id="room-players" class="room-players" hidden></ul>
+        <p id="room-note" class="room-note"></p>
+        <button id="start" class="btn btn-primary" hidden>Start the fight</button>
         <div id="share" class="share">
           <p>Send this to a friend:</p>
           <div class="code" id="room-code">----</div>
@@ -85,7 +89,7 @@
         <div id="result" class="result" hidden>
           <h2 id="result-title"></h2>
           <table class="stats">
-            <thead><tr><th></th><th id="stat-a"></th><th id="stat-b"></th></tr></thead>
+            <thead><tr id="stat-head"></tr></thead>
             <tbody id="stat-body"></tbody>
           </table>
           <p id="rematch-note" class="note"></p>
@@ -101,9 +105,11 @@
       </div>
       <div class="touch" id="touch" aria-hidden="true">
         <div class="pad">
-          <button data-hold="left">◀</button>
+          <button data-hold="left" aria-label="Move left">◀</button>
+          <button data-hold="up" class="ring-only" aria-label="Move up">▲</button>
+          <button data-hold="down" class="ring-only" aria-label="Move down">▼</button>
+          <button data-hold="right" aria-label="Move right">▶</button>
           <button data-hold="block">Block</button>
-          <button data-hold="right">▶</button>
         </div>
         <div class="pad">
           <button data-aim="head" class="on">Head</button>
@@ -112,7 +118,7 @@
           <button data-act="kick">Kick</button>
         </div>
       </div>
-      <p class="hint">A punch · B kick · C block · D aim head · E aim tummy · ← → move · M sound</p>
+      <p class="hint">A punch · B kick · C block · D aim head · E aim tummy · ← → move<span class="ring-only"> · ↑ ↓ move</span> · M sound</p>
     </section>
   </main>
 

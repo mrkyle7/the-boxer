@@ -213,3 +213,21 @@ canvas {
   .join { flex-direction: column; align-items: stretch; }
   .touch button { min-width: 52px; height: 52px; font-size: 14px; }
 }
+
+/* Private rooms: who's in, before the fight. */
+.room-players { list-style: none; margin: 18px 0 6px; padding: 0; display: grid; gap: 6px; text-align: left; }
+.room-players li {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; font-weight: 600;
+}
+.room-players li .swatch { width: 14px; height: 14px; border-radius: 50%; flex: 0 0 auto; }
+.room-players li .tag { margin-left: auto; font-size: 13px; color: var(--muted); font-weight: 400; }
+.room-players li.empty { color: var(--muted); border-style: dashed; font-weight: 400; }
+.room-note { color: var(--muted); margin: 8px 0 14px; }
+#start { margin-bottom: 12px; }
+.btn .sub { display: block; font-size: 12px; font-weight: 400; opacity: 0.75; }
+
+/* Up and down only in the ring (three or four players). */
+.ring-only { display: none; }
+body.ring .ring-only { display: inline; }
+body.ring .touch button.ring-only { display: inline-flex; align-items: center; justify-content: center; }

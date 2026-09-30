@@ -44,7 +44,13 @@ function serveStatic(req, res) {
 }
 
 // ---- Rooms -----------------------------------------------------------------
+//
+// Quick matches pair two strangers and start at once. Private rooms hold two
+// to four: friends join with the code or link, and whoever made the room
+// starts the fight. Three or four fight in the ring seen from above (see
+// public/game.js).
 
+const MAX_PLAYERS = Game.MAX_FIGHTERS;
 const rooms = new Map();
 let quickQueue = null; // a room waiting for a random opponent
 
@@ -65,28 +71,43 @@ function createRoom(isPublic) {
   const room = {
     code: makeCode(),
     isPublic,
-    players: [null, null],
+    // Everyone in the room, in the order they came. The first is the host.
+    players: [],
+    // Who's fighting in the current match; their index is their fighter.
+    fighters: [],
     game: null,
     loop: null,
-    rematch: [false, false],
+    rematch: new Set(),
   };
   rooms.set(room.code, room);
   return room;
 }
 
-function seatPlayer(room, ws) {
-  const seat = room.players[0] ? 1 : 0;
-  room.players[seat] = ws;
+function addPlayer(room, ws) {
+  room.players.push(ws);
   ws.room = room;
-  ws.seat = seat;
-  return seat;
+  ws.seat = null;
+}
+
+const fighting = (room) => Boolean(room.game) && room.game.phase !== 'matchEnd';
+
+/** Tells everyone in a private room who's there, before the fight. */
+function sendRoom(room) {
+  const names = room.players.map((p) => p.name);
+  room.players.forEach((p, i) => send(p, {
+    t: 'room', code: room.code, players: names, you: i, host: i === 0, max: MAX_PLAYERS,
+  }));
 }
 
 function startMatch(room) {
-  const names = room.players.map((p) => p.name);
+  room.fighters = room.players.slice(0, MAX_PLAYERS);
+  const names = room.fighters.map((p) => p.name);
   room.game = Game.createGame(names);
-  room.rematch = [false, false];
-  room.players.forEach((p, i) => send(p, { t: 'start', you: i, names, code: room.code }));
+  room.rematch = new Set();
+  room.fighters.forEach((p, i) => {
+    p.seat = i;
+    send(p, { t: 'start', you: i, names, code: room.code, mode: room.game.mode });
+  });
   stopLoop(room);
   let n = 0;
   room.loop = setInterval(() => {
@@ -94,7 +115,7 @@ function startMatch(room) {
     if (++n % BROADCAST_EVERY !== 0) return;
     const msg = JSON.stringify({ t: 'state', s: Game.snapshot(room.game), e: room.game.events });
     room.game.events = [];
-    for (const p of room.players) if (p && p.readyState === p.OPEN) p.send(msg);
+    for (const p of room.fighters) if (p && p.readyState === p.OPEN) p.send(msg);
     if (room.game.phase === 'matchEnd') stopLoop(room);
   }, 1000 / Game.TICK_RATE);
 }
@@ -104,19 +125,55 @@ function stopLoop(room) {
   room.loop = null;
 }
 
+function closeRoom(room) {
+  stopLoop(room);
+  if (quickQueue === room) quickQueue = null;
+  rooms.delete(room.code);
+}
+
 function leaveRoom(ws) {
   const room = ws.room;
   if (!room) return;
-  room.players[ws.seat] = null;
   ws.room = null;
-  if (quickQueue === room) quickQueue = null;
-  stopLoop(room);
-  const other = room.players.find(Boolean);
-  if (other) {
-    send(other, { t: 'opponentLeft' });
-    other.room = null;
+  room.players = room.players.filter((p) => p !== ws);
+  const seat = room.fighters.indexOf(ws);
+  if (seat !== -1) room.fighters[seat] = null;
+  room.rematch.delete(ws);
+  const others = room.players;
+
+  if (others.length === 0) return closeRoom(room);
+
+  if (fighting(room) && seat !== -1) {
+    // One on one, the fight can't go on. In the ring the others fight on
+    // while at least two are left.
+    const left = room.fighters.filter(Boolean);
+    if (room.game.mode === 'ring' && left.length >= 2) {
+      Game.removeFighter(room.game, seat);
+      left.forEach((p) => send(p, { t: 'playerLeft', name: ws.name }));
+      return;
+    }
+    others.forEach((p) => { send(p, { t: 'opponentLeft', name: ws.name }); p.room = null; });
+    return closeRoom(room);
   }
-  rooms.delete(room.code);
+
+  if (room.game) {
+    // After a match: a rematch needs two.
+    if (others.length < 2) {
+      others.forEach((p) => { send(p, { t: 'opponentLeft', name: ws.name }); p.room = null; });
+      return closeRoom(room);
+    }
+    others.forEach((p) => send(p, { t: 'playerLeft', name: ws.name }));
+    maybeRematch(room);
+    return;
+  }
+
+  // Before the fight: the room waits on, with the next player as host.
+  if (!room.isPublic) sendRoom(room);
+}
+
+function maybeRematch(room) {
+  const present = room.players;
+  if (present.length >= 2 && present.every((p) => room.rematch.has(p))) startMatch(room);
 }
 
 // ---- Messages --------------------------------------------------------------
@@ -130,21 +187,29 @@ const handlers = {
   hello(ws, msg) {
     // A signed-in player's name is their account's.
     if (!ws.account) ws.name = cleanName(msg.name);
+    if (ws.room && !ws.room.isPublic && !ws.room.game) sendRoom(ws.room);
   },
   create(ws) {
     leaveRoom(ws);
     const room = createRoom(false);
-    seatPlayer(room, ws);
-    send(ws, { t: 'waiting', code: room.code, private: true });
+    addPlayer(room, ws);
+    sendRoom(room);
   },
   join(ws, msg) {
     const code = String(msg.code || '').toUpperCase().trim();
     const room = rooms.get(code);
     if (!room || room.isPublic) return send(ws, { t: 'error', msg: `No room called ${code || '(blank)'}.` });
-    if (room.players[0] && room.players[1]) return send(ws, { t: 'error', msg: 'That room is full.' });
     if (room === ws.room) return;
+    if (room.game) return send(ws, { t: 'error', msg: 'That fight has already started.' });
+    if (room.players.length >= MAX_PLAYERS) return send(ws, { t: 'error', msg: `That room is full: ${MAX_PLAYERS} is the most.` });
     leaveRoom(ws);
-    seatPlayer(room, ws);
+    addPlayer(room, ws);
+    sendRoom(room);
+  },
+  start(ws) {
+    const room = ws.room;
+    if (!room || room.isPublic || room.game || room.players[0] !== ws) return;
+    if (room.players.length < 2) return send(ws, { t: 'error', msg: 'You need at least one opponent.' });
     startMatch(room);
   },
   quick(ws) {
@@ -153,30 +218,33 @@ const handlers = {
     if (quickQueue && quickQueue.players[0]) {
       const room = quickQueue;
       quickQueue = null;
-      seatPlayer(room, ws);
+      addPlayer(room, ws);
       startMatch(room);
     } else {
       const room = createRoom(true);
-      seatPlayer(room, ws);
+      addPlayer(room, ws);
       quickQueue = room;
       send(ws, { t: 'waiting', code: room.code, private: false });
     }
   },
   input(ws, msg) {
-    if (!ws.room || !ws.room.game) return;
+    if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
     Game.setHeld(ws.room.game, ws.seat, msg);
   },
   action(ws, msg) {
-    if (!ws.room || !ws.room.game) return;
+    if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
     Game.pressAction(ws.room.game, ws.seat, msg.a);
   },
   rematch(ws) {
     const room = ws.room;
     if (!room || !room.game || room.game.phase !== 'matchEnd') return;
-    room.rematch[ws.seat] = true;
-    const other = room.players[1 - ws.seat];
-    send(other, { t: 'rematchRequested' });
-    if (room.rematch[0] && room.rematch[1]) startMatch(room);
+    room.rematch.add(ws);
+    const waitingFor = room.players.filter((p) => !room.rematch.has(p)).map((p) => p.name);
+    room.players.forEach((p) => {
+      if (p !== ws) send(p, { t: 'rematchRequested', name: ws.name, waitingFor });
+    });
+    send(ws, { t: 'rematchWaiting', waitingFor });
+    maybeRematch(room);
   },
   leave(ws) {
     leaveRoom(ws);
