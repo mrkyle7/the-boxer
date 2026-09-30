@@ -13,6 +13,8 @@
   const PALETTE = [
     { glove: '#e03a3e', gloveDark: '#9e1e24', trunks: '#c9262c', trim: '#ffffff', skin: '#e0ac86', skinDark: '#b98262', hair: '#2a1a12', name: '#ff6f73' },
     { glove: '#2f76e8', gloveDark: '#1a4396', trunks: '#2463cc', trim: '#f4c542', skin: '#8d5a3b', skinDark: '#6a4028', hair: '#151010', name: '#79a8ff' },
+    { glove: '#2fae5b', gloveDark: '#1b6e38', trunks: '#23914b', trim: '#ffffff', skin: '#c68a5e', skinDark: '#9c6a44', hair: '#3a2414', name: '#6fdc93' },
+    { glove: '#f0b429', gloveDark: '#a87a10', trunks: '#d99a17', trim: '#1a1a1a', skin: '#f1c7a0', skinDark: '#c99a74', hair: '#6b3b16', name: '#ffd36a' },
   ];
 
   // ---- Storage (optional convenience only) ------------------------------------
@@ -83,6 +85,8 @@
 
   let me = 0;
   let names = ['', ''];
+  // 'side' for two fighters, 'ring' (seen from above) for three or four.
+  let mode = 'side';
   let snap = null;
   let snapAt = 0;
   let display = null;
@@ -93,16 +97,22 @@
     switch (msg.t) {
       case 'waiting': {
         roomCode = msg.code;
-        $('waiting-title').textContent = msg.private ? 'Your ring is ready' : 'Looking for an opponent';
-        $('share').hidden = !msg.private;
-        $('room-code').textContent = msg.code;
-        $('share-link').value = `${location.origin}${location.pathname}?room=${msg.code}`;
+        $('waiting-title').textContent = 'Looking for an opponent';
+        $('share').hidden = true;
+        $('room-players').hidden = true;
+        $('room-note').textContent = '';
+        $('start').hidden = true;
         show('waiting');
         break;
       }
+      case 'room':
+        showRoom(msg);
+        break;
       case 'start':
         me = msg.you;
         names = msg.names;
+        mode = msg.mode === 'ring' ? 'ring' : 'side';
+        document.body.classList.toggle('ring', mode === 'ring');
         roomCode = msg.code;
         snap = null;
         display = null;
@@ -122,10 +132,21 @@
         onState(msg.s, msg.e || []);
         break;
       case 'rematchRequested':
-        $('rematch-note').textContent = `${names[1 - me]} wants a rematch.`;
+        $('rematch-note').textContent = msg.waitingFor && msg.waitingFor.length > 1
+          ? `${msg.name} wants a rematch. Waiting for ${listNames(msg.waitingFor)}.`
+          : `${msg.name} wants a rematch.`;
+        break;
+      case 'rematchWaiting':
+        $('rematch-note').textContent = `Waiting for ${listNames(msg.waitingFor)}…`;
+        break;
+      case 'playerLeft':
+        if (snap && snap.phase !== 'matchEnd') announce(`${msg.name} left`, 90, '#ffffff', 'The rest fight on');
+        else $('rematch-note').textContent = `${msg.name} left the ring.`;
         break;
       case 'opponentLeft':
-        showNotice(`${names[1 - me] || 'Your opponent'} left the ring.`);
+        showNotice(names.length > 2
+          ? 'Everyone else has left the ring.'
+          : `${msg.name || names[1 - me] || 'Your opponent'} left the ring.`);
         break;
       case 'error':
         show('lobby');
@@ -139,11 +160,59 @@
     }
   }
 
+  function listNames(list) {
+    if (list.length <= 1) return list.join('');
+    return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
+  }
+
+  /** A private room before the fight: who's in, and the host's Start button. */
+  function showRoom(msg) {
+    roomCode = msg.code;
+    const host = msg.players[0];
+    $('waiting-title').textContent = msg.host ? 'Your ring is ready' : `${host}'s ring`;
+    $('share').hidden = false;
+    $('room-code').textContent = msg.code;
+    $('share-link').value = `${location.origin}${location.pathname}?room=${msg.code}`;
+    const list = $('room-players');
+    list.textContent = '';
+    for (let i = 0; i < msg.max; i++) {
+      const li = document.createElement('li');
+      if (i < msg.players.length) {
+        const dot = document.createElement('span');
+        dot.className = 'swatch';
+        dot.style.background = PALETTE[i].glove;
+        const name = document.createElement('span');
+        name.textContent = msg.players[i] + (i === msg.you ? ' (you)' : '');
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.textContent = i === 0 ? 'Host' : '';
+        li.append(dot, name, tag);
+      } else {
+        li.className = 'empty';
+        li.textContent = 'Open corner';
+      }
+      list.append(li);
+    }
+    list.hidden = false;
+    const n = msg.players.length;
+    const view = n > 2 ? `${n} fighters: free-for-all in the ring.` : n === 2 ? 'Two fighters: one on one.' : '';
+    if (msg.host) {
+      $('room-note').textContent = n < 2
+        ? 'Send the link to one, two or three friends. Start when everyone is in.'
+        : `${view} Start when everyone is in.`;
+    } else {
+      $('room-note').textContent = `${view} Waiting for ${host} to start.`;
+    }
+    $('start').hidden = !msg.host;
+    $('start').disabled = n < 2;
+    show('waiting');
+  }
+
   function onState(s, events) {
     snap = s;
     snapAt = performance.now();
     if (!display) {
-      display = s.fighters.map((f) => ({ x: f.x, hpTrail: f.hp }));
+      display = s.fighters.map((f) => ({ x: f.x, y: f.y || 0, angle: f.angle || 0, hpTrail: f.hp }));
     }
     for (const e of events) onEvent(e);
     if (s.phase !== lastPhase) {
@@ -164,17 +233,25 @@
     const w = snap.winner;
     $('result-title').textContent = w === null ? 'Split decision: draw'
       : w === me ? 'You win' : `${snap.fighters[w].name} wins`;
-    const [a, b] = snap.fighters;
-    $('stat-a').textContent = a.name + (me === 0 ? ' (you)' : '');
-    $('stat-b').textContent = b.name + (me === 1 ? ' (you)' : '');
+    const fs = snap.fighters;
+    const head = $('stat-head');
+    head.textContent = '';
+    head.append(document.createElement('th'));
+    fs.forEach((f, i) => {
+      const th = document.createElement('th');
+      th.textContent = f.name + (i === me ? ' (you)' : '');
+      th.style.color = PALETTE[i].name;
+      head.append(th);
+    });
     const acc = (f) => (f.stats.thrown ? `${Math.round((f.stats.landed / f.stats.thrown) * 100)}%` : '–');
+    const row = (label, fn) => [label, ...fs.map(fn)];
     const rows = [
-      ['Rounds won', a.roundsWon, b.roundsWon],
-      ['Punches thrown', a.stats.thrown, b.stats.thrown],
-      ['Clean hits', a.stats.landed, b.stats.landed],
-      ['Accuracy', acc(a), acc(b)],
-      ['Blocked', a.stats.blocked, b.stats.blocked],
-      ['Damage dealt', a.stats.damage, b.stats.damage],
+      row('Rounds won', (f) => f.roundsWon),
+      row('Punches thrown', (f) => f.stats.thrown),
+      row('Clean hits', (f) => f.stats.landed),
+      row('Accuracy', acc),
+      row('Blocked', (f) => f.stats.blocked),
+      row('Damage dealt', (f) => f.stats.damage),
     ];
     const body = $('stat-body');
     body.textContent = '';
@@ -204,6 +281,11 @@
 
   function targetPos(i, height) {
     const f = snap.fighters[i];
+    if (mode === 'ring') {
+      const d = display ? display[i] : f;
+      const p = toScreen(d.x, d.y);
+      return { x: p.x, y: p.y - (height === 'body' ? 4 : 12) };
+    }
     const x = display ? display[i].x : f.x;
     return { x: x + f.facing * 6, y: FLOOR - (height === 'body' ? 150 : 222) };
   }
@@ -217,7 +299,8 @@
   }
 
   function floatText(x, y, text, color, size) {
-    texts.push({ x, y, text, color, size: size || 22, life: 50 });
+    const scale = mode === 'ring' ? 0.7 : 1;
+    texts.push({ x, y, text, color, size: Math.round((size || 22) * scale), life: 50 });
   }
 
   function onEvent(e) {
@@ -235,25 +318,36 @@
     }
     if (e.type === 'matchEnd') return;
 
+    if (e.type === 'left') return;
+    // The ring from above is smaller: labels float closer, and smaller.
+    const up = mode === 'ring' ? 0.6 : 1;
     const p = targetPos(e.target, e.height);
-    const attackerFacing = snap.fighters[1 - e.target].facing;
-    const hx = p.x - attackerFacing * 18;
+    const attacker = e.attacker !== undefined ? e.attacker : 1 - e.target;
+    let hx = p.x;
+    if (mode === 'ring') {
+      // Sparks on the side the blow came from.
+      const a = targetPos(attacker, e.height);
+      const d = Math.hypot(a.x - p.x, a.y - p.y) || 1;
+      hx = p.x + ((a.x - p.x) / d) * 10;
+    } else {
+      hx = p.x - snap.fighters[attacker].facing * 18;
+    }
     if (e.type === 'hit') {
       const heavy = e.move === 'kick';
       sparks(hx, p.y, e.counter ? '#f4c542' : '#ffffff', heavy ? 18 : 9, heavy ? 6 : 4);
       shake = Math.max(shake, (heavy ? 8 : 3) + (e.height === 'head' ? 2 : 0) + (e.counter ? 4 : 0));
-      floatText(p.x, p.y - 40, `-${e.damage}`, '#ffffff', heavy ? 28 : 20);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', heavy ? 28 : 20);
       const label = e.counter ? 'Counter!' : e.wrongGuard ? 'Wrong guard!' : e.height === 'head' ? 'Head!' : 'Tummy!';
-      floatText(p.x, p.y - 72, label, e.counter || e.wrongGuard ? '#f4c542' : '#ffffff', 22);
+      floatText(p.x, p.y - 72 * up, label, e.counter || e.wrongGuard ? '#f4c542' : '#ffffff', 22);
       sound.hit(heavy ? 1 : 0.55);
     } else if (e.type === 'block') {
       sparks(hx, p.y + 14, '#9cc4ff', 6, 3);
-      floatText(p.x, p.y - 40, 'Blocked', '#9cc4ff', 18);
+      floatText(p.x, p.y - 40 * up, 'Blocked', '#9cc4ff', 18);
       sound.block();
     } else if (e.type === 'guardbreak') {
       sparks(hx, p.y + 10, '#f4c542', 22, 7);
       shake = Math.max(shake, 9);
-      floatText(p.x, p.y - 60, 'Guard break!', '#f4c542', 28);
+      floatText(p.x, p.y - 60 * up, 'Guard break!', '#f4c542', 28);
       sound.hit(0.9);
     } else if (e.type === 'ko') {
       shake = 16;
@@ -323,8 +417,9 @@
 
   // ---- Input -----------------------------------------------------------------
 
-  const held = { left: false, right: false, block: false, aim: 'head' };
-  const KEY_HOLD = { ArrowLeft: 'left', ArrowRight: 'right', KeyC: 'block' };
+  const held = { left: false, right: false, up: false, down: false, block: false, aim: 'head' };
+  // Up and down only do anything in the ring, but are harmless one on one.
+  const KEY_HOLD = { ArrowLeft: 'left', ArrowRight: 'right', ArrowUp: 'up', ArrowDown: 'down', KeyC: 'block' };
   const KEY_ACT = { KeyA: 'punch', KeyB: 'kick' };
   // Aim sticks until changed, so D/E can be tapped before or held during a move.
   const KEY_AIM = { KeyD: 'head', KeyE: 'body' };
@@ -356,7 +451,7 @@
   window.addEventListener('keyup', (e) => {
     if (KEY_HOLD[e.code]) setHold(KEY_HOLD[e.code], false);
   });
-  window.addEventListener('blur', () => ['left', 'right', 'block'].forEach((k) => setHold(k, false)));
+  window.addEventListener('blur', () => ['left', 'right', 'up', 'down', 'block'].forEach((k) => setHold(k, false)));
 
   document.querySelectorAll('#touch button').forEach((btn) => {
     const hold = btn.dataset.hold;
@@ -421,6 +516,7 @@
 
   $('quick').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'quick' }); });
   $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create' }); });
+  $('start').addEventListener('click', () => { sound.unlock(); send({ t: 'start' }); });
   $('join-form').addEventListener('submit', (e) => {
     e.preventDefault();
     beforeMatchmaking();
@@ -443,7 +539,7 @@
   $('rematch').addEventListener('click', () => {
     send({ t: 'rematch' });
     $('rematch').disabled = true;
-    $('rematch-note').textContent = `Waiting for ${names[1 - me]}…`;
+    $('rematch-note').textContent = names.length > 2 ? 'Waiting for the others…' : `Waiting for ${names[1 - me]}…`;
   });
   const toLobby = () => {
     send({ t: 'leave' });
@@ -869,6 +965,356 @@
     });
   }
 
+  // ---- The ring seen from above (three or four fighters) ---------------------
+  //
+  // The simulation's square ring (RING_MIN..RING_MAX both ways) is drawn in
+  // the middle of the canvas, with a card for each fighter either side.
+
+  const VIEW = { cx: W / 2, cy: 300, size: 480, from: 30, to: 970 };
+  const VK = VIEW.size / (VIEW.to - VIEW.from);
+  // Fighters drawn a bit bigger than life, so they read at this size.
+  const FIGHTER_SCALE = 1.25;
+  function toScreen(x, y) {
+    return { x: VIEW.cx + (x - 500) * VK, y: VIEW.cy + (y - 500) * VK };
+  }
+
+  const ringCrowd = (() => {
+    let seed = 11;
+    const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const heads = [];
+    for (let i = 0; i < 260; i++) {
+      // Seats all round the ring, a few rows deep.
+      const side = Math.floor(rnd() * 4);
+      const along = rnd() * 640 - 320;
+      const out = 270 + rnd() * 50;
+      const pos = [[along, -out], [out, along], [along, out], [-out, along]][side];
+      heads.push({ x: VIEW.cx + pos[0], y: VIEW.cy + pos[1], r: 5 + rnd() * 2, shade: 26 + rnd() * 30, phase: rnd() * 6 });
+    }
+    return heads;
+  })();
+
+  function drawRingScene(clock) {
+    ctx.fillStyle = '#07090e';
+    ctx.fillRect(0, 0, W, H);
+    for (const h of ringCrowd) {
+      const bounce = Math.max(0, Math.sin(clock * 3 + h.phase)) * crowdHype * 2;
+      ctx.fillStyle = `rgb(${h.shade},${h.shade + 3},${h.shade + 10})`;
+      ctx.beginPath();
+      ctx.arc(h.x, h.y - bounce, h.r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Apron, then the mat inside the ropes.
+    const a = toScreen(VIEW.from, VIEW.from);
+    const b = toScreen(VIEW.to, VIEW.to);
+    ctx.fillStyle = '#0e1016';
+    ctx.fillRect(a.x - 8, a.y - 8, b.x - a.x + 16, b.y - a.y + 16);
+    const m0 = toScreen(60, 60);
+    const m1 = toScreen(940, 940);
+    const mat = ctx.createRadialGradient(VIEW.cx, VIEW.cy, 20, VIEW.cx, VIEW.cy, VIEW.size * 0.7);
+    mat.addColorStop(0, '#24658a');
+    mat.addColorStop(1, '#173f57');
+    ctx.fillStyle = mat;
+    ctx.fillRect(m0.x, m0.y, m1.x - m0.x, m1.y - m0.y);
+    ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(VIEW.cx, VIEW.cy, 90, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255,255,255,0.07)';
+    ctx.font = '40px Anton, Impact, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('THE BOXER', VIEW.cx, VIEW.cy + 14);
+    // Ropes: three, red, white and blue, from the outside in.
+    ['#2f6fd8', '#eeeeee', '#d93b40'].forEach((color, k) => {
+      const inset = 60 + k * 5;
+      const r0 = toScreen(inset, inset);
+      const r1 = toScreen(1000 - inset, 1000 - inset);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.strokeRect(r0.x, r0.y, r1.x - r0.x, r1.y - r0.y);
+    });
+    // Corner posts: red, blue and the two neutral corners.
+    [[60, 60, '#c9262c'], [940, 940, '#2463cc'], [940, 60, '#e8e8e8'], [60, 940, '#e8e8e8']].forEach(([x, y, c]) => {
+      const p = toScreen(x, y);
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    const sp = ctx.createRadialGradient(VIEW.cx, VIEW.cy, 60, VIEW.cx, VIEW.cy, 420);
+    sp.addColorStop(0, 'rgba(255,240,210,0.08)');
+    sp.addColorStop(1, 'rgba(0,0,0,0.35)');
+    ctx.fillStyle = sp;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  /**
+   * One fighter from above, facing +x before rotating: head and shoulders,
+   * two gloves, and a leg for kicks. Blocking puts both gloves up in front,
+   * with a guard arc: bright near the head for a high guard, lower and wider
+   * for the tummy.
+   */
+  function drawRingFighter(i, f, d, t, clock) {
+    const c = PALETTE[i];
+    const p = toScreen(d.x, d.y);
+    const hurt = f.state === 'hitstun' && t < 5;
+    const skin = hurt ? mix(c.skin, '#ffffff', 0.5) : c.skin;
+    const low = f.aim === 'body';
+
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    ctx.scale(FIGHTER_SCALE, FIGHTER_SCALE);
+
+    if (i === me) {
+      // Where you are, at a glance.
+      ctx.strokeStyle = c.glove;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([5, 5]);
+      ctx.lineDashOffset = -clock * 20;
+      ctx.beginPath();
+      ctx.arc(0, 0, 34, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    if (f.state === 'ko') {
+      // Flat out on the canvas, seeing stars.
+      const fall = easeOut(clamp01(t / 26));
+      ctx.rotate(d.angle + Math.PI);
+      ctx.globalAlpha = 0.95;
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(10 * fall, 3, 40, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = c.trunks;
+      ctx.fillRect(-4, -14, 22 * fall + 6, 28);
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(-8, 0, 14, 22, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = c.hair;
+      ctx.beginPath();
+      ctx.arc(-26 * fall - 4, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.rotate(-(d.angle + Math.PI));
+      for (let k = 0; k < 3; k++) {
+        const a = clock * 3 + (k * Math.PI * 2) / 3;
+        ctx.fillStyle = '#f4c542';
+        ctx.font = '12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText('★', Math.cos(a) * 16, -26 + Math.sin(a) * 6);
+      }
+      ctx.restore();
+      drawRingName(i, f, p);
+      return;
+    }
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.35)';
+    ctx.beginPath();
+    ctx.ellipse(3, 5, 26, 28, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    let wobble = 0;
+    if (f.state === 'guardbreak') wobble = Math.sin(t * 0.35) * 0.25;
+    let recoil = 0;
+    if (f.state === 'hitstun') recoil = -8 * (1 - clamp01(t / 16));
+    ctx.rotate(d.angle + wobble);
+    ctx.translate(recoil, 0);
+
+    // Gloves and the kicking leg, in this fighter's frame (+x forward).
+    const walk = f.state === 'walk' ? Math.sin(clock * 14) * 3 : 0;
+    let front = { x: 18, y: 12 + walk };
+    let back = { x: 16, y: -13 - walk };
+    let kick = null;
+    const guarding = f.state === 'block' || f.state === 'blockstun';
+    if (guarding) {
+      front = low ? { x: 12, y: 9 } : { x: 20, y: 7 };
+      back = low ? { x: 12, y: -9 } : { x: 20, y: -7 };
+    } else if (f.state === 'attack') {
+      const { phase, p: pr } = attackProgress(f, t);
+      const e = phase === 'startup' ? easeOut(pr) : pr;
+      if (f.move === 'punch') {
+        const reach = ((G.MOVES.punch.range - 40) * VK) / FIGHTER_SCALE;
+        front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
+      } else {
+        const reach = ((G.MOVES.kick.range - 40) * VK) / FIGHTER_SCALE;
+        kick = { x: lerp(6, reach, e), y: 6 };
+        front = { x: 14, y: 14 };
+        back = { x: 12, y: -14 };
+      }
+    } else if (f.state === 'guardbreak') {
+      front = { x: 8, y: 20 };
+      back = { x: 6, y: -20 };
+    }
+
+    // Guard arc: which height is covered (and that it only covers the front).
+    if (guarding) {
+      ctx.strokeStyle = low ? 'rgba(156,196,255,0.45)' : 'rgba(156,196,255,0.9)';
+      ctx.lineWidth = low ? 6 : 4;
+      ctx.beginPath();
+      ctx.arc(0, 0, low ? 34 : 30, -G.GUARD_ARC * 0.7, G.GUARD_ARC * 0.7);
+      ctx.stroke();
+    }
+
+    if (kick) {
+      ctx.strokeStyle = c.skinDark;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.moveTo(0, kick.y);
+      ctx.lineTo(kick.x, kick.y);
+      ctx.stroke();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.ellipse(kick.x + 4, kick.y, 9, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = low ? 'rgba(255,255,255,0.35)' : '#f2f2f2';
+      ctx.fillRect(kick.x - 2, kick.y - 6, 3, 12);
+    }
+
+    // Tummy-height gloves sit under the shoulders; head-height ones over them.
+    const glove = (g, color) => {
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(g.x, g.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.25)';
+      ctx.beginPath();
+      ctx.arc(g.x + 2, g.y - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    const arm = (g, color) => {
+      ctx.strokeStyle = color;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(2, Math.sign(g.y) * 16);
+      ctx.lineTo(g.x, g.y);
+      ctx.stroke();
+    };
+    const gloveLow = low && (guarding || f.state === 'attack');
+    if (gloveLow) {
+      arm(back, c.skinDark); glove(back, c.gloveDark);
+      arm(front, skin); glove(front, c.glove);
+    }
+
+    // Shoulders, trimmed in the fighter's colour, then the head.
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 13, 24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = c.glove;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.fillStyle = c.hair;
+    ctx.beginPath();
+    ctx.arc(-1, 0, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = skin;
+    ctx.beginPath();
+    ctx.arc(5, 0, 5, -Math.PI / 2, Math.PI / 2);
+    ctx.fill();
+
+    if (!gloveLow) {
+      arm(back, c.skinDark); glove(back, c.gloveDark);
+      arm(front, skin); glove(front, c.glove);
+    }
+    ctx.restore();
+    drawRingName(i, f, p);
+  }
+
+  function drawRingName(i, f, p) {
+    ctx.font = '600 12px Barlow, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+    const label = (i === me ? 'YOU' : f.name).toUpperCase();
+    ctx.strokeText(label, p.x, p.y + 50);
+    ctx.fillStyle = PALETTE[i].name;
+    ctx.fillText(label, p.x, p.y + 50);
+  }
+
+  /** A card per fighter: two down the left, two down the right. */
+  function drawRingHud(s) {
+    const cardW = 214;
+    const cardH = 118;
+    s.fighters.forEach((f, i) => {
+      const c = PALETTE[i];
+      const x0 = i % 2 === 0 ? 14 : W - 14 - cardW;
+      const y0 = 70 + Math.floor(i / 2) * (cardH + 28);
+      const out = f.left;
+      ctx.globalAlpha = out ? 0.45 : 1;
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(x0, y0, cardW, cardH);
+      ctx.fillStyle = c.glove;
+      ctx.fillRect(x0, y0, 5, cardH);
+      if (i === me) {
+        ctx.strokeStyle = c.glove;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x0 + 1, y0 + 1, cardW - 2, cardH - 2);
+      }
+      ctx.textAlign = 'left';
+      ctx.font = '20px Anton, Impact, sans-serif';
+      ctx.fillStyle = c.name;
+      const name = f.name.toUpperCase() + (i === me ? '  (YOU)' : '');
+      ctx.fillText(name.length > 18 ? name.slice(0, 17) + '…' : name, x0 + 14, y0 + 28);
+
+      // Health, with the trail of what was just lost.
+      const barX = x0 + 14;
+      const barW = cardW - 28;
+      const hpFrac = f.hp / G.MAX_HP;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(barX, y0 + 40, barW, 16);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(barX, y0 + 40, barW * (display[i].hpTrail / G.MAX_HP), 16);
+      ctx.fillStyle = hpFrac < 0.25 ? '#ff4a4f' : c.glove;
+      ctx.fillRect(barX, y0 + 40, barW * hpFrac, 16);
+      // Stamina
+      const stFrac = f.stamina / G.MAX_STAMINA;
+      ctx.fillStyle = 'rgba(255,255,255,0.1)';
+      ctx.fillRect(barX, y0 + 62, barW, 6);
+      ctx.fillStyle = stFrac < 0.25 && Math.floor(performance.now() / 150) % 2 ? '#ff9a3c' : '#f4c542';
+      ctx.fillRect(barX, y0 + 62, barW * stFrac, 6);
+
+      // Rounds won, and what's going on.
+      for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
+        ctx.beginPath();
+        ctx.arc(barX + 7 + r * 20, y0 + 88, 6, 0, Math.PI * 2);
+        ctx.fillStyle = r < f.roundsWon ? '#f4c542' : 'rgba(255,255,255,0.15)';
+        ctx.fill();
+      }
+      ctx.font = '700 13px Barlow, sans-serif';
+      ctx.textAlign = 'right';
+      let status = '';
+      if (out) status = 'LEFT';
+      else if (f.state === 'ko') status = 'DOWN';
+      else if (i === me) status = `Aiming: ${held.aim === 'body' ? 'tummy' : 'head'}`;
+      ctx.fillStyle = f.state === 'ko' && !out ? '#ff6f73' : i === me ? '#f4c542' : '#98a3b8';
+      ctx.fillText(status, x0 + cardW - 14, y0 + 93);
+      ctx.globalAlpha = 1;
+    });
+
+    // Timer, above the ring.
+    const secs = Math.ceil(s.timer / G.TICK_RATE);
+    ctx.fillStyle = 'rgba(0,0,0,0.7)';
+    ctx.fillRect(W / 2 - 80, 4, 160, 50);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = secs <= 10 && s.phase === 'fight' ? '#ff4a4f' : '#ffffff';
+    ctx.font = '32px Anton, Impact, sans-serif';
+    ctx.fillText(String(secs), W / 2, 36);
+    ctx.font = '600 11px Barlow, sans-serif';
+    ctx.fillStyle = '#98a3b8';
+    ctx.fillText(`ROUND ${s.round} OF ${G.MAX_ROUNDS}`, W / 2, 50);
+
+    if (rtt !== null) {
+      ctx.textAlign = 'right';
+      ctx.font = '600 12px Barlow, sans-serif';
+      ctx.fillStyle = rtt > 150 ? '#ff9a3c' : 'rgba(255,255,255,0.4)';
+      ctx.fillText(`${rtt} ms${sound.muted ? ' · muted' : ''}`, W - 12, H - 12);
+    }
+  }
+
   // ---- HUD -------------------------------------------------------------------
 
   function drawHud(s) {
@@ -991,6 +1437,8 @@
     return dpr;
   }
 
+  const rank = (f) => (f.state === 'ko' ? 0 : f.state === 'attack' ? 2 : 1);
+
   function frame(now) {
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
@@ -999,7 +1447,8 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     if (!snap || !display) {
-      drawScene(clock);
+      if (mode === 'ring') drawRingScene(clock);
+      else drawScene(clock);
       requestAnimationFrame(frame);
       return;
     }
@@ -1007,8 +1456,15 @@
     const ticksSince = Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
     snap.fighters.forEach((f, i) => {
       const d = display[i];
-      if (Math.abs(f.x - d.x) > 200) d.x = f.x;
-      d.x += (f.x - d.x) * Math.min(1, dt * 22);
+      const k = Math.min(1, dt * 22);
+      if (Math.abs(f.x - d.x) > 200 || Math.abs((f.y || 0) - d.y) > 200) { d.x = f.x; d.y = f.y || 0; }
+      d.x += (f.x - d.x) * k;
+      d.y += ((f.y || 0) - d.y) * k;
+      // Turn the short way round.
+      let turn = (f.angle || 0) - d.angle;
+      while (turn > Math.PI) turn -= Math.PI * 2;
+      while (turn < -Math.PI) turn += Math.PI * 2;
+      d.angle += turn * k;
       if (d.hpTrail > f.hp) d.hpTrail = Math.max(f.hp, d.hpTrail - dt * 30);
       else d.hpTrail = f.hp;
     });
@@ -1021,13 +1477,23 @@
       ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
       shake *= 0.86;
     }
-    drawScene(clock);
+    const ring = snap.mode === 'ring';
+    if (ring) {
+      drawRingScene(clock);
+      // Those down first, then attackers last so their gloves are on top.
+      const order = snap.fighters.map((f, i) => i)
+        .filter((i) => !snap.fighters[i].left)
+        .sort((a, b) => rank(snap.fighters[a]) - rank(snap.fighters[b]));
+      for (const i of order) drawRingFighter(i, snap.fighters[i], display[i], snap.fighters[i].t + ticksSince, clock);
+    } else {
+      drawScene(clock);
 
-    // Draw the fighter who is being hit first so the puncher's glove overlaps.
-    const order = snap.fighters[0].state === 'attack' ? [1, 0] : [0, 1];
-    for (const i of order) {
-      const f = snap.fighters[i];
-      drawFighter(i, f, display[i].x, f.t + ticksSince, clock, display[1 - i].x);
+      // Draw the fighter who is being hit first so the puncher's glove overlaps.
+      const order = snap.fighters[0].state === 'attack' ? [1, 0] : [0, 1];
+      for (const i of order) {
+        const f = snap.fighters[i];
+        drawFighter(i, f, display[i].x, f.t + ticksSince, clock, display[1 - i].x);
+      }
     }
 
     for (let i = effects.length - 1; i >= 0; i--) {
@@ -1039,7 +1505,7 @@
       if (p.life <= 0) effects.splice(i, 1);
     }
     ctx.globalAlpha = 1;
-    drawFrontRopes();
+    if (!ring) drawFrontRopes();
 
     for (let i = texts.length - 1; i >= 0; i--) {
       const tx = texts[i];
@@ -1057,7 +1523,8 @@
     ctx.globalAlpha = 1;
     ctx.restore();
 
-    drawHud(snap);
+    if (ring) drawRingHud(snap);
+    else drawHud(snap);
     drawBanner();
 
     if (flash > 0) {

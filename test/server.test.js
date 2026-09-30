@@ -72,10 +72,17 @@ test('two players meet in a private room and trade punches', async () => {
     a.send({ t: 'hello', name: 'Ali<script>' });
     b.send({ t: 'hello', name: 'Frazier' });
     a.send({ t: 'create' });
-    const waiting = await a.next((m) => m.t === 'waiting');
+    const waiting = await a.next((m) => m.t === 'room');
     assert.match(waiting.code, /^[A-Z0-9]{4}$/);
+    assert.strictEqual(waiting.host, true);
 
     b.send({ t: 'join', code: waiting.code.toLowerCase() });
+    const joined = await b.next((m) => m.t === 'room');
+    assert.deepStrictEqual(joined.players, ['Aliscript', 'Frazier']);
+    assert.strictEqual(joined.host, false);
+    b.send({ t: 'start' }); // only the host can start
+    await a.next((m) => m.t === 'room' && m.players.length === 2);
+    a.send({ t: 'start' });
     const [sa, sb] = await Promise.all([a.next((m) => m.t === 'start'), b.next((m) => m.t === 'start')]);
     assert.strictEqual(sa.you, 0);
     assert.strictEqual(sb.you, 1);
@@ -114,15 +121,22 @@ test('joining a missing room reports an error, full rooms are refused', async ()
     const err = await a.next((m) => m.t === 'error');
     assert.match(err.msg, /No room/);
 
-    const b = await connect();
-    const c = await connect();
+    const others = [await connect(), await connect(), await connect(), await connect()];
     a.send({ t: 'create' });
-    const { code } = await a.next((m) => m.t === 'waiting');
-    b.send({ t: 'join', code });
-    await b.next((m) => m.t === 'start');
-    c.send({ t: 'join', code });
-    const full = await c.next((m) => m.t === 'error');
+    const { code } = await a.next((m) => m.t === 'room');
+    for (const p of others.slice(0, 3)) {
+      p.send({ t: 'join', code });
+      await p.next((m) => m.t === 'room');
+    }
+    others[3].send({ t: 'join', code });
+    const full = await others[3].next((m) => m.t === 'error');
     assert.match(full.msg, /full/);
+
+    a.send({ t: 'start' });
+    await a.next((m) => m.t === 'start');
+    const late = await connect();
+    late.send({ t: 'join', code });
+    assert.match((await late.next((m) => m.t === 'error')).msg, /already started/);
   });
 });
 
@@ -131,8 +145,10 @@ test('the other fighter is told when their opponent leaves', async () => {
     const a = await connect();
     const b = await connect();
     a.send({ t: 'create' });
-    const { code } = await a.next((m) => m.t === 'waiting');
+    const { code } = await a.next((m) => m.t === 'room');
     b.send({ t: 'join', code });
+    await b.next((m) => m.t === 'room');
+    a.send({ t: 'start' });
     await a.next((m) => m.t === 'start');
     b.ws.close();
     await a.next((m) => m.t === 'opponentLeft');
@@ -159,8 +175,10 @@ test('signed-in players fight under their account name, guests under the one the
     kyle.send({ t: 'hello', name: 'Imposter' });
     guest.send({ t: 'hello', name: 'Guesty' });
     kyle.send({ t: 'create' });
-    const { code } = await kyle.next((m) => m.t === 'waiting');
+    const { code } = await kyle.next((m) => m.t === 'room');
     guest.send({ t: 'join', code });
+    await guest.next((m) => m.t === 'room');
+    kyle.send({ t: 'start' });
     const start = await kyle.next((m) => m.t === 'start');
     assert.deepStrictEqual(start.names, ['Kyle H', 'Guesty']);
   });
@@ -199,5 +217,72 @@ test('installable: icons, manifest and service worker are served and linked', as
     assert.match(sw.headers.get('content-type'), /javascript/);
     assert.match(await sw.text(), /mode !== 'navigate'/);
     assert.strictEqual((await fetch(`${base}/offline.html`)).status, 200);
+  });
+});
+
+// --- Three and four players ---------------------------------------------------
+
+async function room(connect, count) {
+  const players = [];
+  for (let i = 0; i < count; i++) {
+    const p = await connect();
+    p.send({ t: 'hello', name: `P${i}` });
+    players.push(p);
+  }
+  players[0].send({ t: 'create' });
+  const { code } = await players[0].next((m) => m.t === 'room');
+  for (const p of players.slice(1)) {
+    p.send({ t: 'join', code });
+    await p.next((m) => m.t === 'room');
+  }
+  await players[0].next((m) => m.t === 'room' && m.players.length === count);
+  return { players, code };
+}
+
+test('three or four friends fight in the ring', async () => {
+  await withServer(async (port, connect) => {
+    const { players } = await room(connect, 4);
+    players[0].send({ t: 'start' });
+    const starts = await Promise.all(players.map((p) => p.next((m) => m.t === 'start')));
+    assert.deepStrictEqual(starts.map((s) => s.you), [0, 1, 2, 3]);
+    assert.ok(starts.every((s) => s.mode === 'ring'));
+    assert.deepStrictEqual(starts[0].names, ['P0', 'P1', 'P2', 'P3']);
+    const st = await players[2].next((m) => m.t === 'state' && m.s.phase === 'fight');
+    assert.strictEqual(st.s.mode, 'ring');
+    assert.strictEqual(st.s.fighters.length, 4);
+    // Up and down move you in the ring.
+    const y0 = st.s.fighters[2].y;
+    players[2].send({ t: 'input', up: true });
+    const moved = await players[2].next((m) => m.t === 'state' && m.s.fighters[2].y < y0 - 20);
+    assert.ok(moved);
+  });
+});
+
+test('in the ring, someone leaving mid-fight is out, and the rest fight on', async () => {
+  await withServer(async (port, connect) => {
+    const { players } = await room(connect, 3);
+    players[0].send({ t: 'start' });
+    await Promise.all(players.map((p) => p.next((m) => m.t === 'start')));
+    players[1].ws.close();
+    const told = await players[0].next((m) => m.t === 'playerLeft');
+    assert.strictEqual(told.name, 'P1');
+    const st = await players[2].next((m) => m.t === 'state' && m.s.fighters[1].left);
+    assert.strictEqual(st.s.phase === 'matchEnd', false, 'the fight goes on');
+    // When the next one goes, the last one's told.
+    players[2].ws.close();
+    await players[0].next((m) => m.t === 'opponentLeft');
+  });
+});
+
+test('before the fight, the next player becomes host if the host leaves', async () => {
+  await withServer(async (port, connect) => {
+    const { players } = await room(connect, 3);
+    players[0].send({ t: 'leave' });
+    const update = await players[1].next((m) => m.t === 'room' && m.players.length === 2);
+    assert.strictEqual(update.host, true);
+    players[1].send({ t: 'start' });
+    const [s1, s2] = await Promise.all([players[1].next((m) => m.t === 'start'), players[2].next((m) => m.t === 'start')]);
+    assert.strictEqual(s1.mode, 'side', 'two left: the side view');
+    assert.deepStrictEqual([s1.you, s2.you], [0, 1]);
   });
 });

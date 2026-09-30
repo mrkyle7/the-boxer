@@ -1,5 +1,11 @@
 // Shared boxing simulation. Runs authoritatively on the server; the client
 // loads it too so it can read the move table when animating poses.
+//
+// Two fighters box side on, moving left and right ('side' mode). Three or
+// four fight free-for-all in a square ring seen from above ('ring' mode):
+// they move in two dimensions, each faces the nearest opponent, and an attack
+// lands on whoever is in front of it and in range. The moves, frame data,
+// aiming and blocking are the same in both.
 (function (root) {
   'use strict';
 
@@ -22,6 +28,23 @@
   const COUNTER_MULTIPLIER = 1.4;
   const GUARD_BREAK_TICKS = 45;
   const KNOCKBACK_FRICTION = 0.82;
+  const MAX_FIGHTERS = 4;
+
+  // The ring seen from above: a square, in the same units as the side view.
+  const RING_MIN = 90;
+  const RING_MAX = 910;
+  const RING_CENTRE = (RING_MIN + RING_MAX) / 2;
+  // An attack lands on someone within this angle of where the attacker faces.
+  const HIT_ARC = 0.8;
+  // A guard covers attacks from within this angle of where the defender faces.
+  const GUARD_ARC = Math.PI / 2;
+  // A fighter only turns to a new nearest opponent once they're this much nearer.
+  const RETARGET_MARGIN = 40;
+  // Corners to start from, facing the middle.
+  const RING_STARTS = {
+    3: [[500, 230], [265, 720], [735, 720]],
+    4: [[250, 250], [750, 750], [750, 250], [250, 750]],
+  };
 
   // Frame data. Range is measured centre-to-centre between fighters.
   // Every attack goes to the head or the tummy, whichever the attacker is
@@ -45,12 +68,22 @@
   const AIMS = ['head', 'body'];
   const ACTIONS = ['punch', 'kick'];
 
-  function createFighter(index, name) {
+  const DEFAULT_NAMES = ['Red', 'Blue', 'Green', 'Gold'];
+
+  function createFighter(index, name, count) {
+    const ring = count > 2;
+    const start = ring ? RING_STARTS[count][index] : null;
     return {
-      name: name || (index === 0 ? 'Red' : 'Blue'),
-      x: index === 0 ? 350 : 650,
+      name: name || DEFAULT_NAMES[index],
+      x: ring ? start[0] : index === 0 ? 350 : 650,
+      y: ring ? start[1] : 0,
       vx: 0,
+      vy: 0,
       facing: index === 0 ? 1 : -1,
+      // Ring mode: the direction faced, in radians, and who at.
+      angle: ring ? Math.atan2(RING_CENTRE - start[1], RING_CENTRE - start[0]) : 0,
+      target: null,
+      left: false,
       hp: MAX_HP,
       stamina: MAX_STAMINA,
       state: 'idle',
@@ -65,17 +98,20 @@
   }
 
   function createInput() {
-    return { left: false, right: false, block: false, aim: 'head', buffered: null, bufferAge: 0 };
+    return { left: false, right: false, up: false, down: false, block: false, aim: 'head', buffered: null, bufferAge: 0 };
   }
 
+  /** A match between two to four fighters, named in order. */
   function createGame(names) {
+    const count = Math.max(2, Math.min(MAX_FIGHTERS, (names && names.length) || 2));
     const game = {
+      mode: count > 2 ? 'ring' : 'side',
       phase: 'countdown',
       phaseT: 0,
       round: 1,
       timer: ROUND_TICKS,
-      fighters: [createFighter(0, names && names[0]), createFighter(1, names && names[1])],
-      inputs: [createInput(), createInput()],
+      fighters: Array.from({ length: count }, (_, i) => createFighter(i, names && names[i], count)),
+      inputs: Array.from({ length: count }, createInput),
       events: [],
       roundWinner: null,
       winner: null,
@@ -85,19 +121,28 @@
   }
 
   function resetFightersForRound(game) {
+    const count = game.fighters.length;
     game.fighters.forEach((f, i) => {
-      const fresh = createFighter(i, f.name);
+      const fresh = createFighter(i, f.name, count);
       fresh.roundsWon = f.roundsWon;
       fresh.stats = f.stats;
+      // Someone who left the ring stays out for the rest of the match.
+      if (f.left) {
+        fresh.left = true;
+        fresh.hp = 0;
+        fresh.state = 'ko';
+      }
       game.fighters[i] = fresh;
     });
-    game.inputs = [createInput(), createInput()];
+    game.inputs = game.fighters.map(createInput);
   }
 
   function setHeld(game, index, held) {
     const input = game.inputs[index];
     input.left = !!held.left;
     input.right = !!held.right;
+    input.up = !!held.up;
+    input.down = !!held.down;
     input.block = !!held.block;
     if (AIMS.includes(held.aim)) input.aim = held.aim;
   }
@@ -173,19 +218,126 @@
 
     if (isActionable(f)) {
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+      // Up and down only mean anything in the ring.
+      const dirY = game.mode === 'ring' ? (input.down ? 1 : 0) - (input.up ? 1 : 0) : 0;
       const wantBlock = input.block;
-      const next = wantBlock ? 'block' : dir !== 0 ? 'walk' : 'idle';
+      const next = wantBlock ? 'block' : dir !== 0 || dirY !== 0 ? 'walk' : 'idle';
       if (next !== f.state) {
         f.state = next;
         f.t = 0;
       }
       const speed = wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED;
-      f.x += dir * speed;
+      // Diagonals are no faster than straight lines.
+      const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
+      f.x += dir * speed * norm;
+      f.y += dirY * speed * norm;
     }
 
     const regen = f.state === 'block' ? STAMINA_REGEN_BLOCKING
       : f.state === 'attack' ? 0 : STAMINA_REGEN;
     f.stamina = Math.min(MAX_STAMINA, f.stamina + regen);
+  }
+
+  // ---- Ring mode: facing, pushing apart, hits ---------------------------------
+
+  const distance = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  const angleTo = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
+  function angleDiff(a, b) {
+    let d = (b - a) % (Math.PI * 2);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return Math.abs(d);
+  }
+  const standing = (f) => f.hp > 0 && !f.left && f.state !== 'ko';
+
+  /** Everyone faces their nearest opponent, turning to a new one only once they're clearly nearer. */
+  function faceTargets(game) {
+    game.fighters.forEach((f, i) => {
+      if (!standing(f)) return;
+      let best = null;
+      let bestD = Infinity;
+      game.fighters.forEach((o, j) => {
+        if (j === i || !standing(o)) return;
+        const d = distance(f, o);
+        if (d < bestD) { best = j; bestD = d; }
+      });
+      if (best === null) { f.target = null; return; }
+      const current = f.target !== null && game.fighters[f.target] && standing(game.fighters[f.target])
+        ? f.target : null;
+      if (current === null || distance(f, game.fighters[current]) - bestD > RETARGET_MARGIN) f.target = best;
+      // An attack goes where it was aimed when it started.
+      if (f.state !== 'attack') f.angle = angleTo(f, game.fighters[f.target]);
+    });
+  }
+
+  function applyRingPhysics(game) {
+    for (const f of game.fighters) {
+      f.x += f.vx;
+      f.y += f.vy;
+      f.vx *= KNOCKBACK_FRICTION;
+      f.vy *= KNOCKBACK_FRICTION;
+      if (Math.abs(f.vx) < 0.05) f.vx = 0;
+      if (Math.abs(f.vy) < 0.05) f.vy = 0;
+    }
+    // Push overlapping fighters apart (a couple of passes settles a crowd),
+    // keeping everyone inside the ropes. Fighters who are down or have left
+    // don't get in the way.
+    const inRing = game.fighters.filter((f) => !f.left);
+    for (let pass = 0; pass < 3; pass++) {
+      for (let i = 0; i < inRing.length; i++) {
+        for (let j = i + 1; j < inRing.length; j++) {
+          const a = inRing[i];
+          const b = inRing[j];
+          if (!standing(a) || !standing(b)) continue;
+          let dx = b.x - a.x;
+          let dy = b.y - a.y;
+          let d = Math.hypot(dx, dy);
+          if (d >= MIN_SEPARATION) continue;
+          if (d < 0.01) { dx = 1; dy = 0; d = 1; }
+          const push = (MIN_SEPARATION - d) / 2;
+          a.x -= (dx / d) * push;
+          a.y -= (dy / d) * push;
+          b.x += (dx / d) * push;
+          b.y += (dy / d) * push;
+        }
+      }
+      for (const f of inRing) {
+        f.x = Math.max(RING_MIN, Math.min(RING_MAX, f.x));
+        f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y));
+      }
+    }
+  }
+
+  function resolveRingHits(game) {
+    const pending = [];
+    game.fighters.forEach((att, i) => {
+      if (movePhase(att) !== 'active' || att.hitLanded) return;
+      const m = MOVES[att.move];
+      // Whoever is nearest in front of the attacker, within reach.
+      let def = null;
+      let bestD = Infinity;
+      game.fighters.forEach((o, j) => {
+        if (j === i || !standing(o)) return;
+        const d = distance(att, o);
+        if (d > m.range || d >= bestD) return;
+        if (angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
+        def = j;
+        bestD = d;
+      });
+      if (def === null) return;
+      const d = game.fighters[def];
+      att.hitLanded = true;
+      pending.push({
+        attacker: i, defender: def, move: att.move, height: att.aim,
+        defPhase: movePhase(d), defState: d.state, defAim: d.aim,
+        // A guard only covers what's in front of it.
+        faced: angleDiff(d.angle, angleTo(d, att)) <= GUARD_ARC,
+      });
+    });
+    applyHits(game, pending, (att, def) => {
+      const d = distance(att, def) || 1;
+      return { x: (def.x - att.x) / d, y: (def.y - att.y) / d };
+    });
   }
 
   function applyPhysics(game) {
@@ -225,26 +377,33 @@
       att.hitLanded = true;
       pending.push({
         attacker: i, defender: 1 - i, move: att.move, height: att.aim,
-        defPhase: movePhase(def), defState: def.state, defAim: def.aim,
+        defPhase: movePhase(def), defState: def.state, defAim: def.aim, faced: true,
       });
     });
+    applyHits(game, pending, (att, def) => ({ x: def.x >= att.x ? 1 : -1, y: 0 }));
+  }
 
-    // Resolve simultaneously so trades are symmetric.
+  /**
+   * Resolves hits simultaneously so trades are symmetric. `direction` gives
+   * the unit vector the defender is knocked along.
+   */
+  function applyHits(game, pending, direction) {
     for (const hit of pending) {
       const att = game.fighters[hit.attacker];
       const def = game.fighters[hit.defender];
       const m = MOVES[hit.move];
-      const pushDir = def.x >= att.x ? 1 : -1;
+      const push = direction(att, def);
       const guarding = hit.defState === 'block' || hit.defState === 'blockstun';
-      const blocking = guarding && hit.defAim === hit.height;
-      const ev = { target: hit.defender, move: hit.move, height: hit.height };
+      const blocking = guarding && hit.defAim === hit.height && hit.faced;
+      const ev = { target: hit.defender, attacker: hit.attacker, move: hit.move, height: hit.height };
 
       if (blocking) {
         def.hp = Math.max(0, def.hp - m.blockDamage);
         def.stamina -= m.blockStamina;
         att.stats.blocked++;
         att.stats.damage += m.blockDamage;
-        def.vx += pushDir * m.blockKnockback;
+        def.vx += push.x * m.blockKnockback;
+        def.vy += push.y * m.blockKnockback;
         if (def.stamina <= 0) {
           def.stamina = 0;
           setState(def, 'guardbreak');
@@ -263,11 +422,12 @@
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
         att.stats.damage += damage;
-        def.vx += pushDir * h.knockback;
+        def.vx += push.x * h.knockback;
+        def.vy += push.y * h.knockback;
         setState(def, 'hitstun');
         def.stun = h.hitstun;
         def.hitHeight = hit.height;
-        // Guarding the wrong height is worth telling the defender about.
+        // Guarding the wrong height (or the wrong way) is worth telling the defender about.
         game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding });
       }
       if (def.hp <= 0) {
@@ -285,7 +445,31 @@
     game.events.push({ type: 'roundEnd', winner, round: game.round });
   }
 
+  /** Who's ahead: the one index with the most of `score`, or null if it's shared. */
+  function leader(fighters, score, among) {
+    let best = null;
+    let bestScore = -Infinity;
+    let shared = false;
+    fighters.forEach((f, i) => {
+      if (among && !among(f)) return;
+      const v = score(f);
+      if (v > bestScore) { best = i; bestScore = v; shared = false; } else if (v === bestScore) shared = true;
+    });
+    return shared ? null : best;
+  }
+
+  function checkRingRoundOver(game) {
+    const up = game.fighters.filter(standing);
+    // The last one standing takes the round (nobody, if the last ones went down together).
+    if (up.length <= 1) {
+      endRound(game, up.length ? game.fighters.indexOf(up[0]) : null);
+      return;
+    }
+    if (game.timer <= 0) endRound(game, leader(game.fighters, (f) => f.hp, standing));
+  }
+
   function checkRoundOver(game) {
+    if (game.mode === 'ring') return checkRingRoundOver(game);
     const [a, b] = game.fighters;
     const aDown = a.hp <= 0;
     const bDown = b.hp <= 0;
@@ -311,11 +495,11 @@
     }
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
-      const [a, b] = game.fighters;
-      if (a.roundsWon >= ROUNDS_TO_WIN || b.roundsWon >= ROUNDS_TO_WIN || game.round >= MAX_ROUNDS) {
+      const stillIn = game.fighters.filter((f) => !f.left).length;
+      if (game.fighters.some((f) => f.roundsWon >= ROUNDS_TO_WIN) || game.round >= MAX_ROUNDS || stillIn < 2) {
         game.phase = 'matchEnd';
         game.phaseT = 0;
-        game.winner = a.roundsWon === b.roundsWon ? null : a.roundsWon > b.roundsWon ? 0 : 1;
+        game.winner = leader(game.fighters, (f) => f.roundsWon);
         game.events.push({ type: 'matchEnd', winner: game.winner });
         return game;
       }
@@ -328,21 +512,41 @@
       return game;
     }
 
-    updateFighterState(game, 0);
-    updateFighterState(game, 1);
-    applyPhysics(game);
+    game.fighters.forEach((_, i) => updateFighterState(game, i));
+    if (game.mode === 'ring') {
+      faceTargets(game);
+      applyRingPhysics(game);
+    } else {
+      applyPhysics(game);
+    }
 
     if (game.phase === 'fight') {
-      resolveHits(game);
+      if (game.mode === 'ring') resolveRingHits(game);
+      else resolveHits(game);
       game.timer--;
       checkRoundOver(game);
     }
     return game;
   }
 
+  /**
+   * A fighter whose player left: down for the rest of the match. In the ring
+   * the others fight on; one on one, the match is over.
+   */
+  function removeFighter(game, index) {
+    const f = game.fighters[index];
+    if (!f || f.left) return;
+    f.left = true;
+    f.hp = 0;
+    setState(f, 'ko');
+    game.events.push({ type: 'left', target: index });
+  }
+
   // Compact view sent over the wire each broadcast.
   function snapshot(game) {
+    const ring = game.mode === 'ring';
     return {
+      mode: game.mode,
       phase: game.phase,
       phaseT: game.phaseT,
       round: game.round,
@@ -353,6 +557,7 @@
       fighters: game.fighters.map((f) => ({
         name: f.name,
         x: Math.round(f.x * 10) / 10,
+        ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
         hp: f.hp,
         stamina: Math.round(f.stamina),
@@ -371,7 +576,8 @@
     TICK_RATE, RING_LEFT, RING_RIGHT, MIN_SEPARATION, MAX_HP, MAX_STAMINA,
     ROUND_TICKS, COUNTDOWN_TICKS, ROUND_END_TICKS, ROUNDS_TO_WIN, MAX_ROUNDS,
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
-    createGame, step, setHeld, pressAction, snapshot, movePhase,
+    MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC,
+    createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
