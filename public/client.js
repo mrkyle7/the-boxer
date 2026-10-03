@@ -2,8 +2,12 @@
   'use strict';
 
   const G = window.BoxerGame;
-  const W = 1000;
-  const H = 560;
+  // The canvas is 1000 x 560, except for the ring on a portrait screen, which
+  // gets a tall layout (see ringLayout) so the ring can fill the width.
+  const WIDE = { w: 1000, h: 560 };
+  const TALL = { w: 600, h: 800 };
+  let W = WIDE.w;
+  let H = WIDE.h;
   const FLOOR = 486;
 
   const $ = (id) => document.getElementById(id);
@@ -970,15 +974,38 @@
   // The simulation's square ring (RING_MIN..RING_MAX both ways) is drawn in
   // the middle of the canvas, with a card for each fighter either side.
 
-  const VIEW = { cx: W / 2, cy: 300, size: 480, from: 30, to: 970 };
-  const VK = VIEW.size / (VIEW.to - VIEW.from);
-  // Fighters drawn a bit bigger than life, so they read at this size.
-  const FIGHTER_SCALE = 1.25;
+  // Where the ring goes on the canvas. Wide: in the middle, with two fighter
+  // cards either side. Tall (a phone held upright): the cards in a 2 x 2 block
+  // on top, and the ring as wide as the screen below.
+  const VIEWS = {
+    wide: { cx: 500, cy: 300, size: 480, from: 30, to: 970 },
+    tall: { cx: 300, cy: 500, size: 592, from: 30, to: 970 },
+  };
+  let VIEW = VIEWS.wide;
+  let VK = VIEW.size / (VIEW.to - VIEW.from);
+  // Fighters drawn a bit bigger than life, so they read at this size, and
+  // bigger still when the ring is.
+  const fighterScale = () => 1.25 * (VK / (VIEWS.wide.size / (VIEWS.wide.to - VIEWS.wide.from)));
   function toScreen(x, y) {
     return { x: VIEW.cx + (x - 500) * VK, y: VIEW.cy + (y - 500) * VK };
   }
 
-  const ringCrowd = (() => {
+  let layout = 'wide';
+  /** Picks the canvas layout for what's being shown and the screen's shape. */
+  function chooseLayout() {
+    const portrait = window.innerHeight > window.innerWidth * 1.1;
+    const next = mode === 'ring' && portrait ? 'tall' : 'wide';
+    if (next === layout) return;
+    layout = next;
+    const size = next === 'tall' ? TALL : WIDE;
+    W = size.w;
+    H = size.h;
+    VIEW = VIEWS[next];
+    VK = VIEW.size / (VIEW.to - VIEW.from);
+    ringCrowd = makeRingCrowd();
+  }
+
+  function makeRingCrowd() {
     let seed = 11;
     const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
     const heads = [];
@@ -988,10 +1015,11 @@
       const along = rnd() * 640 - 320;
       const out = 270 + rnd() * 50;
       const pos = [[along, -out], [out, along], [along, out], [-out, along]][side];
-      heads.push({ x: VIEW.cx + pos[0], y: VIEW.cy + pos[1], r: 5 + rnd() * 2, shade: 26 + rnd() * 30, phase: rnd() * 6 });
+      heads.push({ x: VIEW.cx + pos[0] * (VIEW.size / 480), y: VIEW.cy + pos[1] * (VIEW.size / 480), r: 5 + rnd() * 2, shade: 26 + rnd() * 30, phase: rnd() * 6 });
     }
     return heads;
-  })();
+  }
+  let ringCrowd = makeRingCrowd();
 
   function drawRingScene(clock) {
     ctx.fillStyle = '#07090e';
@@ -1063,7 +1091,7 @@
 
     ctx.save();
     ctx.translate(p.x, p.y);
-    ctx.scale(FIGHTER_SCALE, FIGHTER_SCALE);
+    ctx.scale(fighterScale(), fighterScale());
 
     if (i === me) {
       // Where you are, at a glance.
@@ -1135,10 +1163,10 @@
       const { phase, p: pr } = attackProgress(f, t);
       const e = phase === 'startup' ? easeOut(pr) : pr;
       if (f.move === 'punch') {
-        const reach = ((G.MOVES.punch.range - 40) * VK) / FIGHTER_SCALE;
+        const reach = ((G.MOVES.punch.range - 40) * VK) / fighterScale();
         front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
       } else {
-        const reach = ((G.MOVES.kick.range - 40) * VK) / FIGHTER_SCALE;
+        const reach = ((G.MOVES.kick.range - 40) * VK) / fighterScale();
         kick = { x: lerp(6, reach, e), y: 6 };
         front = { x: 14, y: 14 };
         back = { x: 12, y: -14 };
@@ -1230,19 +1258,22 @@
     ctx.lineWidth = 3;
     ctx.strokeStyle = 'rgba(0,0,0,0.75)';
     const label = (i === me ? 'YOU' : f.name).toUpperCase();
-    ctx.strokeText(label, p.x, p.y + 50);
+    const below = 40 * fighterScale();
+    ctx.strokeText(label, p.x, p.y + below);
     ctx.fillStyle = PALETTE[i].name;
-    ctx.fillText(label, p.x, p.y + 50);
+    ctx.fillText(label, p.x, p.y + below);
   }
 
   /** A card per fighter: two down the left, two down the right. */
   function drawRingHud(s) {
-    const cardW = 214;
-    const cardH = 118;
+    const tall = layout === 'tall';
+    // Tall: a compact 2 x 2 block across the top, with the timer between.
+    const cardW = tall ? 222 : 214;
+    const cardH = tall ? 92 : 118;
     s.fighters.forEach((f, i) => {
       const c = PALETTE[i];
-      const x0 = i % 2 === 0 ? 14 : W - 14 - cardW;
-      const y0 = 70 + Math.floor(i / 2) * (cardH + 28);
+      const x0 = i % 2 === 0 ? (tall ? 4 : 14) : W - (tall ? 4 : 14) - cardW;
+      const y0 = tall ? 4 + Math.floor(i / 2) * (cardH + 6) : 70 + Math.floor(i / 2) * (cardH + 28);
       const out = f.left;
       ctx.globalAlpha = out ? 0.45 : 1;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1258,29 +1289,31 @@
       ctx.font = '20px Anton, Impact, sans-serif';
       ctx.fillStyle = c.name;
       const name = f.name.toUpperCase() + (i === me ? '  (YOU)' : '');
-      ctx.fillText(name.length > 18 ? name.slice(0, 17) + '…' : name, x0 + 14, y0 + 28);
+      const ny = tall ? 24 : 28;
+      ctx.fillText(name.length > 18 ? name.slice(0, 17) + '…' : name, x0 + 14, y0 + ny);
+      const dy = tall ? -8 : 0; // everything below the name moves up a little
 
       // Health, with the trail of what was just lost.
       const barX = x0 + 14;
       const barW = cardW - 28;
       const hpFrac = f.hp / G.MAX_HP;
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fillRect(barX, y0 + 40, barW, 16);
+      ctx.fillRect(barX, y0 + 40 + dy, barW, 16);
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(barX, y0 + 40, barW * (display[i].hpTrail / G.MAX_HP), 16);
+      ctx.fillRect(barX, y0 + 40 + dy, barW * (display[i].hpTrail / G.MAX_HP), 16);
       ctx.fillStyle = hpFrac < 0.25 ? '#ff4a4f' : c.glove;
-      ctx.fillRect(barX, y0 + 40, barW * hpFrac, 16);
+      ctx.fillRect(barX, y0 + 40 + dy, barW * hpFrac, 16);
       // Stamina
       const stFrac = f.stamina / G.MAX_STAMINA;
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
-      ctx.fillRect(barX, y0 + 62, barW, 6);
+      ctx.fillRect(barX, y0 + 62 + dy, barW, 6);
       ctx.fillStyle = stFrac < 0.25 && Math.floor(performance.now() / 150) % 2 ? '#ff9a3c' : '#f4c542';
-      ctx.fillRect(barX, y0 + 62, barW * stFrac, 6);
+      ctx.fillRect(barX, y0 + 62 + dy, barW * stFrac, 6);
 
       // Rounds won, and what's going on.
       for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
         ctx.beginPath();
-        ctx.arc(barX + 7 + r * 20, y0 + 88, 6, 0, Math.PI * 2);
+        ctx.arc(barX + 7 + r * 20, y0 + (tall ? 74 : 88), 6, 0, Math.PI * 2);
         ctx.fillStyle = r < f.roundsWon ? '#f4c542' : 'rgba(255,255,255,0.15)';
         ctx.fill();
       }
@@ -1291,21 +1324,23 @@
       else if (f.state === 'ko') status = 'DOWN';
       else if (i === me) status = `Aiming: ${held.aim === 'body' ? 'tummy' : 'head'}`;
       ctx.fillStyle = f.state === 'ko' && !out ? '#ff6f73' : i === me ? '#f4c542' : '#98a3b8';
-      ctx.fillText(status, x0 + cardW - 14, y0 + 93);
+      ctx.fillText(status, x0 + cardW - 14, y0 + (tall ? 79 : 93));
       ctx.globalAlpha = 1;
     });
 
-    // Timer, above the ring.
+    // Timer: above the ring, or in the middle of the cards when tall.
     const secs = Math.ceil(s.timer / G.TICK_RATE);
+    const ty = tall ? cardH - 21 : 4;
+    const tw = tall ? 136 : 160;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(W / 2 - 80, 4, 160, 50);
+    ctx.fillRect(W / 2 - tw / 2, ty, tw, 50);
     ctx.textAlign = 'center';
     ctx.fillStyle = secs <= 10 && s.phase === 'fight' ? '#ff4a4f' : '#ffffff';
     ctx.font = '32px Anton, Impact, sans-serif';
-    ctx.fillText(String(secs), W / 2, 36);
+    ctx.fillText(String(secs), W / 2, ty + 32);
     ctx.font = '600 11px Barlow, sans-serif';
     ctx.fillStyle = '#98a3b8';
-    ctx.fillText(`ROUND ${s.round} OF ${G.MAX_ROUNDS}`, W / 2, 50);
+    ctx.fillText(`ROUND ${s.round} OF ${G.MAX_ROUNDS}`, W / 2, ty + 46);
 
     if (rtt !== null) {
       ctx.textAlign = 'right';
@@ -1403,7 +1438,8 @@
     const alpha = Math.min(1, banner.life / 12);
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(W / 2, 250);
+    ctx.translate(W / 2, layout === 'tall' ? VIEW.cy - 40 : 250);
+    if (layout === 'tall') ctx.scale(0.75, 0.75);
     ctx.scale(scale, scale);
     ctx.textAlign = 'center';
     ctx.font = '96px Anton, Impact, sans-serif';
@@ -1430,7 +1466,7 @@
 
   function resize() {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (canvas.width !== W * dpr) {
+    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
       canvas.width = W * dpr;
       canvas.height = H * dpr;
     }
@@ -1443,6 +1479,7 @@
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     const clock = now / 1000;
+    chooseLayout();
     const dpr = resize();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
