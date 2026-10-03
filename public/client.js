@@ -1171,10 +1171,10 @@
       const { phase, p: pr } = attackProgress(f, t);
       const e = phase === 'startup' ? easeOut(pr) : pr;
       if (f.move === 'punch') {
-        const reach = ((G.MOVES.punch.range - 40) * VK) / fighterScale();
+        const reach = ((G.MOVES.punch.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale();
         front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
       } else {
-        const reach = ((G.MOVES.kick.range - 40) * VK) / fighterScale();
+        const reach = ((G.MOVES.kick.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale();
         kick = { x: lerp(6, reach, e), y: 6 };
         front = { x: 14, y: 14 };
         back = { x: 12, y: -14 };

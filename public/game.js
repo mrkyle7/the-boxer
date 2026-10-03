@@ -6,6 +6,11 @@
 // they move in two dimensions, each faces the nearest opponent, and an attack
 // lands on whoever is in front of it and in range. The moves, frame data,
 // aiming and blocking are the same in both.
+//
+// A fighter called Luna (any capitals) gets a helping hand: she walks a bit
+// faster, her punches and kicks reach further, she steps in when an attack
+// is just out of reach, and in the ring her walking bends towards the
+// opponent she's heading for (aim assist).
 (function (root) {
   'use strict';
 
@@ -29,6 +34,12 @@
   const GUARD_BREAK_TICKS = 45;
   const KNOCKBACK_FRICTION = 0.82;
   const MAX_FIGHTERS = 4;
+  // Luna's helping hand.
+  const LUNA_SPEED = 1.2; // walks 20% faster
+  const LUNA_REACH = 1.2; // punches and kicks reach 20% further
+  const LUNA_LUNGE = 70; // steps in to land an attack up to this far out of reach
+  const ASSIST_CONE = 0.5; // cos 60°: ring walking bends towards an opponent roughly ahead
+  const ASSIST_PULL = 0.45; // ...by this much
 
   // The ring seen from above: a square, in the same units as the side view.
   const RING_MIN = 90;
@@ -75,6 +86,7 @@
     const start = ring ? RING_STARTS[count][index] : null;
     return {
       name: name || DEFAULT_NAMES[index],
+      luna: isLuna(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
       vx: 0,
@@ -184,7 +196,37 @@
     // The attack's height is locked in when it starts.
     f.aim = input.aim;
     input.buffered = null;
+    if (f.luna) lunge(game, f, m);
   }
+
+  /** How far this fighter's attack reaches. */
+  function reach(f, m) {
+    return f.luna ? m.range * LUNA_REACH : m.range;
+  }
+
+  /** The opponent this fighter is fighting: the other one, or their target in the ring. */
+  function opponentOf(game, f) {
+    if (game.mode === 'ring') return f.target !== null ? game.fighters[f.target] : null;
+    return game.fighters.find((o) => o !== f) || null;
+  }
+
+  /**
+   * Luna's assist: an attack that's just out of reach steps in so it lands.
+   * A push that friction slows (the same as knockback), so it's a quick
+   * slide, not a teleport.
+   */
+  function lunge(game, f, m) {
+    const o = opponentOf(game, f);
+    if (!o || !standing(o)) return;
+    const d = distance(f, o);
+    const short = d - reach(f, m) + 10;
+    if (short <= 0 || short > LUNGE_MAX_SHORT) return;
+    // Enough push to close the gap by the time the attack is out.
+    const speed = short * (1 - KNOCKBACK_FRICTION) / (1 - KNOCKBACK_FRICTION ** m.startup);
+    f.vx += ((o.x - f.x) / (d || 1)) * speed;
+    if (game.mode === 'ring') f.vy += ((o.y - f.y) / (d || 1)) * speed;
+  }
+  const LUNGE_MAX_SHORT = LUNA_LUNGE + 10;
 
   function updateFighterState(game, index) {
     const f = game.fighters[index];
@@ -226,16 +268,44 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED;
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
-      f.x += dir * speed * norm;
-      f.y += dirY * speed * norm;
+      let mx = dir * norm;
+      let my = dirY * norm;
+      if (f.luna && game.mode === 'ring' && (mx || my)) [mx, my] = assistWalk(game, f, mx, my);
+      f.x += mx * speed;
+      f.y += my * speed;
     }
 
     const regen = f.state === 'block' ? STAMINA_REGEN_BLOCKING
       : f.state === 'attack' ? 0 : STAMINA_REGEN;
     f.stamina = Math.min(MAX_STAMINA, f.stamina + regen);
+  }
+
+  /**
+   * Luna's aim assist in the ring: walking roughly towards an opponent (within
+   * 60°) bends her path towards them. It only bends where she's going.
+   */
+  function assistWalk(game, f, mx, my) {
+    let best = null;
+    let bestScore = Infinity;
+    for (const o of game.fighters) {
+      if (o === f || !standing(o)) continue;
+      const vx = o.x - f.x;
+      const vy = o.y - f.y;
+      const d = Math.hypot(vx, vy);
+      if (d < 1) continue;
+      const cos = (vx * mx + vy * my) / d;
+      if (cos < ASSIST_CONE) continue;
+      const score = d * (2 - cos);
+      if (score < bestScore) { bestScore = score; best = { x: vx / d, y: vy / d }; }
+    }
+    if (!best) return [mx, my];
+    const x = mx * (1 - ASSIST_PULL) + best.x * ASSIST_PULL;
+    const y = my * (1 - ASSIST_PULL) + best.y * ASSIST_PULL;
+    const n = Math.hypot(x, y) || 1;
+    return [x / n, y / n];
   }
 
   // ---- Ring mode: facing, pushing apart, hits ---------------------------------
@@ -319,7 +389,7 @@
       game.fighters.forEach((o, j) => {
         if (j === i || !standing(o)) return;
         const d = distance(att, o);
-        if (d > m.range || d >= bestD) return;
+        if (d > reach(att, m) || d >= bestD) return;
         if (angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
         def = j;
         bestD = d;
@@ -372,7 +442,7 @@
       if (movePhase(att) !== 'active' || att.hitLanded) return;
       const def = game.fighters[1 - i];
       const m = MOVES[att.move];
-      if (Math.abs(def.x - att.x) > m.range) return;
+      if (Math.abs(def.x - att.x) > reach(att, m)) return;
       if (def.state === 'ko') return;
       att.hitLanded = true;
       pending.push({
@@ -542,6 +612,11 @@
     game.events.push({ type: 'left', target: index });
   }
 
+  /** Luna (any capitals) gets the helping hand. */
+  function isLuna(name) {
+    return String(name || '').trim().toLowerCase() === 'luna';
+  }
+
   // Compact view sent over the wire each broadcast.
   function snapshot(game) {
     const ring = game.mode === 'ring';
@@ -556,6 +631,7 @@
       tick: game.tick,
       fighters: game.fighters.map((f) => ({
         name: f.name,
+        ...(f.luna ? { luna: true } : {}),
         x: Math.round(f.x * 10) / 10,
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
@@ -576,8 +652,8 @@
     TICK_RATE, RING_LEFT, RING_RIGHT, MIN_SEPARATION, MAX_HP, MAX_STAMINA,
     ROUND_TICKS, COUNTDOWN_TICKS, ROUND_END_TICKS, ROUNDS_TO_WIN, MAX_ROUNDS,
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
-    MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC,
-    createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter,
+    MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
+    createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
