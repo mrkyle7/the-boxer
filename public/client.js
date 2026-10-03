@@ -2,10 +2,12 @@
   'use strict';
 
   const G = window.BoxerGame;
-  // The canvas is 1000 x 560, except for the ring on a portrait screen, which
-  // gets a tall layout (see ringLayout) so the ring can fill the width.
+  // The canvas is 1000 x 560, except for the ring on a phone: held upright it
+  // gets a tall layout so the ring can fill the width, and held sideways a
+  // short one so the ring can fill the height (see chooseLayout).
   const WIDE = { w: 1000, h: 560 };
   const TALL = { w: 600, h: 800 };
+  const SHORT = { w: 860, h: 600 };
   let W = WIDE.w;
   let H = WIDE.h;
   const FLOOR = 486;
@@ -976,10 +978,13 @@
 
   // Where the ring goes on the canvas. Wide: in the middle, with two fighter
   // cards either side. Tall (a phone held upright): the cards in a 2 x 2 block
-  // on top, and the ring as wide as the screen below.
+  // on top, and the ring as wide as the screen below. Short (a phone held
+  // sideways, with buttons either side): the ring as tall as the screen, and
+  // narrow cards down each side.
   const VIEWS = {
     wide: { cx: 500, cy: 300, size: 480, from: 30, to: 970 },
     tall: { cx: 300, cy: 500, size: 592, from: 30, to: 970 },
+    short: { cx: 430, cy: 300, size: 580, from: 30, to: 970 },
   };
   let VIEW = VIEWS.wide;
   let VK = VIEW.size / (VIEW.to - VIEW.from);
@@ -991,13 +996,16 @@
   }
 
   let layout = 'wide';
+  const touchScreen = window.matchMedia('(pointer: coarse)');
   /** Picks the canvas layout for what's being shown and the screen's shape. */
   function chooseLayout() {
     const portrait = window.innerHeight > window.innerWidth * 1.1;
-    const next = mode === 'ring' && portrait ? 'tall' : 'wide';
+    let next = 'wide';
+    if (mode === 'ring' && portrait) next = 'tall';
+    else if (mode === 'ring' && touchScreen.matches) next = 'short';
     if (next === layout) return;
     layout = next;
-    const size = next === 'tall' ? TALL : WIDE;
+    const size = { wide: WIDE, tall: TALL, short: SHORT }[next];
     W = size.w;
     H = size.h;
     VIEW = VIEWS[next];
@@ -1267,13 +1275,18 @@
   /** A card per fighter: two down the left, two down the right. */
   function drawRingHud(s) {
     const tall = layout === 'tall';
+    // Short: narrow cards in the strips either side of the ring, with the
+    // status on a line of its own.
+    const short = layout === 'short';
     // Tall: a compact 2 x 2 block across the top, with the timer between.
-    const cardW = tall ? 222 : 214;
-    const cardH = tall ? 92 : 118;
+    const cardW = tall ? 222 : short ? 128 : 214;
+    const cardH = tall ? 92 : short ? 116 : 118;
     s.fighters.forEach((f, i) => {
       const c = PALETTE[i];
-      const x0 = i % 2 === 0 ? (tall ? 4 : 14) : W - (tall ? 4 : 14) - cardW;
-      const y0 = tall ? 4 + Math.floor(i / 2) * (cardH + 6) : 70 + Math.floor(i / 2) * (cardH + 28);
+      const edge = tall || short ? 4 : 14;
+      const x0 = i % 2 === 0 ? edge : W - edge - cardW;
+      const row = Math.floor(i / 2);
+      const y0 = tall ? 4 + row * (cardH + 6) : short ? 62 + row * (cardH + 10) : 70 + row * (cardH + 28);
       const out = f.left;
       ctx.globalAlpha = out ? 0.45 : 1;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -1286,16 +1299,18 @@
         ctx.strokeRect(x0 + 1, y0 + 1, cardW - 2, cardH - 2);
       }
       ctx.textAlign = 'left';
-      ctx.font = '20px Anton, Impact, sans-serif';
+      ctx.font = short ? '17px Anton, Impact, sans-serif' : '20px Anton, Impact, sans-serif';
       ctx.fillStyle = c.name;
-      const name = f.name.toUpperCase() + (i === me ? '  (YOU)' : '');
-      const ny = tall ? 24 : 28;
-      ctx.fillText(name.length > 18 ? name.slice(0, 17) + '…' : name, x0 + 14, y0 + ny);
-      const dy = tall ? -8 : 0; // everything below the name moves up a little
+      let name = f.name.toUpperCase() + (i === me ? (short ? ' (YOU)' : '  (YOU)') : '');
+      if (name.length > 18) name = name.slice(0, 17) + '…';
+      while (short && name.length > 2 && ctx.measureText(name).width > cardW - 22) name = name.slice(0, -2) + '…';
+      const ny = tall || short ? 24 : 28;
+      ctx.fillText(name, x0 + 14, y0 + ny);
+      const dy = tall || short ? -8 : 0; // everything below the name moves up a little
 
       // Health, with the trail of what was just lost.
       const barX = x0 + 14;
-      const barW = cardW - 28;
+      const barW = cardW - (short ? 22 : 28);
       const hpFrac = f.hp / G.MAX_HP;
       ctx.fillStyle = 'rgba(255,255,255,0.1)';
       ctx.fillRect(barX, y0 + 40 + dy, barW, 16);
@@ -1313,34 +1328,37 @@
       // Rounds won, and what's going on.
       for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
         ctx.beginPath();
-        ctx.arc(barX + 7 + r * 20, y0 + (tall ? 74 : 88), 6, 0, Math.PI * 2);
+        ctx.arc(barX + 7 + r * 20, y0 + (tall || short ? 74 : 88), 6, 0, Math.PI * 2);
         ctx.fillStyle = r < f.roundsWon ? '#f4c542' : 'rgba(255,255,255,0.15)';
         ctx.fill();
       }
       ctx.font = '700 13px Barlow, sans-serif';
-      ctx.textAlign = 'right';
+      ctx.textAlign = short ? 'left' : 'right';
       let status = '';
       if (out) status = 'LEFT';
       else if (f.state === 'ko') status = 'DOWN';
       else if (i === me) status = `Aiming: ${held.aim === 'body' ? 'tummy' : 'head'}`;
       ctx.fillStyle = f.state === 'ko' && !out ? '#ff6f73' : i === me ? '#f4c542' : '#98a3b8';
-      ctx.fillText(status, x0 + cardW - 14, y0 + (tall ? 79 : 93));
+      if (short) ctx.fillText(status, barX, y0 + 102);
+      else ctx.fillText(status, x0 + cardW - 14, y0 + (tall ? 79 : 93));
       ctx.globalAlpha = 1;
     });
 
     // Timer: above the ring, or in the middle of the cards when tall.
     const secs = Math.ceil(s.timer / G.TICK_RATE);
+    // Short: top of the left-hand strip, above the cards.
     const ty = tall ? cardH - 21 : 4;
-    const tw = tall ? 136 : 160;
+    const tw = tall ? 136 : short ? cardW : 160;
+    const tx = short ? 4 + cardW / 2 : W / 2;
     ctx.fillStyle = 'rgba(0,0,0,0.7)';
-    ctx.fillRect(W / 2 - tw / 2, ty, tw, 50);
+    ctx.fillRect(tx - tw / 2, ty, tw, 50);
     ctx.textAlign = 'center';
     ctx.fillStyle = secs <= 10 && s.phase === 'fight' ? '#ff4a4f' : '#ffffff';
     ctx.font = '32px Anton, Impact, sans-serif';
-    ctx.fillText(String(secs), W / 2, ty + 32);
+    ctx.fillText(String(secs), tx, ty + 32);
     ctx.font = '600 11px Barlow, sans-serif';
     ctx.fillStyle = '#98a3b8';
-    ctx.fillText(`ROUND ${s.round} OF ${G.MAX_ROUNDS}`, W / 2, ty + 46);
+    ctx.fillText(`ROUND ${s.round} OF ${G.MAX_ROUNDS}`, tx, ty + 46);
 
     if (rtt !== null) {
       ctx.textAlign = 'right';
@@ -1438,8 +1456,8 @@
     const alpha = Math.min(1, banner.life / 12);
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.translate(W / 2, layout === 'tall' ? VIEW.cy - 40 : 250);
-    if (layout === 'tall') ctx.scale(0.75, 0.75);
+    ctx.translate(layout === 'wide' ? W / 2 : VIEW.cx, layout === 'wide' ? 250 : VIEW.cy - 40);
+    if (layout !== 'wide') ctx.scale(0.75, 0.75);
     ctx.scale(scale, scale);
     ctx.textAlign = 'center';
     ctx.font = '96px Anton, Impact, sans-serif';
