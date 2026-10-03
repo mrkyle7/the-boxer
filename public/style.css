@@ -231,3 +231,32 @@ canvas {
 .ring-only { display: none; }
 body.ring .ring-only { display: inline; }
 body.ring .touch button.ring-only { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Phones and tablets held sideways: the buttons go either side of the ring,
+   and the canvas fits the screen's height, so everything is on screen. */
+@media (pointer: coarse) and (orientation: landscape) {
+  #fight.active {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    height: 100vh;
+    height: 100dvh;
+    padding: 6px max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left));
+  }
+  #fight .touch { display: contents; }
+  #fight .pad { flex-direction: column; flex-wrap: nowrap; justify-content: center; gap: 6px; }
+  #fight .pad:first-child { grid-column: 1; grid-row: 1; }
+  #fight .stage { grid-column: 2; grid-row: 1; justify-self: center; width: auto; max-width: 100%; }
+  #fight .pad:last-child { grid-column: 3; grid-row: 1; }
+  #fight .hint { display: none; }
+  #fight canvas {
+    width: auto;
+    max-width: 100%;
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  #fight .touch button { min-width: 64px; height: 46px; padding: 0 8px; font-size: 14px; }
+  /* In the ring there are two more buttons: two columns each side. */
+  body.ring #fight .pad { display: grid; grid-template-columns: repeat(2, auto); }
+}
