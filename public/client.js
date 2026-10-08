@@ -1632,25 +1632,74 @@
 
   // ---- The cheat code, going in --------------------------------------------------
 
-  /** Over anyone typing the cheat code: the letters so far, for everyone to see. */
+  // Comic-book letters for the cheat codes going in.
+  const TYPE_FONT = 'Bangers, Anton, Impact, sans-serif';
+  if (document.fonts && document.fonts.load) document.fonts.load(`40px ${TYPE_FONT}`).catch(() => {});
+
+  /**
+   * Over anyone typing a cheat code: the letters so far, for everyone to see.
+   * Each one pops in with a wobble and a burst of stars, then bobs about; if
+   * a hit wipes them they go up in a puff.
+   */
   function drawTyping() {
+    const now = performance.now();
+    const ring = mode === 'ring';
+    const size = ring ? 36 : 48;
     snap.fighters.forEach((f, i) => {
-      if (!f.typing || f.left) return;
+      const d = display[i];
+      const word = f.left ? '' : (f.typing || '').toUpperCase();
       const p = targetPos(i, 'head');
-      const y = p.y - (mode === 'ring' ? 46 : 120);
-      const text = f.typing.toUpperCase();
-      const caret = Math.floor(performance.now() / 250) % 2 ? '_' : ' ';
-      ctx.font = `${mode === 'ring' ? 18 : 26}px Anton, Impact, sans-serif`;
+      const y = p.y - (ring ? 52 : 118);
+      if (word !== (d.typeWord || '')) {
+        const old = d.typeWord || '';
+        if (word.startsWith(old)) {
+          d.typeAt = (d.typeAt || []).slice(0, old.length);
+          for (let k = old.length; k < word.length; k++) d.typeAt[k] = now;
+          sparks(p.x + (word.length - 1 - (word.length - 1) / 2) * size * 0.62, y - size * 0.4, '#fff36b', 6, 3);
+        } else {
+          // Wiped (or finished): a puff where the letters were.
+          if (old) sparks(p.x, y - size * 0.3, '#cfd6e4', 14, 4);
+          d.typeAt = word.split('').map(() => now);
+        }
+        d.typeWord = word;
+      }
+      if (!word) return;
+
+      ctx.save();
+      ctx.font = `${size}px ${TYPE_FONT}`;
       ctx.textAlign = 'center';
-      const w = ctx.measureText(G.FLIP_CODE.toUpperCase() + '_').width + 20;
-      const h = mode === 'ring' ? 26 : 36;
-      ctx.fillStyle = 'rgba(0,0,0,0.75)';
-      ctx.fillRect(p.x - w / 2, y - h + 8, w, h);
-      ctx.strokeStyle = PALETTE[i].glove;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(p.x - w / 2, y - h + 8, w, h);
-      ctx.fillStyle = '#f4c542';
-      ctx.fillText(text + caret, p.x, y);
+      ctx.textBaseline = 'alphabetic';
+      ctx.lineJoin = 'round';
+      const step = size * 0.62;
+      const x0 = p.x - ((word.length - 1) * step) / 2;
+      for (let k = 0; k < word.length; k++) {
+        const age = (now - d.typeAt[k]) / 1000;
+        // Springs in big, then settles with a wobble.
+        const pop = 1 + 0.9 * Math.exp(-age * 9) * Math.cos(age * 28);
+        const bob = Math.sin(now / 170 + k * 0.9) * (ring ? 2 : 4);
+        const tilt = Math.sin(now / 260 + k * 1.7) * 0.14 + (k % 2 ? 0.08 : -0.08);
+        ctx.save();
+        ctx.translate(x0 + k * step, y + bob);
+        ctx.rotate(tilt);
+        ctx.scale(pop, pop);
+        // Drop shadow, fat outline, then a sunny fill with a shine.
+        ctx.fillStyle = 'rgba(0,0,0,0.45)';
+        ctx.fillText(word[k], 3, 4);
+        ctx.strokeStyle = '#1b1030';
+        ctx.lineWidth = size * 0.26;
+        ctx.strokeText(word[k], 0, 0);
+        ctx.strokeStyle = PALETTE[i].glove;
+        ctx.lineWidth = size * 0.1;
+        ctx.strokeText(word[k], 0, 0);
+        const g = ctx.createLinearGradient(0, -size * 0.75, 0, 0);
+        g.addColorStop(0, '#fff7a1');
+        g.addColorStop(0.5, '#ffd23f');
+        g.addColorStop(1, '#ff7b1c');
+        ctx.fillStyle = g;
+        ctx.fillText(word[k], 0, 0);
+        ctx.restore();
+      }
+      ctx.restore();
     });
   }
 
