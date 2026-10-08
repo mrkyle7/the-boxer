@@ -33,6 +33,8 @@ A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches
 
 Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` while pressing `A`, for a tummy punch. A block only covers the height you're aiming at: guard the head and a tummy kick goes straight in. Head shots do more damage; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with no stamina left breaks, and hitting someone mid-attack is a counter worth 40% more.
 
+Look out for the **giant fist**: every five to fifteen seconds a shadow appears under a random fighter, and a second later a giant fist slams down there. Anyone still under it takes 30 damage, guard or no guard, so get out of the way.
+
 ## Deployment
 
 Live at **https://boxer.cheetahmoongames.com**, one of the games linked from [cheetahmoongames.com](https://cheetahmoongames.com).

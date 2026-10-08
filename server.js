@@ -102,7 +102,7 @@ function sendRoom(room) {
 function startMatch(room) {
   room.fighters = room.players.slice(0, MAX_PLAYERS);
   const names = room.fighters.map((p) => p.name);
-  room.game = Game.createGame(names);
+  room.game = Game.createGame(names, { fists: true });
   room.rematch = new Set();
   room.fighters.forEach((p, i) => {
     p.seat = i;

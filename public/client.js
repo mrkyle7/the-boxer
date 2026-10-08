@@ -124,6 +124,7 @@
         display = null;
         lastPhase = null;
         effects.length = 0;
+        slams.length = 0;
         texts.length = 0;
         held.aim = 'head';
         syncTouch();
@@ -325,6 +326,25 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'fistWarn') {
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'fist') {
+      const p = fistSpot(e.x, e.y);
+      slams.push({ x: e.x, y: e.y, life: SLAM_LIFE });
+      shake = Math.max(shake, 18);
+      crowdHype = 1;
+      sparks(p.x, p.y, '#f4c542', 30, 8);
+      sound.slam();
+      const up = mode === 'ring' ? 0.6 : 1;
+      for (const i of e.hits) {
+        const t = targetPos(i, 'head');
+        floatText(t.x, t.y - 40 * up, `-${e.damage}`, '#ffffff', 32);
+      }
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 300), e.hits.length ? 'Giant fist!' : 'Missed!', '#f4c542', 30);
+      return;
+    }
     // The ring from above is smaller: labels float closer, and smaller.
     const up = mode === 'ring' ? 0.6 : 1;
     const p = targetPos(e.target, e.height);
@@ -413,6 +433,16 @@
       block() {
         const a = ctxOk(); if (!a) return;
         noise(a, 0.07, 2400, 0.3);
+      },
+      // The giant fist: a rising whistle as its shadow appears, then the thud.
+      whoosh() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 300, 1, 0.08, 'triangle', 1100);
+      },
+      slam() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.35, 500, 0.9);
+        tone(a, 90, 0.5, 0.8, 'sine', 30);
       },
       bell() {
         const a = ctxOk(); if (!a) return;
@@ -1477,6 +1507,145 @@
     if (--banner.life <= 0) banner = null;
   }
 
+  // ---- The giant fist ----------------------------------------------------------
+
+  const slams = [];
+  const SLAM_LIFE = 36;
+
+  /** Where the fist comes down, on screen: on the mat, or on the floor. */
+  function fistSpot(x, y) {
+    return mode === 'ring' ? toScreen(x, y) : { x, y: FLOOR };
+  }
+  const fistRadius = () => (mode === 'ring' ? G.FIST_RADIUS * VK : G.FIST_RADIUS);
+
+  /** The shadow it casts: darker and tighter as it comes. */
+  function drawFistShadow(x, y, k) {
+    const p = fistSpot(x, y);
+    const r = fistRadius();
+    const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 70);
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    if (mode !== 'ring') ctx.scale(1, 0.25);
+    ctx.fillStyle = `rgba(0,0,0,${0.25 + 0.45 * k})`;
+    ctx.beginPath();
+    ctx.arc(0, 0, r * (1.4 - 0.4 * k), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,74,79,${0.4 + 0.5 * pulse})`;
+    ctx.lineWidth = mode === 'ring' ? 3 : 8;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * A giant gold glove, knuckles down. From above it's seen from the back and
+   * shrinks as it falls away from us; side on it drops from the top.
+   */
+  function drawGiantFist(x, y, k, alpha) {
+    const p = fistSpot(x, y);
+    const r = fistRadius();
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    if (mode === 'ring') {
+      const size = r * (2.4 - 1.4 * k);
+      ctx.translate(p.x, p.y);
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.arc(size * 0.08, size * 0.1, size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#b8901f';
+      ctx.beginPath();
+      ctx.arc(0, 0, size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f4c542';
+      ctx.beginPath();
+      ctx.arc(-size * 0.08, -size * 0.1, size * 0.88, 0, Math.PI * 2);
+      ctx.fill();
+      // Knuckles along the front, and the cuff at the back.
+      ctx.strokeStyle = '#b8901f';
+      ctx.lineWidth = Math.max(2, size * 0.06);
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.arc(i * size * 0.32, -size * 0.45, size * 0.18, Math.PI * 1.1, Math.PI * 1.9);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-size * 0.55, size * 0.5, size * 1.1, size * 0.22);
+    } else {
+      const w = 150;
+      const h = 170;
+      const bottom = -40 + (p.y + 40) * k; // from off the top down to the floor
+      ctx.translate(p.x, bottom);
+      // Arm up off the top of the screen.
+      ctx.fillStyle = '#e0ac86';
+      ctx.fillRect(-w * 0.28, -h - 600, w * 0.56, 600);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(-w * 0.42, -h - 26, w * 0.84, 34);
+      ctx.fillStyle = '#b8901f';
+      roundRect(-w / 2, -h, w, h, 52);
+      ctx.fillStyle = '#f4c542';
+      roundRect(-w / 2 + 8, -h + 4, w - 22, h - 14, 46);
+      // Thumb, and the knuckles at the bottom.
+      ctx.fillStyle = '#d9ab2f';
+      roundRect(w / 2 - 44, -h + 40, 40, 80, 20);
+      ctx.strokeStyle = '#b8901f';
+      ctx.lineWidth = 5;
+      for (let i = -1; i <= 1; i++) {
+        ctx.beginPath();
+        ctx.arc(i * 38, -34, 18, Math.PI * 0.1, Math.PI * 0.9);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /** Under the fighters: the shadow of a fist on its way, and the dent it left. */
+  function drawFistUnder() {
+    if (snap.fist) drawFistShadow(snap.fist.x, snap.fist.y, Math.min(1, snap.fist.t / G.FIST_WARN_TICKS));
+    for (const sl of slams) {
+      const p = fistSpot(sl.x, sl.y);
+      const age = 1 - sl.life / SLAM_LIFE;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (mode !== 'ring') ctx.scale(1, 0.25);
+      ctx.strokeStyle = `rgba(244,197,66,${1 - age})`;
+      ctx.lineWidth = mode === 'ring' ? 6 : 14;
+      ctx.beginPath();
+      ctx.arc(0, 0, fistRadius() * (0.8 + age * 1.6), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** Over the fighters: the fist coming down for the last part of the warning, then lifting away. */
+  function drawFistOver() {
+    if (snap.fist) {
+      const k = snap.fist.t / G.FIST_WARN_TICKS;
+      const drop = 0.55; // the shadow alone until here
+      // See-through on the way down, so you can still see who's under it.
+      if (k > drop) drawGiantFist(snap.fist.x, snap.fist.y, (k - drop) / (1 - drop), Math.min(0.6, (k - drop) * 4));
+    }
+    for (let i = slams.length - 1; i >= 0; i--) {
+      const sl = slams[i];
+      const lift = Math.max(0, 1 - sl.life / (SLAM_LIFE * 0.4)); // rests, then lifts and fades
+      drawGiantFist(sl.x, sl.y, 1 - lift * 0.5, 1 - lift);
+      sl.life--;
+      if (sl.life <= 0) slams.splice(i, 1);
+    }
+  }
+
   // ---- Loop ------------------------------------------------------------------
 
   let crowdHype = 0;
@@ -1535,6 +1704,7 @@
     const ring = snap.mode === 'ring';
     if (ring) {
       drawRingScene(clock);
+      drawFistUnder();
       // Those down first, then attackers last so their gloves are on top.
       const order = snap.fighters.map((f, i) => i)
         .filter((i) => !snap.fighters[i].left)
@@ -1542,6 +1712,7 @@
       for (const i of order) drawRingFighter(i, snap.fighters[i], display[i], snap.fighters[i].t + ticksSince, clock);
     } else {
       drawScene(clock);
+      drawFistUnder();
 
       // Draw the fighter who is being hit first so the puncher's glove overlaps.
       const order = snap.fighters[0].state === 'attack' ? [1, 0] : [0, 1];
@@ -1561,6 +1732,7 @@
     }
     ctx.globalAlpha = 1;
     if (!ring) drawFrontRopes();
+    drawFistOver();
 
     for (let i = texts.length - 1; i >= 0; i--) {
       const tx = texts[i];
