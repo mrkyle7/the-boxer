@@ -80,7 +80,7 @@ test('both codes work, and showing what is typed picks the right one', () => {
   assert.strictEqual(g.fighters[0].typing, 'zef');
   type(g, 0, 'x');
   assert.strictEqual(g.fighters[0].typing, '');
-  assert.deepStrictEqual(Object.keys(G.CODES).sort(), ['luna', 'zeffen']);
+  assert.ok(['luna', 'zeffen'].every((c) => c in G.CODES));
 });
 
 test('nothing touches you while you vault, and a hit while typing wipes it', () => {

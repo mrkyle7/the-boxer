@@ -326,6 +326,22 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'jemini') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#6ff2b6', 30, 7);
+      sparks(p.x, p.y, '#ffffff', 14, 5);
+      shake = Math.max(shake, 8);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Jemini!', '#6ff2b6', 34);
+      sound.grow();
+      return;
+    }
+    if (e.type === 'kyle') {
+      const p = targetPos(e.target, 'body');
+      puff(p.x, p.y, true);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), e.target === me ? 'Invisible!' : 'Poof!', '#b5ecff', 32);
+      sound.poof();
+      return;
+    }
     if (e.type === 'vault') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Luna vault!', PALETTE[e.attacker].name, 30);
@@ -467,6 +483,17 @@
         const a = ctxOk(); if (!a) return;
         noise(a, 0.07, 2400, 0.3);
       },
+      // Jemini: a rising arpeggio as they grow.
+      grow() {
+        const a = ctxOk(); if (!a) return;
+        [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
+      },
+      // Kyle: a soft puff of smoke.
+      poof() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.3, 1400, 0.35);
+        tone(a, 520, 0.25, 0.08, 'sine', 180);
+      },
       // The giant fist: a rising whistle as its shadow appears, then the thud.
       whoosh() {
         const a = ctxOk(); if (!a) return;
@@ -513,7 +540,10 @@
   const typed = [];
   const CODES = Object.keys(G.CODES);
   const CODE_MAX = Math.max(...CODES.map((c) => c.length));
-  /** Sends the letter; true if it finished a code. */
+  /**
+   * Sends the letter. 'done' if it finished a code, 'typing' if it's part of
+   * one going in (so the M in jemini doesn't mute the sound), else false.
+   */
   function checkCheat(e) {
     if (e.repeat || !/^[a-z]$/i.test(e.key)) return false;
     send({ t: 'type', k: e.key.toLowerCase() });
@@ -521,17 +551,24 @@
     if (typed.length > CODE_MAX) typed.shift();
     const word = typed.map((k) => k.key).join('');
     const code = CODES.find((c) => word.endsWith(c));
-    if (!code) return false;
-    setHold('aim', typed[typed.length - code.length].aim);
-    typed.length = 0;
-    return true;
+    if (code) {
+      setHold('aim', typed[typed.length - code.length].aim);
+      typed.length = 0;
+      return 'done';
+    }
+    const partway = CODES.some((c) => {
+      for (let n = Math.min(c.length - 1, word.length); n >= 2; n--) if (word.endsWith(c.slice(0, n))) return true;
+      return false;
+    });
+    return partway ? 'typing' : false;
   }
 
   window.addEventListener('keydown', (e) => {
     if (!fighting() || e.target.tagName === 'INPUT') return;
     sound.unlock();
-    if (checkCheat(e)) { e.preventDefault(); return; }
-    if (e.code === 'KeyM') { sound.toggle(); return; }
+    const cheating = checkCheat(e);
+    if (cheating === 'done') { e.preventDefault(); return; }
+    if (e.code === 'KeyM') { if (!cheating) sound.toggle(); return; }
     if (KEY_HOLD[e.code]) { setHold(KEY_HOLD[e.code], true); e.preventDefault(); }
     if (KEY_AIM[e.code]) { setHold('aim', KEY_AIM[e.code]); e.preventDefault(); }
     if (KEY_ACT[e.code]) {
@@ -796,7 +833,7 @@
     return { x: sx + Math.cos(ang) * len, y: sy + Math.sin(ang) * len };
   }
 
-  function drawFighter(i, f, x, t, clock, opponentX) {
+  function drawFighter(i, f, x, t, clock, opponentX, echo) {
     const c = PALETTE[i];
     const dist = Math.abs(opponentX - x);
     const reach = Math.max(60, Math.min(140, dist - 36));
@@ -815,6 +852,14 @@
 
     ctx.save();
     ctx.translate(x, FLOOR);
+    const size = d.size || 1;
+    if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
+    ctx.scale(size, size);
+    if (f.invisible > 0) {
+      // My own Kyle: a faint shimmer, so I know where I am.
+      ctx.globalAlpha *= 0.28 + 0.12 * Math.sin(clock * 11);
+      ctx.translate(Math.sin(clock * 37) * 2, 0);
+    }
 
     // Shadow stays on the floor.
     ctx.fillStyle = 'rgba(0,0,0,0.35)';
@@ -1234,6 +1279,21 @@
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.scale(fighterScale(), fighterScale());
+    const size = d.size || 1;
+    if (size > 1.01) giantAura(0, 0, 56 * size, clock, false);
+    ctx.scale(size, size);
+    if (f.invisible > 0) {
+      // My own Kyle: a faint shimmer in a dashed ice-blue ring.
+      ctx.strokeStyle = 'rgba(181,236,255,0.8)';
+      ctx.lineWidth = 2;
+      ctx.setLineDash([3, 6]);
+      ctx.lineDashOffset = clock * 30;
+      ctx.beginPath();
+      ctx.arc(0, 0, 40, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha *= 0.3 + 0.12 * Math.sin(clock * 11);
+    }
 
     if (i === me) {
       // Where you are, at a glance.
@@ -1425,6 +1485,15 @@
     ctx.fillText(label, p.x, p.y + below);
   }
 
+  /** What's running on a fighter, for the HUD. */
+  function powerLabels(i, f) {
+    const out = [];
+    const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
+    if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
+    if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
+    return out;
+  }
+
   /** A card per fighter: two down the left, two down the right. */
   function drawRingHud(s) {
     const tall = layout === 'tall';
@@ -1492,6 +1561,12 @@
       else if (f.state === 'ko') status = 'DOWN';
       else if (i === me) status = `Aiming: ${held.aim === 'body' ? 'tummy' : 'head'}`;
       ctx.fillStyle = f.state === 'ko' && !out ? '#ff6f73' : i === me ? '#f4c542' : '#98a3b8';
+      // A power-up running shows instead, with how long it has left.
+      const powers = out || f.state === 'ko' ? [] : powerLabels(i, f);
+      if (powers.length) {
+        status = powers.map((pw) => pw.short).join(' · ');
+        ctx.fillStyle = powers[0].color;
+      }
       if (short) ctx.fillText(status, barX, y0 + 102);
       else ctx.fillText(status, x0 + cardW - 14, y0 + (tall ? 79 : 93));
       ctx.globalAlpha = 1;
@@ -1563,6 +1638,15 @@
         ctx.fillStyle = '#f4c542';
         ctx.fillText(`Aiming at the ${held.aim === 'body' ? 'tummy' : 'head'}`, left ? x0 : x0 + barW, top + 86);
       }
+      // Power-ups running, and for how long (someone else's Kyle is a secret).
+      const powers = powerLabels(i, f);
+      if (powers.length) {
+        ctx.font = '700 15px Barlow, sans-serif';
+        powers.forEach((pw, k) => {
+          ctx.fillStyle = pw.color;
+          ctx.fillText(pw.text, left ? x0 : x0 + barW, top + (i === me ? 106 : 86) + k * 20);
+        });
+      }
       for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
         const px = left ? x0 + barW - 10 - r * 22 : x0 + 10 + r * 22;
         ctx.beginPath();
@@ -1632,8 +1716,15 @@
 
   // ---- The cheat code, going in --------------------------------------------------
 
-  // Comic-book letters for the cheat codes going in.
+  // Comic-book letters for the cheat codes going in, each code its own colours.
   const TYPE_FONT = 'Bangers, Anton, Impact, sans-serif';
+  const CODE_STYLES = {
+    zeffen: { fill: ['#fff7a1', '#ffd23f', '#ff7b1c'], spark: '#fff36b' }, // sunny
+    luna: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight
+    jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
+    kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
+  };
+  const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
   if (document.fonts && document.fonts.load) document.fonts.load(`40px ${TYPE_FONT}`).catch(() => {});
 
   /**
@@ -1647,7 +1738,9 @@
     const size = ring ? 36 : 48;
     snap.fighters.forEach((f, i) => {
       const d = display[i];
-      const word = f.left ? '' : (f.typing || '').toUpperCase();
+      // Someone else's Kyle doesn't give themselves away by typing, either.
+      const word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
+      const style = styleFor(word);
       const p = targetPos(i, 'head');
       const y = p.y - (ring ? 52 : 118);
       if (word !== (d.typeWord || '')) {
@@ -1655,7 +1748,7 @@
         if (word.startsWith(old)) {
           d.typeAt = (d.typeAt || []).slice(0, old.length);
           for (let k = old.length; k < word.length; k++) d.typeAt[k] = now;
-          sparks(p.x + (word.length - 1 - (word.length - 1) / 2) * size * 0.62, y - size * 0.4, '#fff36b', 6, 3);
+          sparks(p.x + ((word.length - 1) / 2) * size * 0.62, y - size * 0.4, style.spark, 6, 3);
         } else {
           // Wiped (or finished): a puff where the letters were.
           if (old) sparks(p.x, y - size * 0.3, '#cfd6e4', 14, 4);
@@ -1682,6 +1775,7 @@
         ctx.translate(x0 + k * step, y + bob);
         ctx.rotate(tilt);
         ctx.scale(pop, pop);
+        if (style.flicker) ctx.globalAlpha = 0.65 + 0.35 * Math.abs(Math.sin(now / 90 + k * 2));
         // Drop shadow, fat outline, then a sunny fill with a shine.
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillText(word[k], 3, 4);
@@ -1692,15 +1786,53 @@
         ctx.lineWidth = size * 0.1;
         ctx.strokeText(word[k], 0, 0);
         const g = ctx.createLinearGradient(0, -size * 0.75, 0, 0);
-        g.addColorStop(0, '#fff7a1');
-        g.addColorStop(0.5, '#ffd23f');
-        g.addColorStop(1, '#ff7b1c');
+        g.addColorStop(0, style.fill[0]);
+        g.addColorStop(0.5, style.fill[1]);
+        g.addColorStop(1, style.fill[2]);
         ctx.fillStyle = g;
         ctx.fillText(word[k], 0, 0);
         ctx.restore();
       }
       ctx.restore();
     });
+  }
+
+  // ---- Power-ups: Jemini (a giant) and Kyle (invisible) ---------------------------
+
+  const GIANT_SCALE = 1.35;
+  /** Someone else's Kyle: not drawn on my screen at all. */
+  const hiddenFrom = (i, f) => f.invisible > 0 && i !== me;
+
+  /** A cloud of smoke: going invisible, or coming back. */
+  function puff(x, y, big) {
+    for (let k = 0; k < (big ? 34 : 20); k++) {
+      const a = Math.random() * Math.PI * 2;
+      const v = (big ? 5 : 3.5) * (0.3 + Math.random());
+      effects.push({ x: x + Math.cos(a) * 14, y: y + Math.sin(a) * 14, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2.2,
+        life: 22 + Math.random() * 14, color: Math.random() < 0.5 ? '#d9e2f0' : '#9aa7bd' });
+    }
+  }
+
+  /** The giant's glow: a pulsing green aura, with glitter drifting off it. */
+  function giantAura(cx, cy, r, clock, side) {
+    const pulse = 0.75 + 0.25 * Math.sin(clock * 6);
+    const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
+    g.addColorStop(0, `rgba(166,255,214,${0.36 * pulse})`);
+    g.addColorStop(0.6, `rgba(95,240,176,${0.14 * pulse})`);
+    g.addColorStop(1, 'rgba(95,240,176,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    if (side) ctx.ellipse(cx, cy, r * 0.75, r, 0, 0, Math.PI * 2);
+    else ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  /** Glitter off a giant, in screen space (so it floats off as they move). */
+  function giantGlitter(x, y, spread) {
+    if (Math.random() > 0.35) return;
+    effects.push({ x: x + (Math.random() - 0.5) * spread, y: y - Math.random() * spread * 0.5,
+      vx: (Math.random() - 0.5) * 0.6, vy: -3.2 - Math.random() * 1.5, life: 22,
+      color: Math.random() < 0.5 ? '#a6ffd6' : '#ffffff' });
   }
 
   // ---- The giant fist ----------------------------------------------------------
@@ -1885,6 +2017,16 @@
       while (turn > Math.PI) turn -= Math.PI * 2;
       while (turn < -Math.PI) turn += Math.PI * 2;
       d.angle += turn * k;
+      // Growing into a giant (and back) takes a moment.
+      const want = f.giant ? GIANT_SCALE : 1;
+      d.size = (d.size || 1) + (want - (d.size || 1)) * Math.min(1, dt * 7);
+      // Coming back from Kyle: a puff where they reappear.
+      if (d.wasInvisible && !f.invisible && !f.left) {
+        const p = targetPos(i, 'body');
+        puff(p.x, p.y, false);
+        sound.poof();
+      }
+      d.wasInvisible = !!f.invisible;
       if (d.hpTrail > f.hp) d.hpTrail = Math.max(f.hp, d.hpTrail - dt * 30);
       else d.hpTrail = f.hp;
     });
@@ -1905,7 +2047,12 @@
       const order = snap.fighters.map((f, i) => i)
         .filter((i) => !snap.fighters[i].left)
         .sort((a, b) => rank(snap.fighters[a]) - rank(snap.fighters[b]));
-      for (const i of order) drawRingFighter(i, snap.fighters[i], display[i], snap.fighters[i].t + ticksSince, clock);
+      for (const i of order) {
+        const f = snap.fighters[i];
+        if (hiddenFrom(i, f)) continue;
+        drawRingFighter(i, f, display[i], f.t + ticksSince, clock);
+        if (f.giant) { const gp = toScreen(display[i].x, display[i].y); giantGlitter(gp.x, gp.y, 50 * fighterScale()); }
+      }
     } else {
       drawScene(clock);
       drawFistUnder();
@@ -1914,6 +2061,16 @@
       const order = snap.fighters[0].state === 'attack' ? [1, 0] : [0, 1];
       for (const i of order) {
         const f = snap.fighters[i];
+        if (hiddenFrom(i, f)) continue;
+        if (f.giant) {
+          // Jemini: a see-through twin a step behind, a beat behind.
+          ctx.save();
+          ctx.globalAlpha = 0.22;
+          const lag = 26 + Math.sin(clock * 4) * 8;
+          drawFighter(i, f, display[i].x - f.facing * lag, f.t + ticksSince - 4, clock - 0.12, display[1 - i].x, true);
+          ctx.restore();
+          giantGlitter(display[i].x, FLOOR - 140 * (display[i].size || 1), 120);
+        }
         drawFighter(i, f, display[i].x, f.t + ticksSince, clock, display[1 - i].x);
       }
     }

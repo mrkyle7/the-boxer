@@ -25,6 +25,10 @@
 //
 // Another: type "luna" for the Luna vault, a flip right over your opponent
 // to land behind them and kick them in the back for 30, unblockable.
+//
+// Two more go on you, not on them: "jemini" makes you a giant for seven
+// seconds (your hits do 10% more), and "kyle" makes you invisible to the
+// others for five (that's only in how they're drawn: the fight's the same).
 (function (root) {
   'use strict';
 
@@ -128,8 +132,14 @@
   const VAULT_BEYOND = 90; // lands this far past the opponent
   const VAULT_MAX_TRAVEL = 330; // furthest it carries you
 
-  // Cheat codes, and the move each one does.
-  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault' };
+  // The power-ups: how long each lasts, and what Jemini adds to your hits.
+  const JEMINI_TICKS = 7 * TICK_RATE;
+  const JEMINI_DAMAGE = 1.1;
+  const KYLE_TICKS = 5 * TICK_RATE;
+
+  // Cheat codes, and the move (or power-up) each one does.
+  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle' };
+  const POWERS = ['jemini', 'kyle'];
   const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
   const AIRBORNE_MOVES = ['flip', 'vault'];
 
@@ -144,6 +154,8 @@
     return {
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
+      giant: 0, // ticks of Jemini left
+      invisible: 0, // ticks of Kyle left
       typed: '', // the last few letters typed in the fight
       typing: '', // as much of a cheat code as they make, for everyone to see
       kyle: isKyle(name),
@@ -235,13 +247,26 @@
     input.bufferAge = 0;
   }
 
-  /** A cheat code: the right word buffers its move. */
+  /** A cheat code: the right word buffers its move, or turns its power-up on. */
   function cheat(game, index, code) {
     const move = CODES[String(code || '').trim().toLowerCase()];
     const input = game.inputs[index];
     if (!move || !input) return;
+    if (POWERS.includes(move)) {
+      power(game, index, move);
+      return;
+    }
     input.buffered = move;
     input.bufferAge = 0;
+  }
+
+  /** Jemini (a giant) or Kyle (invisible), straight away and for a while. */
+  function power(game, index, which) {
+    const f = game.fighters[index];
+    if (!f || game.phase !== 'fight' || !standing(f)) return;
+    if (which === 'jemini') f.giant = JEMINI_TICKS;
+    else f.invisible = KYLE_TICKS;
+    game.events.push({ type: which, target: index });
   }
 
   /**
@@ -435,6 +460,10 @@
       setState(f, 'idle');
     }
 
+    if (fighting) {
+      if (f.giant > 0) f.giant--;
+      if (f.invisible > 0) f.invisible--;
+    }
     if (!fighting || f.state === 'ko') return;
     if (airborne(f)) flipTravel(game, f);
     if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
@@ -680,7 +709,7 @@
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
-        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1));
+        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1));
         def.hp = Math.max(0, def.hp - damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
@@ -892,6 +921,8 @@
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
         ...(f.typing ? { typing: f.typing } : {}),
+        ...(f.giant > 0 ? { giant: f.giant } : {}),
+        ...(f.invisible > 0 ? { invisible: f.invisible } : {}),
         x: Math.round(f.x * 10) / 10,
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
@@ -915,7 +946,7 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
-    cheat, typeKey, airborne, FLIP_CODE, CODES, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    cheat, typeKey, airborne, FLIP_CODE, CODES, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
