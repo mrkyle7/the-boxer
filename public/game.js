@@ -13,8 +13,13 @@
 // opponent she's heading for (aim assist).
 //
 // The giant fist: with fists on, every five to fifteen seconds of fighting a
-// shadow appears under a random fighter, and a second later a giant fist
-// slams down there. Anyone still under it takes 30 damage, guard or no guard.
+// shadow appears under a fighter called Kyle (any capitals), and a second
+// later a giant fist slams down there. If Kyle is still under it he takes 30
+// damage, guard or no guard. It only ever hits Kyle: no Kyle, no fist.
+//
+// The cheat code: type "zeffen" in a fight for the Zeffen flip, a front flip
+// that carries you onto your opponent and lands for 50, unblockable. While
+// you're in the air nothing can touch you.
 (function (root) {
   'use strict';
 
@@ -89,6 +94,20 @@
     },
   };
 
+  // The Zeffen flip (the cheat code): a crouch, a front flip through the air
+  // towards the opponent, and a landing that can't be blocked.
+  MOVES.flip = {
+    startup: 30, active: 4, recovery: 16, range: 190, stamina: 0,
+    unblockable: true,
+    head: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
+    body: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
+  };
+  const FLIP_CODE = 'zeffen';
+  const FLIP_CROUCH = 5; // ticks before leaving the ground
+  const FLIP_LAND_AT = 120; // lands this far from the opponent, well in reach
+  const FLIP_MAX_STEP = 24; // fastest it travels through the air, per tick: right across the ring
+  const FLIP_NO_TARGET_STEP = 5; // with nobody to flip at, a short hop forward
+
   const AIMS = ['head', 'body'];
   const ACTIONS = ['punch', 'kick'];
 
@@ -100,6 +119,7 @@
     return {
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
+      kyle: isKyle(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
       vx: 0,
@@ -186,6 +206,40 @@
     input.bufferAge = 0;
   }
 
+  /** The cheat code: the right word buffers the Zeffen flip. */
+  function cheat(game, index, code) {
+    if (String(code || '').trim().toLowerCase() !== FLIP_CODE) return;
+    const input = game.inputs[index];
+    if (!input) return;
+    input.buffered = 'flip';
+    input.bufferAge = 0;
+  }
+
+  /** Off the ground in the flip, where nothing can touch you. */
+  function airborne(f) {
+    return f.state === 'attack' && f.move === 'flip' && f.t >= FLIP_CROUCH && f.t < MOVES.flip.startup;
+  }
+
+  /** Through the air towards whoever you're fighting, to land in reach of them. */
+  function flipTravel(game, f) {
+    const o = opponentOf(game, f);
+    const left = MOVES.flip.startup - f.t; // ticks of flight left, this one included
+    if (!o || !standing(o)) {
+      const dir = game.mode === 'ring' ? { x: Math.cos(f.angle), y: Math.sin(f.angle) } : { x: f.facing, y: 0 };
+      f.x += dir.x * FLIP_NO_TARGET_STEP;
+      f.y += dir.y * FLIP_NO_TARGET_STEP;
+      return;
+    }
+    const dx = o.x - f.x;
+    const dy = game.mode === 'ring' ? o.y - f.y : 0;
+    const d = Math.hypot(dx, dy) || 1;
+    const step = Math.max(0, Math.min(FLIP_MAX_STEP, (d - FLIP_LAND_AT) / left));
+    f.x += (dx / d) * step;
+    f.y += (dy / d) * step;
+    // Still facing them when it lands.
+    if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
+  }
+
   function isActionable(f) {
     return f.state === 'idle' || f.state === 'walk' || f.state === 'block';
   }
@@ -216,7 +270,8 @@
     // The attack's height is locked in when it starts.
     f.aim = input.aim;
     input.buffered = null;
-    if (f.luna) lunge(game, f, m);
+    if (action === 'flip') game.events.push({ type: 'flip', attacker: game.fighters.indexOf(f) });
+    else if (f.luna) lunge(game, f, m);
   }
 
   /** How far this fighter's attack reaches. */
@@ -272,6 +327,7 @@
     }
 
     if (!fighting || f.state === 'ko') return;
+    if (airborne(f)) flipTravel(game, f);
 
     if (isActionable(f)) {
       f.aim = input.aim;
@@ -407,10 +463,11 @@
       let def = null;
       let bestD = Infinity;
       game.fighters.forEach((o, j) => {
-        if (j === i || !standing(o)) return;
+        if (j === i || !standing(o) || airborne(o)) return;
         const d = distance(att, o);
         if (d > reach(att, m) || d >= bestD) return;
-        if (angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
+        // The flip lands on whoever is nearest, whichever way they are.
+        if (!m.unblockable && angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
         def = j;
         bestD = d;
       });
@@ -463,7 +520,7 @@
       const def = game.fighters[1 - i];
       const m = MOVES[att.move];
       if (Math.abs(def.x - att.x) > reach(att, m)) return;
-      if (def.state === 'ko') return;
+      if (def.state === 'ko' || airborne(def)) return;
       att.hitLanded = true;
       pending.push({
         attacker: i, defender: 1 - i, move: att.move, height: att.aim,
@@ -484,7 +541,7 @@
       const m = MOVES[hit.move];
       const push = direction(att, def);
       const guarding = hit.defState === 'block' || hit.defState === 'blockstun';
-      const blocking = guarding && hit.defAim === hit.height && hit.faced;
+      const blocking = guarding && hit.defAim === hit.height && hit.faced && !m.unblockable;
       const ev = { target: hit.defender, attacker: hit.attacker, move: hit.move, height: hit.height };
 
       if (blocking) {
@@ -505,8 +562,8 @@
         }
       } else {
         const h = m[hit.height];
-        const counter = hit.defPhase === 'startup' || hit.defPhase === 'recovery'
-          || hit.defState === 'guardbreak';
+        const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
+          || hit.defState === 'guardbreak');
         const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1));
         def.hp = Math.max(0, def.hp - damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
@@ -632,7 +689,8 @@
     const fist = game.fist;
     if (!fist.warn) {
       if (fist.next-- > 0) return;
-      const up = game.fighters.filter(standing);
+      // It's only after Kyle.
+      const up = game.fighters.filter((f) => f.kyle && standing(f));
       if (!up.length) return;
       const target = up[Math.floor(game.random() * up.length)];
       // It comes down where they were when the shadow appeared: move and it misses.
@@ -645,7 +703,7 @@
     const ring = game.mode === 'ring';
     const hit = [];
     game.fighters.forEach((f, i) => {
-      if (!standing(f)) return;
+      if (!f.kyle || !standing(f) || airborne(f)) return; // flipped clean over it
       const dx = f.x - x;
       const dy = ring ? f.y - y : 0;
       const d = Math.hypot(dx, dy);
@@ -685,6 +743,10 @@
   }
 
   /** Luna (any capitals) gets the helping hand. */
+  function isKyle(name) {
+    return String(name || '').trim().toLowerCase() === 'kyle';
+  }
+
   function isLuna(name) {
     return String(name || '').trim().toLowerCase() === 'luna';
   }
@@ -728,6 +790,7 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
+    cheat, airborne, FLIP_CODE, FLIP_CROUCH,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

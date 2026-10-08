@@ -235,6 +235,10 @@ const handlers = {
     if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
     Game.pressAction(ws.room.game, ws.seat, msg.a);
   },
+  cheat(ws, msg) {
+    if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
+    Game.cheat(ws.room.game, ws.seat, msg.code);
+  },
   rematch(ws) {
     const room = ws.room;
     if (!room || !room.game || room.game.phase !== 'matchEnd') return;

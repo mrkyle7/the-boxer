@@ -326,6 +326,12 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'flip') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Zeffen flip!', PALETTE[e.attacker].name, 30);
+      sound.whoosh();
+      return;
+    }
     if (e.type === 'fistWarn') {
       sound.whoosh();
       return;
@@ -357,6 +363,16 @@
       hx = p.x + ((a.x - p.x) / d) * 10;
     } else {
       hx = p.x - snap.fighters[attacker].facing * 18;
+    }
+    if (e.type === 'hit' && e.move === 'flip') {
+      sparks(hx, p.y, '#f4c542', 36, 9);
+      sparks(hx, p.y, '#ffffff', 16, 6);
+      shake = Math.max(shake, 20);
+      flash = Math.max(flash, 0.5);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 34);
+      floatText(p.x, p.y - 76 * up, 'Zeffen!', '#f4c542', 30);
+      sound.slam();
+      return;
     }
     if (e.type === 'hit') {
       const heavy = e.move === 'kick';
@@ -473,9 +489,23 @@
     document.querySelectorAll('#touch [data-aim]').forEach((b) => b.classList.toggle('on', b.dataset.aim === held.aim));
   }
 
+  // The cheat code. Typing it presses E (aim tummy) on the way, so the aim
+  // goes back to what it was before the first letter.
+  const typed = [];
+  function checkCheat(e) {
+    if (e.repeat || e.key.length !== 1) return;
+    typed.push({ key: e.key.toLowerCase(), aim: held.aim });
+    if (typed.length > G.FLIP_CODE.length) typed.shift();
+    if (typed.map((k) => k.key).join('') !== G.FLIP_CODE) return;
+    send({ t: 'cheat', code: G.FLIP_CODE });
+    setHold('aim', typed[0].aim);
+    typed.length = 0;
+  }
+
   window.addEventListener('keydown', (e) => {
     if (!fighting() || e.target.tagName === 'INPUT') return;
     sound.unlock();
+    checkCheat(e);
     if (e.code === 'KeyM') { sound.toggle(); return; }
     if (KEY_HOLD[e.code]) { setHold(KEY_HOLD[e.code], true); e.preventDefault(); }
     if (KEY_AIM[e.code]) { setHold('aim', KEY_AIM[e.code]); e.preventDefault(); }
@@ -633,7 +663,9 @@
       case 'attack': {
         const { phase, p } = attackProgress(f, t);
         const e = phase === 'startup' ? easeOut(p) : p;
-        if (f.move === 'punch') {
+        if (f.move === 'flip') {
+          flipPose(P, t, phase, p, kickReach);
+        } else if (f.move === 'punch') {
           P.front = { x: lerp(42, reach, e), y: lerp(-212, low ? -150 : -214, e) };
           P.lean = e * (low ? 12 : 8);
           if (low) P.crouch += e * 14;
@@ -696,6 +728,37 @@
     return P;
   }
 
+  /**
+   * The Zeffen flip, side on: crouch, spring up into a tuck and turn right
+   * over, then come down with an axe kick.
+   */
+  function flipPose(P, t, phase, p, kickReach) {
+    const m = G.MOVES.flip;
+    if (phase === 'startup' && t < G.FLIP_CROUCH) {
+      const c = t / G.FLIP_CROUCH;
+      P.crouch = 4 + 34 * c;
+      P.front = { x: 30, y: -160 };
+      P.back = { x: 20, y: -150 };
+      return;
+    }
+    if (phase === 'startup') {
+      const q = (t - G.FLIP_CROUCH) / (m.startup - G.FLIP_CROUCH);
+      P.spin = q * Math.PI * 2;
+      P.lift = Math.sin(q * Math.PI) * 170;
+      P.crouch = 40;
+      P.front = { x: 40, y: -110 };
+      P.back = { x: 30, y: -104 };
+      P.kick = { x: 44, y: -70 }; // knees tucked up
+      return;
+    }
+    // Landing: the heel comes down on them.
+    P.kick = { x: kickReach * 0.85, y: lerp(-40, -150, p) };
+    P.lean = -14 * p;
+    P.crouch = 18 * p;
+    P.front = { x: 34, y: -200 };
+    P.back = { x: 14, y: -190 };
+  }
+
   function limb(sx, sy, gx, gy, len, bendDown) {
     // Two-bone IK: returns the elbow/knee joint.
     const dx = gx - sx;
@@ -727,6 +790,12 @@
     ctx.scale(f.facing, 1);
     if (P.stepX) ctx.translate(P.stepX, 0);
     if (P.fall) ctx.rotate(-P.fall * Math.PI * 0.5);
+    if (P.spin !== undefined) {
+      // Up into the air and over, turning about the middle of the body.
+      ctx.translate(0, -P.lift - 110);
+      ctx.rotate(P.spin);
+      ctx.translate(0, 110);
+    }
     if (P.wobble) ctx.rotate(P.wobble);
 
     const hipY = -104 + P.crouch;
@@ -1181,6 +1250,21 @@
     ctx.ellipse(3, 5, 26, 28, 0, 0, Math.PI * 2);
     ctx.fill();
 
+    if (G.airborne(f)) {
+      // The Zeffen flip from above: up towards us (bigger), turning over
+      // (squashed front to back), with a gold swirl round it.
+      const q = (t - G.FLIP_CROUCH) / (G.MOVES.flip.startup - G.FLIP_CROUCH);
+      const up = 1 + Math.sin(q * Math.PI) * 0.7;
+      ctx.strokeStyle = 'rgba(244,197,66,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, 0, 40 * up, q * 12, q * 12 + Math.PI * 1.2);
+      ctx.stroke();
+      ctx.rotate(d.angle);
+      ctx.scale(up * (0.35 + 0.65 * Math.abs(Math.cos(q * Math.PI))), up);
+      ctx.rotate(-d.angle);
+    }
+
     let wobble = 0;
     if (f.state === 'guardbreak') wobble = Math.sin(t * 0.35) * 0.25;
     let recoil = 0;
@@ -1200,7 +1284,11 @@
     } else if (f.state === 'attack') {
       const { phase, p: pr } = attackProgress(f, t);
       const e = phase === 'startup' ? easeOut(pr) : pr;
-      if (f.move === 'punch') {
+      if (f.move === 'flip' && phase === 'startup') {
+        // Tucked up.
+        front = { x: 10, y: 10 };
+        back = { x: 10, y: -10 };
+      } else if (f.move === 'punch') {
         const reach = ((G.MOVES.punch.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale();
         front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
       } else {
