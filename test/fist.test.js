@@ -1,6 +1,6 @@
 'use strict';
 
-// The giant fist: every five to fifteen seconds a shadow, then a slam for 30.
+// The giant fist: every five to fifteen seconds a shadow under Kyle, then a slam for 30.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -35,7 +35,7 @@ test('no fist unless fists are on', () => {
 
 test('the shadow comes five to fifteen seconds in, and the fist a second after it', () => {
   for (const [r, wait] of [[0, G.FIST_MIN_TICKS], [0.999, G.FIST_MAX_TICKS]]) {
-    const g = fistGame(['A', 'B'], r);
+    const g = fistGame(['Kyle', 'B'], r);
     const events = [];
     for (let i = 0; i < wait + G.FIST_WARN_TICKS; i++) events.push(...run(g, 1).map((e) => ({ ...e, at: i + 1 })));
     const warn = events.find((e) => e.type === 'fistWarn');
@@ -48,20 +48,21 @@ test('the shadow comes five to fifteen seconds in, and the fist a second after i
   assert.strictEqual(G.FIST_MAX_TICKS, 15 * G.TICK_RATE);
 });
 
-test('whoever stays under it takes 30, guard or no guard', () => {
-  const g = fistGame(['A', 'B']);
+test('if Kyle stays under it he takes 30, guard or no guard', () => {
+  const g = fistGame(['B', 'kyle']);
   G.setHeld(g, 0, { block: true });
   G.setHeld(g, 1, { block: true });
   const events = run(g, G.FIST_MIN_TICKS + G.FIST_WARN_TICKS);
   const fist = events.find((e) => e.type === 'fist');
   const target = events.find((e) => e.type === 'fistWarn').target;
+  assert.strictEqual(target, 1, 'it went for Kyle');
   assert.ok(fist.hits.includes(target));
   assert.strictEqual(g.fighters[target].hp, G.MAX_HP - 30);
   assert.strictEqual(g.fighters[target].state, 'hitstun');
 });
 
 test('walking out from under the shadow dodges it', () => {
-  const g = fistGame(['A', 'B']); // random 0: aims at A
+  const g = fistGame(['Kyle', 'B']);
   const events = run(g, G.FIST_MIN_TICKS);
   assert.strictEqual(events.find((e) => e.type === 'fistWarn').target, 0);
   G.setHeld(g, 0, { left: true }); // away from B
@@ -71,10 +72,10 @@ test('walking out from under the shadow dodges it', () => {
   assert.strictEqual(g.fighters[0].hp, G.MAX_HP);
 });
 
-test('in the ring it can catch more than one, and can knock someone out', () => {
-  const g = fistGame(['A', 'B', 'C']);
+test('it only ever hits Kyle, and can knock him out', () => {
+  const g = fistGame(['KYLE', 'B', 'C']);
   run(g, G.FIST_MIN_TICKS - 1);
-  // Put B and C close to where A is, A on 20 health.
+  // Put B right beside Kyle, Kyle on 20 health.
   const a = g.fighters[0];
   g.fighters[1].x = a.x + 60;
   g.fighters[1].y = a.y;
@@ -86,21 +87,28 @@ test('in the ring it can catch more than one, and can knock someone out', () => 
   // Hold still (the fighters were pushed apart a little) and let it land.
   const events = run(g, G.FIST_WARN_TICKS);
   const fist = events.find((e) => e.type === 'fist');
-  assert.deepStrictEqual(fist.hits.sort(), [0, 1]);
-  assert.strictEqual(g.fighters[2].hp, G.MAX_HP, 'C was far away');
+  assert.deepStrictEqual(fist.hits, [0]);
+  assert.strictEqual(g.fighters[1].hp, G.MAX_HP, 'B was under it too, but it only hits Kyle');
   assert.ok(events.some((e) => e.type === 'ko' && e.target === 0));
-  assert.strictEqual(g.phase, 'fight', 'A is out; B and C fight on');
+  assert.strictEqual(g.phase, 'fight', 'Kyle is out; B and C fight on');
+});
+
+test('no Kyle, no fist', () => {
+  const g = fistGame(['A', 'B', 'C']);
+  g.timer = 100000;
+  const events = run(g, 3 * (G.FIST_MAX_TICKS + G.FIST_WARN_TICKS));
+  assert.ok(!events.some((e) => e.type === 'fistWarn' || e.type === 'fist'));
 });
 
 test('it keeps coming: the next shadow is five to fifteen seconds after the slam', () => {
-  const g = fistGame(['A', 'B'], 0.5);
+  const g = fistGame(['Kyle', 'B'], 0.5);
   g.timer = 100000;
   const events = run(g, 3 * (G.FIST_MAX_TICKS + G.FIST_WARN_TICKS));
   assert.ok(events.filter((e) => e.type === 'fist').length >= 2);
 });
 
 test('the snapshot shows the shadow while it is on its way, and only then', () => {
-  const g = fistGame(['A', 'B']);
+  const g = fistGame(['Kyle', 'B']);
   run(g, G.FIST_MIN_TICKS - 1);
   assert.ok(!('fist' in G.snapshot(g)));
   run(g, 10);

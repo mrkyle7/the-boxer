@@ -65,17 +65,17 @@ test("nothing touches you in the air: a punch goes under, and so does the giant 
 });
 
 test('you can flip over the giant fist', () => {
-  const g = G.createGame(['A', 'B'], { fists: true, random: () => 0 });
+  const g = G.createGame(['Kyle', 'B'], { fists: true, random: () => 0 });
   while (g.phase !== 'fight') G.step(g);
   g.fighters[0].x = 200;
   g.fighters[1].x = 800;
-  run(g, G.FIST_MIN_TICKS); // the shadow appears under A
+  run(g, G.FIST_MIN_TICKS); // the shadow appears under Kyle
   run(g, G.FIST_WARN_TICKS - 10);
   G.cheat(g, 0, 'zeffen');
   const events = run(g, 12);
   const fist = events.find((e) => e.type === 'fist');
   assert.ok(fist);
-  assert.ok(!fist.hits.includes(0), 'A was in the air');
+  assert.ok(!fist.hits.includes(0), 'Kyle was in the air');
 });
 
 test('it can be done again, and needs no stamina', () => {

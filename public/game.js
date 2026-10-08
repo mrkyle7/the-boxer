@@ -13,8 +13,9 @@
 // opponent she's heading for (aim assist).
 //
 // The giant fist: with fists on, every five to fifteen seconds of fighting a
-// shadow appears under a random fighter, and a second later a giant fist
-// slams down there. Anyone still under it takes 30 damage, guard or no guard.
+// shadow appears under a fighter called Kyle (any capitals), and a second
+// later a giant fist slams down there. If Kyle is still under it he takes 30
+// damage, guard or no guard. It only ever hits Kyle: no Kyle, no fist.
 //
 // The cheat code: type "zeffen" in a fight for the Zeffen flip, a front flip
 // that carries you onto your opponent and lands for 50, unblockable. While
@@ -118,6 +119,7 @@
     return {
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
+      kyle: isKyle(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
       vx: 0,
@@ -687,7 +689,8 @@
     const fist = game.fist;
     if (!fist.warn) {
       if (fist.next-- > 0) return;
-      const up = game.fighters.filter(standing);
+      // It's only after Kyle.
+      const up = game.fighters.filter((f) => f.kyle && standing(f));
       if (!up.length) return;
       const target = up[Math.floor(game.random() * up.length)];
       // It comes down where they were when the shadow appeared: move and it misses.
@@ -700,7 +703,7 @@
     const ring = game.mode === 'ring';
     const hit = [];
     game.fighters.forEach((f, i) => {
-      if (!standing(f) || airborne(f)) return; // flipped clean over it
+      if (!f.kyle || !standing(f) || airborne(f)) return; // flipped clean over it
       const dx = f.x - x;
       const dy = ring ? f.y - y : 0;
       const d = Math.hypot(dx, dy);
@@ -740,6 +743,10 @@
   }
 
   /** Luna (any capitals) gets the helping hand. */
+  function isKyle(name) {
+    return String(name || '').trim().toLowerCase() === 'kyle';
+  }
+
   function isLuna(name) {
     return String(name || '').trim().toLowerCase() === 'luna';
   }
