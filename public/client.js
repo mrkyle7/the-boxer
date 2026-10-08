@@ -125,6 +125,8 @@
         lastPhase = null;
         effects.length = 0;
         slams.length = 0;
+        bolts.length = 0;
+        hearts.length = 0;
         texts.length = 0;
         held.aim = 'head';
         syncTouch();
@@ -326,6 +328,15 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'harrison') {
+      onSurprise(e);
+      return;
+    }
+    if (e.type === 'hurt') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 24 : 40), `-${e.damage}`, '#ffffff', 30);
+      return;
+    }
     if (e.type === 'jemini') {
       const p = targetPos(e.target, 'body');
       sparks(p.x, p.y, '#6ff2b6', 30, 7);
@@ -488,6 +499,20 @@
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
       },
+      // Harrison's surprises.
+      zap() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.4, 4000, 0.7);
+        tone(a, 1600, 0.35, 0.2, 'sawtooth', 80);
+      },
+      slide() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 1000, 0.55, 0.15, 'sine', 160);
+      },
+      tinkle() {
+        const a = ctxOk(); if (!a) return;
+        [0, 0.07, 0.14].forEach((at, k) => setTimeout(() => tone(a, 1800 + k * 500, 0.3, 0.07, 'triangle'), at * 1000));
+      },
       // Kyle: a soft puff of smoke.
       poof() {
         const a = ctxOk(); if (!a) return;
@@ -568,6 +593,8 @@
     sound.unlock();
     const cheating = checkCheat(e);
     if (cheating === 'done') { e.preventDefault(); return; }
+    // Partway through a code (the A in harrison), letters don't attack.
+    if (cheating === 'typing' && KEY_ACT[e.code]) { e.preventDefault(); return; }
     if (e.code === 'KeyM') { if (!cheating) sound.toggle(); return; }
     if (KEY_HOLD[e.code]) { setHold(KEY_HOLD[e.code], true); e.preventDefault(); }
     if (KEY_AIM[e.code]) { setHold('aim', KEY_AIM[e.code]); e.preventDefault(); }
@@ -786,6 +813,15 @@
         P.back = { x: -10, y: -150 };
         P.lean = -12;
         break;
+    }
+    if (f.slip) {
+      // Feet out from under them, flat on their back, then back up.
+      const down = G.BANANA_TICKS - f.slip;
+      P.fall = easeOut(clamp01(down / 10)) * clamp01(f.slip / 14);
+      P.front = { x: 30, y: -180 };
+      P.back = { x: -10, y: -170 };
+      P.lean = -18;
+      P.kick = { x: 60, y: -90 * P.fall };
     }
     return P;
   }
@@ -1307,8 +1343,8 @@
       ctx.setLineDash([]);
     }
 
-    if (f.state === 'ko') {
-      // Flat out on the canvas, seeing stars.
+    if (f.state === 'ko' || f.slip) {
+      // Flat out on the canvas, seeing stars (or just slipped over).
       const fall = easeOut(clamp01(t / 26));
       ctx.rotate(d.angle + Math.PI);
       ctx.globalAlpha = 0.95;
@@ -1490,6 +1526,8 @@
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
+    if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
+    if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
     if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
     return out;
   }
@@ -1722,6 +1760,7 @@
     zeffen: { fill: ['#fff7a1', '#ffd23f', '#ff7b1c'], spark: '#fff36b' }, // sunny
     luna: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight
     jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
+    harrison: { fill: [], spark: '#ffffff', rainbow: true }, // who knows?
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
   const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
@@ -1786,9 +1825,17 @@
         ctx.lineWidth = size * 0.1;
         ctx.strokeText(word[k], 0, 0);
         const g = ctx.createLinearGradient(0, -size * 0.75, 0, 0);
-        g.addColorStop(0, style.fill[0]);
-        g.addColorStop(0.5, style.fill[1]);
-        g.addColorStop(1, style.fill[2]);
+        if (style.rainbow) {
+          // A different colour for every letter, slowly cycling.
+          const hue = (k * 45 + now / 8) % 360;
+          g.addColorStop(0, `hsl(${hue},100%,88%)`);
+          g.addColorStop(0.5, `hsl(${hue},95%,62%)`);
+          g.addColorStop(1, `hsl(${(hue + 30) % 360},90%,45%)`);
+        } else {
+          g.addColorStop(0, style.fill[0]);
+          g.addColorStop(0.5, style.fill[1]);
+          g.addColorStop(1, style.fill[2]);
+        }
         ctx.fillStyle = g;
         ctx.fillText(word[k], 0, 0);
         ctx.restore();
@@ -1833,6 +1880,202 @@
     effects.push({ x: x + (Math.random() - 0.5) * spread, y: y - Math.random() * spread * 0.5,
       vx: (Math.random() - 0.5) * 0.6, vy: -3.2 - Math.random() * 1.5, life: 22,
       color: Math.random() < 0.5 ? '#a6ffd6' : '#ffffff' });
+  }
+
+  // ---- Harrison's surprises ------------------------------------------------------
+
+  const bolts = []; // lightning, for a few frames
+  const hearts = []; // floating up off a snack
+  const SURPRISE_LABEL = {
+    zap: ['Zap!', '#fff36b'], banana: ['Whoops!', '#ffe14d'], freeze: ['Brrr!', '#b5ecff'],
+    zoom: ['Zoom!', '#ffb13b'], snack: ['Yum! +30', '#ff7eb6'],
+  };
+
+  function onSurprise(e) {
+    const who = targetPos(e.attacker, 'head');
+    const up = mode === 'ring' ? 0.6 : 1;
+    const [text, color] = SURPRISE_LABEL[e.surprise];
+    floatText(who.x, who.y - 110 * up, 'Surprise!', '#ffffff', 22);
+    if (e.surprise === 'zap') {
+      const p = targetPos(e.target, 'body');
+      bolts.push({ x: p.x, y: p.y, life: 14 });
+      flash = Math.max(flash, 0.8);
+      shake = Math.max(shake, 14);
+      sparks(p.x, p.y, '#fff36b', 30, 8);
+      floatText(p.x, p.y - 80 * up, text, color, 36);
+      sound.zap();
+    } else if (e.surprise === 'banana') {
+      const p = targetPos(e.target, 'body');
+      floatText(p.x, p.y - 80 * up, text, color, 32);
+      sound.slide();
+    } else if (e.surprise === 'freeze') {
+      for (const i of e.targets) {
+        const p = targetPos(i, 'body');
+        sparks(p.x, p.y, '#e6f8ff', 16, 5);
+        floatText(p.x, p.y - 80 * up, text, color, 30);
+      }
+      sound.tinkle();
+    } else if (e.surprise === 'zoom') {
+      floatText(who.x, who.y - 70 * up, text, color, 34);
+      sound.whoosh();
+    } else {
+      for (let k = 0; k < 9; k++) {
+        hearts.push({ x: who.x + (Math.random() - 0.5) * 60, y: who.y + 20, vy: -1 - Math.random() * 1.5,
+          s: 0.6 + Math.random() * 0.6, life: 50 + Math.random() * 20 });
+      }
+      floatText(who.x, who.y - 70 * up, text, color, 32);
+      sound.grow();
+    }
+  }
+
+  /** Where a fighter's feet are, on screen. */
+  function feetOf(i) {
+    const d = display[i];
+    return mode === 'ring' ? toScreen(d.x, d.y) : { x: d.x, y: FLOOR };
+  }
+
+  /** Under the fighters: banana skins, and zoom trails. */
+  function drawSurprisesUnder(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (hiddenFrom(i, f)) return;
+      const d = display[i];
+      // Zoom: a streak behind them from where they've just been.
+      d.trail = d.trail || [];
+      const here = feetOf(i);
+      if (f.fast) d.trail.push({ x: here.x, y: here.y });
+      if (!f.fast || d.trail.length > 9) d.trail.shift();
+      if (f.fast && d.trail.length > 1) {
+        const tail = d.trail[0];
+        const rows = mode === 'ring' ? [0] : [-70, -130, -190];
+        ctx.lineCap = 'round';
+        for (const r of rows) {
+          const g = ctx.createLinearGradient(tail.x, tail.y + r, here.x, here.y + r);
+          g.addColorStop(0, 'rgba(255,177,59,0)');
+          g.addColorStop(1, 'rgba(255,214,120,0.7)');
+          ctx.strokeStyle = g;
+          ctx.lineWidth = mode === 'ring' ? 18 : 10;
+          ctx.beginPath();
+          ctx.moveTo(tail.x, tail.y + r);
+          ctx.lineTo(here.x, here.y + r);
+          ctx.stroke();
+        }
+      }
+      // Banana skin, where they went over.
+      if (f.slip) {
+        d.banana = d.banana || { x: here.x + (mode === 'ring' ? 38 : 40 * (f.facing || 1)), y: here.y + (mode === 'ring' ? 22 : 0) };
+        drawBanana(d.banana.x, d.banana.y);
+      } else {
+        d.banana = null;
+      }
+    });
+  }
+
+  function drawBanana(x, y) {
+    const k = mode === 'ring' ? 0.6 : 1;
+    ctx.save();
+    ctx.translate(x, y - 6 * k);
+    ctx.scale(k, k);
+    ctx.fillStyle = '#ffd93b';
+    ctx.strokeStyle = '#8a6a00';
+    ctx.lineWidth = 2;
+    // Three floppy peel flaps round a stalk.
+    for (const a of [-0.9, 0, 0.9]) {
+      ctx.save();
+      ctx.rotate(a);
+      ctx.beginPath();
+      ctx.ellipse(0, -14, 7, 16, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.fillStyle = '#6b4a12';
+    ctx.fillRect(-3, -6, 6, 8);
+    ctx.restore();
+  }
+
+  /** Over the fighters: ice blocks, lightning, hearts. */
+  function drawSurprisesOver(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.frozen || hiddenFrom(i, f)) return;
+      const p = feetOf(i);
+      const size = display[i].size || 1;
+      const melt = clamp01(f.frozen / 40); // goes see-through as it melts
+      let x0; let y0; let w; let h;
+      if (mode === 'ring') {
+        const r = 34 * fighterScale() * size;
+        x0 = p.x - r; y0 = p.y - r; w = r * 2; h = r * 2;
+      } else {
+        w = 140 * size; h = 270 * size; x0 = p.x - w / 2; y0 = p.y - h + 6;
+      }
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.5 * melt;
+      const g = ctx.createLinearGradient(x0, y0, x0 + w, y0 + h);
+      g.addColorStop(0, 'rgba(230,248,255,0.75)');
+      g.addColorStop(1, 'rgba(120,200,240,0.45)');
+      ctx.fillStyle = g;
+      ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(x0, y0, w, h, 10) : ctx.rect(x0, y0, w, h);
+      ctx.fill();
+      ctx.stroke();
+      // Shine and a crack or two.
+      ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.moveTo(x0 + w * 0.18, y0 + h * 0.12);
+      ctx.lineTo(x0 + w * 0.18, y0 + h * 0.45);
+      ctx.stroke();
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x0 + w * 0.7, y0 + h * 0.2);
+      ctx.lineTo(x0 + w * 0.6, y0 + h * 0.32);
+      ctx.lineTo(x0 + w * 0.74, y0 + h * 0.4);
+      ctx.stroke();
+      ctx.restore();
+      // Drips as it melts.
+      if (f.frozen < 60 && Math.random() < 0.3) {
+        effects.push({ x: x0 + Math.random() * w, y: y0 + h - 4, vx: 0, vy: 0.5, life: 16, color: '#b5ecff' });
+      }
+    });
+
+    for (let k = bolts.length - 1; k >= 0; k--) {
+      const b = bolts[k];
+      // A fresh jagged bolt every frame, so it flickers.
+      const pts = [{ x: b.x + (Math.random() - 0.5) * 80, y: 0 }];
+      const steps = 8;
+      for (let n = 1; n < steps; n++) {
+        pts.push({ x: b.x + (Math.random() - 0.5) * 50 * (1 - n / steps), y: (b.y * n) / steps });
+      }
+      pts.push({ x: b.x, y: b.y });
+      for (const [width, color] of [[16, 'rgba(255,243,107,0.35)'], [7, 'rgba(255,243,107,0.9)'], [3, '#ffffff']]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.lineJoin = 'miter';
+        ctx.beginPath();
+        pts.forEach((pt, n) => (n ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y)));
+        ctx.stroke();
+      }
+      if (--b.life <= 0) bolts.splice(k, 1);
+    }
+
+    for (let k = hearts.length - 1; k >= 0; k--) {
+      const h = hearts[k];
+      h.y += h.vy;
+      h.x += Math.sin((h.life + k) / 6) * 0.6;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, h.life / 20);
+      ctx.translate(h.x, h.y);
+      ctx.scale(h.s, h.s);
+      ctx.fillStyle = '#ff5fa2';
+      ctx.beginPath();
+      ctx.moveTo(0, 6);
+      ctx.bezierCurveTo(-14, -4, -8, -16, 0, -8);
+      ctx.bezierCurveTo(8, -16, 14, -4, 0, 6);
+      ctx.fill();
+      ctx.restore();
+      if (--h.life <= 0) hearts.splice(k, 1);
+    }
   }
 
   // ---- The giant fist ----------------------------------------------------------
@@ -2043,6 +2286,7 @@
     if (ring) {
       drawRingScene(clock);
       drawFistUnder();
+      drawSurprisesUnder(clock);
       // Those down first, then attackers last so their gloves are on top.
       const order = snap.fighters.map((f, i) => i)
         .filter((i) => !snap.fighters[i].left)
@@ -2056,6 +2300,7 @@
     } else {
       drawScene(clock);
       drawFistUnder();
+      drawSurprisesUnder(clock);
 
       // Draw the fighter who is being hit first so the puncher's glove overlaps.
       const order = snap.fighters[0].state === 'attack' ? [1, 0] : [0, 1];
@@ -2086,6 +2331,7 @@
     ctx.globalAlpha = 1;
     if (!ring) drawFrontRopes();
     drawFistOver();
+    drawSurprisesOver(clock);
     drawTyping();
 
     for (let i = texts.length - 1; i >= 0; i--) {
