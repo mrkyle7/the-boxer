@@ -29,6 +29,9 @@
 // Two more go on you, not on them: "jemini" makes you a giant for seven
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
 // others for five (that's only in how they're drawn: the fight's the same).
+//
+// And "harrison": a surprise. One of a handful of moves and powers, picked
+// at random each time (see SURPRISES).
 (function (root) {
   'use strict';
 
@@ -138,8 +141,23 @@
   const KYLE_TICKS = 5 * TICK_RATE;
 
   // Cheat codes, and the move (or power-up) each one does.
-  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle' };
-  const POWERS = ['jemini', 'kyle'];
+  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison' };
+  const POWERS = ['jemini', 'kyle', 'harrison'];
+
+  // Harrison's surprises: one of these, at random.
+  //  zap: lightning strikes whoever you're fighting, for 25 (no guard stops it)
+  //  banana: they slip on a banana skin, 15, and are down for a second and a bit
+  //  freeze: everyone else is frozen in a block of ice for three seconds
+  //  zoom: you run nearly twice as fast for six seconds
+  //  snack: a quick snack puts 30 health and all your stamina back
+  const SURPRISES = ['zap', 'banana', 'freeze', 'zoom', 'snack'];
+  const ZAP_DAMAGE = 25;
+  const BANANA_DAMAGE = 15;
+  const BANANA_TICKS = 80;
+  const FREEZE_TICKS = 3 * TICK_RATE;
+  const ZOOM_TICKS = 6 * TICK_RATE;
+  const ZOOM_SPEED = 1.8;
+  const SNACK_HEAL = 30;
   const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
   const AIRBORNE_MOVES = ['flip', 'vault'];
 
@@ -155,6 +173,9 @@
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
+      frozen: 0, // ticks left in a block of ice
+      fast: 0, // ticks of zooming left
+      slip: 0, // ticks left on the floor after a banana skin
       invisible: 0, // ticks of Kyle left
       typed: '', // the last few letters typed in the fight
       typing: '', // as much of a cheat code as they make, for everyone to see
@@ -260,13 +281,85 @@
     input.bufferAge = 0;
   }
 
-  /** Jemini (a giant) or Kyle (invisible), straight away and for a while. */
+  /** Jemini (a giant), Kyle (invisible) or Harrison (a surprise), straight away. */
   function power(game, index, which) {
     const f = game.fighters[index];
     if (!f || game.phase !== 'fight' || !standing(f)) return;
+    if (which === 'harrison') {
+      surprise(game, index);
+      return;
+    }
     if (which === 'jemini') f.giant = JEMINI_TICKS;
     else f.invisible = KYLE_TICKS;
     game.events.push({ type: which, target: index });
+  }
+
+  /** Harrison: one of the surprises, at random. */
+  function surprise(game, index) {
+    const f = game.fighters[index];
+    const others = game.fighters.filter((o) => o !== f && standing(o));
+    let pick = SURPRISES[Math.floor(game.random() * SURPRISES.length)];
+    // The ones that need someone to do it to, when there's nobody up.
+    if (!others.length && ['zap', 'banana', 'freeze'].includes(pick)) pick = 'snack';
+    const ev = { type: 'harrison', surprise: pick, attacker: index };
+    // Whoever you're fighting (or the nearest, in the ring).
+    const foe = () => {
+      const o = opponentOf(game, f);
+      if (o && standing(o)) return o;
+      return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+    };
+    if (pick === 'zap') {
+      const o = foe();
+      ev.target = game.fighters.indexOf(o);
+      game.events.push(ev);
+      hurt(game, f, o, ZAP_DAMAGE, 30, 6);
+    } else if (pick === 'banana') {
+      const o = foe();
+      ev.target = game.fighters.indexOf(o);
+      game.events.push(ev);
+      o.slip = BANANA_TICKS;
+      hurt(game, f, o, BANANA_DAMAGE, BANANA_TICKS, 0);
+    } else if (pick === 'freeze') {
+      ev.targets = others.map((o) => game.fighters.indexOf(o));
+      game.events.push(ev);
+      for (const o of others) {
+        o.frozen = FREEZE_TICKS;
+        if (o.state !== 'hitstun') setState(o, 'idle');
+        o.vx = 0;
+        o.vy = 0;
+      }
+    } else if (pick === 'zoom') {
+      f.fast = ZOOM_TICKS;
+      game.events.push(ev);
+    } else {
+      f.hp = Math.min(MAX_HP, f.hp + SNACK_HEAL);
+      f.stamina = MAX_STAMINA;
+      game.events.push(ev);
+    }
+  }
+
+  /** Damage that isn't a punch or kick: no guard stops it. */
+  function hurt(game, att, def, damage, stun, knockback) {
+    if (!def || !standing(def)) return;
+    const i = game.fighters.indexOf(def);
+    def.hp = Math.max(0, def.hp - damage);
+    att.stats.landed++;
+    att.stats.damage += damage;
+    const dx = def.x - att.x;
+    const dy = game.mode === 'ring' ? def.y - att.y : 0;
+    const d = Math.hypot(dx, dy) || 1;
+    def.vx += (dx / d) * knockback;
+    def.vy += (dy / d) * knockback;
+    setState(def, 'hitstun');
+    def.stun = stun;
+    def.hitHeight = 'head';
+    forgetTyping(def);
+    game.events.push({ type: 'hurt', target: i, attacker: game.fighters.indexOf(att), damage });
+    if (def.hp <= 0) {
+      def.slip = 0;
+      setState(def, 'ko');
+      game.events.push({ type: 'ko', target: i });
+    }
   }
 
   /**
@@ -463,8 +556,16 @@
     if (fighting) {
       if (f.giant > 0) f.giant--;
       if (f.invisible > 0) f.invisible--;
+      if (f.fast > 0) f.fast--;
+      if (f.slip > 0) f.slip--;
+      if (f.frozen > 0) f.frozen--;
     }
     if (!fighting || f.state === 'ko') return;
+    // Frozen solid: no moving, no attacking (but you can still be hit).
+    if (f.frozen > 0) {
+      input.buffered = null;
+      return;
+    }
     if (airborne(f)) flipTravel(game, f);
     if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
     // The flip's second hit, if the first landed.
@@ -487,7 +588,7 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1);
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
       let mx = dir * norm;
@@ -923,6 +1024,9 @@
         ...(f.typing ? { typing: f.typing } : {}),
         ...(f.giant > 0 ? { giant: f.giant } : {}),
         ...(f.invisible > 0 ? { invisible: f.invisible } : {}),
+        ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
+        ...(f.fast > 0 ? { fast: f.fast } : {}),
+        ...(f.slip > 0 ? { slip: f.slip } : {}),
         x: Math.round(f.x * 10) / 10,
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
@@ -946,7 +1050,7 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
-    cheat, typeKey, airborne, FLIP_CODE, CODES, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    cheat, typeKey, airborne, FLIP_CODE, CODES, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

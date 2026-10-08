@@ -41,6 +41,8 @@ Or type **luna** for the Luna vault: a flip right over your opponent, landing be
 
 Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself).
 
+And **harrison**? Type it and find out. It's different every time.
+
 ## Deployment
 
 Live at **https://boxer.cheetahmoongames.com**, one of the games linked from [cheetahmoongames.com](https://cheetahmoongames.com).

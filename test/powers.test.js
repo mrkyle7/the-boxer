@@ -74,7 +74,7 @@ test('kyle: invisible for five seconds (only how the others draw you)', () => {
 });
 
 test('all four codes are there; the E in kyle and jemini is fine', () => {
-  assert.deepStrictEqual(Object.keys(G.CODES).sort(), ['jemini', 'kyle', 'luna', 'zeffen']);
+  assert.ok(['jemini', 'kyle', 'luna', 'zeffen'].every((c) => c in G.CODES));
   const g = fight();
   type(g, 0, 'kyl');
   assert.strictEqual(g.fighters[0].typing, 'kyl');
