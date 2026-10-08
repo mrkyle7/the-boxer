@@ -18,9 +18,10 @@
 // slams down there. Anyone still under it takes 30 damage, guard or no guard.
 //
 // The cheat code: type "zeffen" in a fight for the Zeffen flip, a short front
-// flip at your opponent that lands for 50, unblockable. It's aimed where they
+// flip at your opponent that lands twice, 25 a time, unblockable. It's aimed where they
 // were when you jumped, so they can still get out of the way. While you're in
-// the air nothing can touch you.
+// the air nothing can touch you. Everyone can see the letters as they're
+// typed, and getting hit wipes them, so the others can stop it.
 (function (root) {
   'use strict';
 
@@ -97,13 +98,16 @@
   };
 
   // The Zeffen flip (the cheat code): a crouch, a front flip through the air
-  // towards the opponent, and a landing that can't be blocked.
+  // towards the opponent, and a landing that can't be blocked. It hits twice:
+  // the landing holds them where they are, and the second knocks them away.
   MOVES.flip = {
-    startup: 30, active: 4, recovery: 16, range: 160, stamina: 0,
+    startup: 30, active: 14, recovery: 16, range: 160, stamina: 0,
     unblockable: true,
-    head: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
-    body: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
+    first: { damage: 25, hitstun: 24, knockback: 2, winded: 0 },
+    head: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
+    body: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
   };
+  const FLIP_SECOND_AT = 10; // ticks after landing for the second hit
   const FLIP_CODE = 'zeffen';
   const FLIP_CROUCH = 5; // ticks before leaving the ground
   const FLIP_LAND_AT = 100; // aims to land this far from the opponent, in reach
@@ -120,6 +124,7 @@
     return {
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
+      typing: 0, // letters of the cheat code typed so far
       kyle: isKyle(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
@@ -216,6 +221,23 @@
     input.bufferAge = 0;
   }
 
+  /**
+   * A letter typed in the fight. Getting the cheat code right, one letter at
+   * a time, buffers the flip; a wrong letter starts it again.
+   */
+  function typeKey(game, index, key) {
+    const f = game.fighters[index];
+    if (!f || game.phase !== 'fight' || !standing(f)) return;
+    const k = String(key || '').toLowerCase();
+    if (k.length !== 1) return;
+    if (k === FLIP_CODE[f.typing]) f.typing++;
+    else f.typing = k === FLIP_CODE[0] ? 1 : 0;
+    if (f.typing === FLIP_CODE.length) {
+      f.typing = 0;
+      cheat(game, index, FLIP_CODE);
+    }
+  }
+
   /** Off the ground in the flip, where nothing can touch you. */
   function airborne(f) {
     return f.state === 'attack' && f.move === 'flip' && f.t >= FLIP_CROUCH && f.t < MOVES.flip.startup;
@@ -237,8 +259,16 @@
       travel = Math.max(0, Math.min(FLIP_MAX_TRAVEL, d - FLIP_LAND_AT));
       if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
     }
+    f.flipHits = 0;
     const flight = MOVES.flip.startup - FLIP_CROUCH;
     f.flipStep = { x: (dir.x * travel) / flight, y: (dir.y * travel) / flight };
+  }
+
+  /** Counts the flip's hits: true for the second. */
+  function flipHit(att) {
+    if (att.move !== 'flip') return false;
+    att.flipHits = (att.flipHits || 0) + 1;
+    return att.flipHits === 2;
   }
 
   /** Through the air, the way it was aimed. */
@@ -339,6 +369,10 @@
 
     if (!fighting || f.state === 'ko') return;
     if (airborne(f)) flipTravel(game, f);
+    // The flip's second hit, if the first landed.
+    if (f.state === 'attack' && f.move === 'flip' && f.t === MOVES.flip.startup + FLIP_SECOND_AT && f.flipHits === 1) {
+      f.hitLanded = false;
+    }
 
     if (isActionable(f)) {
       f.aim = input.aim;
@@ -486,7 +520,7 @@
       const d = game.fighters[def];
       att.hitLanded = true;
       pending.push({
-        attacker: i, defender: def, move: att.move, height: att.aim,
+        attacker: i, defender: def, move: att.move, height: att.aim, second: flipHit(att),
         defPhase: movePhase(d), defState: d.state, defAim: d.aim,
         // A guard only covers what's in front of it.
         faced: angleDiff(d.angle, angleTo(d, att)) <= GUARD_ARC,
@@ -534,7 +568,7 @@
       if (def.state === 'ko' || airborne(def)) return;
       att.hitLanded = true;
       pending.push({
-        attacker: i, defender: 1 - i, move: att.move, height: att.aim,
+        attacker: i, defender: 1 - i, move: att.move, height: att.aim, second: flipHit(att),
         defPhase: movePhase(def), defState: def.state, defAim: def.aim, faced: true,
       });
     });
@@ -572,7 +606,7 @@
           game.events.push({ type: 'block', ...ev });
         }
       } else {
-        const h = m[hit.height];
+        const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
         const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1));
@@ -585,8 +619,9 @@
         setState(def, 'hitstun');
         def.stun = h.hitstun;
         def.hitHeight = hit.height;
+        def.typing = 0; // a hit knocks the cheat code out of your head
         // Guarding the wrong height (or the wrong way) is worth telling the defender about.
-        game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding });
+        game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding, ...(hit.second ? { second: true } : {}) });
       }
       if (def.hp <= 0) {
         setState(def, 'ko');
@@ -734,6 +769,7 @@
       if (ring) f.vy += ay * FIST_KNOCKBACK;
       setState(f, 'hitstun');
       f.stun = FIST_HITSTUN;
+      f.typing = 0;
       f.hitHeight = 'head';
     });
     game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
@@ -784,6 +820,7 @@
       fighters: game.fighters.map((f) => ({
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
+        ...(f.typing ? { typing: f.typing } : {}),
         x: Math.round(f.x * 10) / 10,
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
@@ -807,7 +844,7 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
-    cheat, airborne, FLIP_CODE, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    cheat, typeKey, airborne, FLIP_CODE, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

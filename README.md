@@ -35,7 +35,7 @@ Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` w
 
 Look out for the **giant fist**: every five to fifteen seconds a shadow appears under a random fighter, and a second later a giant fist slams down there. Anyone still under it takes 30 damage, guard or no guard, so get out of the way. It seems to have it in for anyone called Kyle: he's three times as likely to be picked.
 
-Psst: type **zeffen** during a fight for the Zeffen flip, a short front flip at your opponent that lands for 50 damage. It can't be blocked, but it's aimed where they were when you jumped, so they can still step out of the way. Nothing can touch you while you're in the air (not even the giant fist).
+Psst: type **zeffen** during a fight for the Zeffen flip, a short front flip at your opponent that hits twice, 25 a time. It can't be blocked, but it's aimed where they were when you jumped, so they can still step out of the way. Nothing can touch you while you're in the air (not even the giant fist). Everyone can see the letters going in over your head, and getting hit wipes them, so hit them before they finish typing.
 
 ## Deployment
 

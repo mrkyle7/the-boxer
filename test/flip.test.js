@@ -36,7 +36,7 @@ test('only the right word does it (any capitals)', () => {
   assert.ok(run(g, 2).some((e) => e.type === 'flip' && e.attacker === 0));
 });
 
-test('the flip lands for 50 through a guard', () => {
+test('the flip hits twice, 25 a time, through a guard', () => {
   const g = fight();
   g.fighters[0].x = 400;
   g.fighters[1].x = 600;
@@ -44,9 +44,10 @@ test('the flip lands for 50 through a guard', () => {
   run(g, 2);
   G.cheat(g, 0, 'zeffen');
   const events = run(g, FLIP_TICKS + 2);
-  const hit = events.find((e) => e.type === 'hit' && e.move === 'flip');
-  assert.ok(hit, 'it landed');
-  assert.strictEqual(hit.damage, 50);
+  const hits = events.filter((e) => e.type === 'hit' && e.move === 'flip');
+  assert.strictEqual(hits.length, 2, 'two hits');
+  assert.deepStrictEqual(hits.map((h) => h.damage), [25, 25]);
+  assert.ok(!hits[0].second && hits[1].second);
   assert.strictEqual(g.fighters[1].hp, G.MAX_HP - 50);
   assert.ok(!events.some((e) => e.type === 'block'));
 });
@@ -151,4 +152,26 @@ test("it's aimed when you jump, so stepping away dodges it", () => {
   G.setHeld(r, 1, { up: true });
   const ringEvents = run(r, FLIP_TICKS);
   assert.ok(!ringEvents.some((e) => e.type === 'hit' && e.move === 'flip'), 'missed in the ring');
+});
+
+test('typing it a letter at a time works, and a wrong letter starts again', () => {
+  const g = fight();
+  for (const k of 'zefxzeffe') G.typeKey(g, 0, k);
+  assert.strictEqual(g.fighters[0].typing, 5);
+  assert.strictEqual(G.snapshot(g).fighters[0].typing, 5, 'everyone can see it going in');
+  G.typeKey(g, 0, 'N');
+  assert.ok(run(g, 2).some((e) => e.type === 'flip' && e.attacker === 0));
+  assert.strictEqual(g.fighters[0].typing, 0);
+});
+
+test('getting hit while typing it wipes the letters', () => {
+  const g = fight();
+  g.fighters[0].x = 400;
+  g.fighters[1].x = 520;
+  for (const k of 'zeff') G.typeKey(g, 1, k);
+  G.pressAction(g, 0, 'punch');
+  run(g, 12);
+  assert.strictEqual(g.fighters[1].typing, 0, 'wiped');
+  for (const k of 'en') G.typeKey(g, 1, k);
+  assert.ok(!run(g, 30).some((e) => e.type === 'flip'), 'finishing the word now does nothing');
 });

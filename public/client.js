@@ -369,8 +369,10 @@
       sparks(hx, p.y, '#ffffff', 16, 6);
       shake = Math.max(shake, 20);
       flash = Math.max(flash, 0.5);
-      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 34);
-      floatText(p.x, p.y - 76 * up, 'Zeffen!', '#f4c542', 30);
+      // The second hit's numbers go beside the first's.
+      const sx = e.second ? p.x + 70 * up : p.x;
+      floatText(sx, p.y - 40 * up, `-${e.damage}`, '#ffffff', 34);
+      floatText(sx, p.y - 76 * up, e.second ? 'x2!' : 'Zeffen!', '#f4c542', 30);
       sound.slam();
       return;
     }
@@ -489,15 +491,16 @@
     document.querySelectorAll('#touch [data-aim]').forEach((b) => b.classList.toggle('on', b.dataset.aim === held.aim));
   }
 
-  // The cheat code. Typing it presses E (aim tummy) on the way, so the aim
-  // goes back to what it was before the first letter.
+  // The cheat code. The server checks the letters (a hit wipes them, and
+  // everyone sees them going in). Typing it presses E (aim tummy) on the way,
+  // so the aim goes back to what it was before the first letter.
   const typed = [];
   function checkCheat(e) {
-    if (e.repeat || e.key.length !== 1) return;
+    if (e.repeat || !/^[a-z]$/i.test(e.key)) return;
+    send({ t: 'type', k: e.key.toLowerCase() });
     typed.push({ key: e.key.toLowerCase(), aim: held.aim });
     if (typed.length > G.FLIP_CODE.length) typed.shift();
     if (typed.map((k) => k.key).join('') !== G.FLIP_CODE) return;
-    send({ t: 'cheat', code: G.FLIP_CODE });
     setHold('aim', typed[0].aim);
     typed.length = 0;
   }
@@ -1595,6 +1598,30 @@
     if (--banner.life <= 0) banner = null;
   }
 
+  // ---- The cheat code, going in --------------------------------------------------
+
+  /** Over anyone typing the cheat code: the letters so far, for everyone to see. */
+  function drawTyping() {
+    snap.fighters.forEach((f, i) => {
+      if (!f.typing || f.left) return;
+      const p = targetPos(i, 'head');
+      const y = p.y - (mode === 'ring' ? 46 : 120);
+      const text = G.FLIP_CODE.slice(0, f.typing).toUpperCase();
+      const caret = Math.floor(performance.now() / 250) % 2 ? '_' : ' ';
+      ctx.font = `${mode === 'ring' ? 18 : 26}px Anton, Impact, sans-serif`;
+      ctx.textAlign = 'center';
+      const w = ctx.measureText(G.FLIP_CODE.toUpperCase() + '_').width + 20;
+      const h = mode === 'ring' ? 26 : 36;
+      ctx.fillStyle = 'rgba(0,0,0,0.75)';
+      ctx.fillRect(p.x - w / 2, y - h + 8, w, h);
+      ctx.strokeStyle = PALETTE[i].glove;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(p.x - w / 2, y - h + 8, w, h);
+      ctx.fillStyle = '#f4c542';
+      ctx.fillText(text + caret, p.x, y);
+    });
+  }
+
   // ---- The giant fist ----------------------------------------------------------
 
   const slams = [];
@@ -1821,6 +1848,7 @@
     ctx.globalAlpha = 1;
     if (!ring) drawFrontRopes();
     drawFistOver();
+    drawTyping();
 
     for (let i = texts.length - 1; i >= 0; i--) {
       const tx = texts[i];
