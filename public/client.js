@@ -326,6 +326,12 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'vault') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Luna vault!', PALETTE[e.attacker].name, 30);
+      sound.whoosh();
+      return;
+    }
     if (e.type === 'flip') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Zeffen flip!', PALETTE[e.attacker].name, 30);
@@ -363,6 +369,15 @@
       hx = p.x + ((a.x - p.x) / d) * 10;
     } else {
       hx = p.x - snap.fighters[attacker].facing * 18;
+    }
+    if (e.type === 'hit' && e.move === 'vault') {
+      sparks(hx, p.y, '#c8a2ff', 30, 8);
+      sparks(hx, p.y, '#ffffff', 12, 5);
+      shake = Math.max(shake, 16);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 32);
+      floatText(p.x, p.y - 76 * up, 'In the back!', '#c8a2ff', 28);
+      sound.slam();
+      return;
     }
     if (e.type === 'hit' && e.move === 'flip') {
       sparks(hx, p.y, '#f4c542', 36, 9);
@@ -491,24 +506,31 @@
     document.querySelectorAll('#touch [data-aim]').forEach((b) => b.classList.toggle('on', b.dataset.aim === held.aim));
   }
 
-  // The cheat code. The server checks the letters (a hit wipes them, and
-  // everyone sees them going in). Typing it presses E (aim tummy) on the way,
-  // so the aim goes back to what it was before the first letter.
+  // The cheat codes. The server checks the letters (a hit wipes them, and
+  // everyone sees them going in). Typing one can press E (aim tummy) on the
+  // way, so the aim goes back to what it was before the first letter; and the
+  // letter that finishes it (the A in luna) doesn't also punch.
   const typed = [];
+  const CODES = Object.keys(G.CODES);
+  const CODE_MAX = Math.max(...CODES.map((c) => c.length));
+  /** Sends the letter; true if it finished a code. */
   function checkCheat(e) {
-    if (e.repeat || !/^[a-z]$/i.test(e.key)) return;
+    if (e.repeat || !/^[a-z]$/i.test(e.key)) return false;
     send({ t: 'type', k: e.key.toLowerCase() });
     typed.push({ key: e.key.toLowerCase(), aim: held.aim });
-    if (typed.length > G.FLIP_CODE.length) typed.shift();
-    if (typed.map((k) => k.key).join('') !== G.FLIP_CODE) return;
-    setHold('aim', typed[0].aim);
+    if (typed.length > CODE_MAX) typed.shift();
+    const word = typed.map((k) => k.key).join('');
+    const code = CODES.find((c) => word.endsWith(c));
+    if (!code) return false;
+    setHold('aim', typed[typed.length - code.length].aim);
     typed.length = 0;
+    return true;
   }
 
   window.addEventListener('keydown', (e) => {
     if (!fighting() || e.target.tagName === 'INPUT') return;
     sound.unlock();
-    checkCheat(e);
+    if (checkCheat(e)) { e.preventDefault(); return; }
     if (e.code === 'KeyM') { sound.toggle(); return; }
     if (KEY_HOLD[e.code]) { setHold(KEY_HOLD[e.code], true); e.preventDefault(); }
     if (KEY_AIM[e.code]) { setHold('aim', KEY_AIM[e.code]); e.preventDefault(); }
@@ -666,8 +688,8 @@
       case 'attack': {
         const { phase, p } = attackProgress(f, t);
         const e = phase === 'startup' ? easeOut(p) : p;
-        if (f.move === 'flip') {
-          flipPose(P, t, phase, p, kickReach);
+        if (f.move === 'flip' || f.move === 'vault') {
+          flipPose(P, t, phase, p, kickReach, f.move);
         } else if (f.move === 'punch') {
           P.front = { x: lerp(42, reach, e), y: lerp(-212, low ? -150 : -214, e) };
           P.lean = e * (low ? 12 : 8);
@@ -735,8 +757,8 @@
    * The Zeffen flip, side on: crouch, spring up into a tuck and turn right
    * over, then come down with an axe kick.
    */
-  function flipPose(P, t, phase, p, kickReach) {
-    const m = G.MOVES.flip;
+  function flipPose(P, t, phase, p, kickReach, move) {
+    const m = G.MOVES[move];
     if (phase === 'startup' && t < G.FLIP_CROUCH) {
       const c = t / G.FLIP_CROUCH;
       P.crouch = 4 + 34 * c;
@@ -747,7 +769,8 @@
     if (phase === 'startup') {
       const q = (t - G.FLIP_CROUCH) / (m.startup - G.FLIP_CROUCH);
       P.spin = q * Math.PI * 2;
-      P.lift = Math.sin(q * Math.PI) * 170;
+      // The vault goes right over their head.
+      P.lift = Math.sin(q * Math.PI) * (move === 'vault' ? 250 : 170);
       P.crouch = 40;
       P.front = { x: 40, y: -110 };
       P.back = { x: 30, y: -104 };
@@ -780,6 +803,15 @@
     const kickReach = Math.max(70, Math.min(170, dist - 40));
     const P = pose(f, t, reach, kickReach, clock);
     const hurt = f.state === 'hitstun' && t < 5;
+    // Going over in the vault turns them round halfway: keep the somersault
+    // turning the same way it started.
+    const d = display[i];
+    if (f.move === 'vault' && f.state === 'attack') {
+      if (d.vaultFacing === undefined) d.vaultFacing = f.facing;
+      if (P.spin !== undefined && f.facing !== d.vaultFacing) P.spin = -P.spin;
+    } else {
+      d.vaultFacing = undefined;
+    }
 
     ctx.save();
     ctx.translate(x, FLOOR);
@@ -1256,7 +1288,7 @@
     if (G.airborne(f)) {
       // The Zeffen flip from above: up towards us (bigger), turning over
       // (squashed front to back), with a gold swirl round it.
-      const q = (t - G.FLIP_CROUCH) / (G.MOVES.flip.startup - G.FLIP_CROUCH);
+      const q = (t - G.FLIP_CROUCH) / (G.MOVES[f.move].startup - G.FLIP_CROUCH);
       const up = 1 + Math.sin(q * Math.PI) * 0.7;
       ctx.strokeStyle = 'rgba(244,197,66,0.8)';
       ctx.lineWidth = 3;
@@ -1287,7 +1319,7 @@
     } else if (f.state === 'attack') {
       const { phase, p: pr } = attackProgress(f, t);
       const e = phase === 'startup' ? easeOut(pr) : pr;
-      if (f.move === 'flip' && phase === 'startup') {
+      if ((f.move === 'flip' || f.move === 'vault') && phase === 'startup') {
         // Tucked up.
         front = { x: 10, y: 10 };
         back = { x: 10, y: -10 };
@@ -1606,7 +1638,7 @@
       if (!f.typing || f.left) return;
       const p = targetPos(i, 'head');
       const y = p.y - (mode === 'ring' ? 46 : 120);
-      const text = G.FLIP_CODE.slice(0, f.typing).toUpperCase();
+      const text = f.typing.toUpperCase();
       const caret = Math.floor(performance.now() / 250) % 2 ? '_' : ' ';
       ctx.font = `${mode === 'ring' ? 18 : 26}px Anton, Impact, sans-serif`;
       ctx.textAlign = 'center';

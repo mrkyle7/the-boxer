@@ -36,7 +36,7 @@ test('only the right word does it (any capitals)', () => {
   assert.ok(run(g, 2).some((e) => e.type === 'flip' && e.attacker === 0));
 });
 
-test('the flip hits twice, 25 a time, through a guard', () => {
+test('the flip hits twice, 50 a time, through a guard: a knockout from full health', () => {
   const g = fight();
   g.fighters[0].x = 400;
   g.fighters[1].x = 600;
@@ -46,9 +46,10 @@ test('the flip hits twice, 25 a time, through a guard', () => {
   const events = run(g, FLIP_TICKS + 2);
   const hits = events.filter((e) => e.type === 'hit' && e.move === 'flip');
   assert.strictEqual(hits.length, 2, 'two hits');
-  assert.deepStrictEqual(hits.map((h) => h.damage), [25, 25]);
+  assert.deepStrictEqual(hits.map((h) => h.damage), [50, 50]);
   assert.ok(!hits[0].second && hits[1].second);
-  assert.strictEqual(g.fighters[1].hp, G.MAX_HP - 50);
+  assert.strictEqual(g.fighters[1].hp, 0);
+  assert.strictEqual(g.fighters[1].state, 'ko');
   assert.ok(!events.some((e) => e.type === 'block'));
 });
 
@@ -84,11 +85,13 @@ test('it can be done again, and needs no stamina', () => {
   g.fighters[0].stamina = 0;
   g.fighters[0].x = 400;
   g.fighters[1].x = 600;
+  g.fighters[1].hp = 300; // tough enough to take two
   G.cheat(g, 0, 'zeffen');
   run(g, G.MOVES.flip.startup + G.MOVES.flip.active + G.MOVES.flip.recovery + 50);
-  assert.strictEqual(g.fighters[1].hp, G.MAX_HP - 50);
+  assert.strictEqual(g.fighters[1].hp, 200);
   g.fighters[0].x = 400;
   g.fighters[1].x = 600;
+  g.fighters[1].hp = 100;
   G.cheat(g, 0, 'zeffen');
   run(g, G.MOVES.flip.startup + G.MOVES.flip.active + G.MOVES.flip.recovery + 2);
   assert.strictEqual(g.fighters[1].hp, 0);
@@ -111,7 +114,7 @@ test('in the ring it lands on the one you are fighting, even from behind', () =>
   const hit = events.find((e) => e.type === 'hit' && e.move === 'flip');
   assert.ok(hit);
   assert.strictEqual(hit.target, 1);
-  assert.strictEqual(b.hp, G.MAX_HP - 50);
+  assert.strictEqual(b.hp, 0);
   assert.strictEqual(c.hp, G.MAX_HP);
 });
 
@@ -157,11 +160,11 @@ test("it's aimed when you jump, so stepping away dodges it", () => {
 test('typing it a letter at a time works, and a wrong letter starts again', () => {
   const g = fight();
   for (const k of 'zefxzeffe') G.typeKey(g, 0, k);
-  assert.strictEqual(g.fighters[0].typing, 5);
-  assert.strictEqual(G.snapshot(g).fighters[0].typing, 5, 'everyone can see it going in');
+  assert.strictEqual(g.fighters[0].typing, 'zeffe');
+  assert.strictEqual(G.snapshot(g).fighters[0].typing, 'zeffe', 'everyone can see it going in');
   G.typeKey(g, 0, 'N');
   assert.ok(run(g, 2).some((e) => e.type === 'flip' && e.attacker === 0));
-  assert.strictEqual(g.fighters[0].typing, 0);
+  assert.strictEqual(g.fighters[0].typing, '');
 });
 
 test('getting hit while typing it wipes the letters', () => {
@@ -171,7 +174,7 @@ test('getting hit while typing it wipes the letters', () => {
   for (const k of 'zeff') G.typeKey(g, 1, k);
   G.pressAction(g, 0, 'punch');
   run(g, 12);
-  assert.strictEqual(g.fighters[1].typing, 0, 'wiped');
+  assert.strictEqual(g.fighters[1].typing, '', 'wiped');
   for (const k of 'en') G.typeKey(g, 1, k);
   assert.ok(!run(g, 30).some((e) => e.type === 'flip'), 'finishing the word now does nothing');
 });

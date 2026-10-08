@@ -18,10 +18,13 @@
 // slams down there. Anyone still under it takes 30 damage, guard or no guard.
 //
 // The cheat code: type "zeffen" in a fight for the Zeffen flip, a short front
-// flip at your opponent that lands twice, 25 a time, unblockable. It's aimed where they
+// flip at your opponent that lands twice, 50 a time, unblockable. It's aimed where they
 // were when you jumped, so they can still get out of the way. While you're in
 // the air nothing can touch you. Everyone can see the letters as they're
 // typed, and getting hit wipes them, so the others can stop it.
+//
+// Another: type "luna" for the Luna vault, a flip right over your opponent
+// to land behind them and kick them in the back for 30, unblockable.
 (function (root) {
   'use strict';
 
@@ -103,15 +106,32 @@
   MOVES.flip = {
     startup: 30, active: 14, recovery: 16, range: 160, stamina: 0,
     unblockable: true,
-    first: { damage: 25, hitstun: 24, knockback: 2, winded: 0 },
-    head: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
-    body: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
+    first: { damage: 50, hitstun: 24, knockback: 2, winded: 0 },
+    head: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
+    body: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
   };
   const FLIP_SECOND_AT = 10; // ticks after landing for the second hit
   const FLIP_CODE = 'zeffen';
   const FLIP_CROUCH = 5; // ticks before leaving the ground
   const FLIP_LAND_AT = 100; // aims to land this far from the opponent, in reach
   const FLIP_MAX_TRAVEL = 60; // furthest it carries you: with the range, about 220 in all
+
+  // The Luna vault (another cheat code): a flip over the opponent, landing
+  // behind them, and a kick in the back. Guards only face forwards, so it
+  // can't be blocked.
+  MOVES.vault = {
+    startup: 34, active: 6, recovery: 18, range: 150, stamina: 0,
+    unblockable: true,
+    head: { damage: 30, hitstun: 40, knockback: 26, winded: 0 },
+    body: { damage: 30, hitstun: 40, knockback: 26, winded: 0 },
+  };
+  const VAULT_BEYOND = 90; // lands this far past the opponent
+  const VAULT_MAX_TRAVEL = 330; // furthest it carries you
+
+  // Cheat codes, and the move each one does.
+  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault' };
+  const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
+  const AIRBORNE_MOVES = ['flip', 'vault'];
 
   const AIMS = ['head', 'body'];
   const ACTIONS = ['punch', 'kick'];
@@ -124,7 +144,8 @@
     return {
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
-      typing: 0, // letters of the cheat code typed so far
+      typed: '', // the last few letters typed in the fight
+      typing: '', // as much of a cheat code as they make, for everyone to see
       kyle: isKyle(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
@@ -208,39 +229,83 @@
   function pressAction(game, index, action) {
     if (!ACTIONS.includes(action)) return;
     const input = game.inputs[index];
+    // A cheat move that's just gone in isn't replaced by the key that finished it.
+    if (AIRBORNE_MOVES.includes(input.buffered)) return;
     input.buffered = action;
     input.bufferAge = 0;
   }
 
-  /** The cheat code: the right word buffers the Zeffen flip. */
+  /** A cheat code: the right word buffers its move. */
   function cheat(game, index, code) {
-    if (String(code || '').trim().toLowerCase() !== FLIP_CODE) return;
+    const move = CODES[String(code || '').trim().toLowerCase()];
     const input = game.inputs[index];
-    if (!input) return;
-    input.buffered = 'flip';
+    if (!move || !input) return;
+    input.buffered = move;
     input.bufferAge = 0;
   }
 
   /**
-   * A letter typed in the fight. Getting the cheat code right, one letter at
-   * a time, buffers the flip; a wrong letter starts it again.
+   * A letter typed in the fight. Finishing a cheat code buffers its move;
+   * `typing` is as much of a code as the last letters make, to show everyone.
    */
   function typeKey(game, index, key) {
     const f = game.fighters[index];
     if (!f || game.phase !== 'fight' || !standing(f)) return;
     const k = String(key || '').toLowerCase();
-    if (k.length !== 1) return;
-    if (k === FLIP_CODE[f.typing]) f.typing++;
-    else f.typing = k === FLIP_CODE[0] ? 1 : 0;
-    if (f.typing === FLIP_CODE.length) {
-      f.typing = 0;
-      cheat(game, index, FLIP_CODE);
+    if (!/^[a-z]$/.test(k)) return;
+    f.typed = (f.typed + k).slice(-CODE_MAX);
+    const done = Object.keys(CODES).find((c) => f.typed.endsWith(c));
+    if (done) {
+      f.typed = '';
+      f.typing = '';
+      cheat(game, index, done);
+      return;
+    }
+    // The longest start of a code that the last letters end with.
+    f.typing = '';
+    for (const c of Object.keys(CODES)) {
+      for (let n = Math.min(c.length - 1, f.typed.length); n > f.typing.length; n--) {
+        if (f.typed.endsWith(c.slice(0, n))) { f.typing = c.slice(0, n); break; }
+      }
     }
   }
 
-  /** Off the ground in the flip, where nothing can touch you. */
+  /** A hit knocks the cheat code out of your head. */
+  function forgetTyping(f) {
+    f.typed = '';
+    f.typing = '';
+  }
+
+  /** Off the ground in a flip or vault, where nothing can touch you. */
   function airborne(f) {
-    return f.state === 'attack' && f.move === 'flip' && f.t >= FLIP_CROUCH && f.t < MOVES.flip.startup;
+    return f.state === 'attack' && AIRBORNE_MOVES.includes(f.move)
+      && f.t >= FLIP_CROUCH && f.t < MOVES[f.move].startup;
+  }
+
+  /**
+   * Aims the vault as you jump: over where your opponent is now, to land just
+   * past them. Like the flip, it doesn't follow them.
+   */
+  function aimVault(game, f) {
+    const o = opponentOf(game, f);
+    let dir = game.mode === 'ring' ? { x: Math.cos(f.angle), y: Math.sin(f.angle) } : { x: f.facing, y: 0 };
+    let travel = VAULT_BEYOND;
+    if (o && standing(o)) {
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      dir = { x: dx / d, y: dy / d };
+      travel = Math.min(VAULT_MAX_TRAVEL, d + VAULT_BEYOND);
+    }
+    const flight = MOVES.vault.startup - FLIP_CROUCH;
+    f.flipStep = { x: (dir.x * travel) / flight, y: (dir.y * travel) / flight };
+  }
+
+  /** Landing from the vault: turn round to face who you went over. */
+  function turnAround(game, f) {
+    const o = opponentOf(game, f);
+    if (!o || game.mode !== 'ring') return;
+    f.angle = Math.atan2(o.y - f.y, o.x - f.x);
   }
 
   /**
@@ -311,6 +376,9 @@
     if (action === 'flip') {
       aimFlip(game, f);
       game.events.push({ type: 'flip', attacker: game.fighters.indexOf(f) });
+    } else if (action === 'vault') {
+      aimVault(game, f);
+      game.events.push({ type: 'vault', attacker: game.fighters.indexOf(f) });
     }
     else if (f.luna) lunge(game, f, m);
   }
@@ -369,6 +437,7 @@
 
     if (!fighting || f.state === 'ko') return;
     if (airborne(f)) flipTravel(game, f);
+    if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
     // The flip's second hit, if the first landed.
     if (f.state === 'attack' && f.move === 'flip' && f.t === MOVES.flip.startup + FLIP_SECOND_AT && f.flipHits === 1) {
       f.hitLanded = false;
@@ -479,7 +548,7 @@
         for (let j = i + 1; j < inRing.length; j++) {
           const a = inRing[i];
           const b = inRing[j];
-          if (!standing(a) || !standing(b)) continue;
+          if (!standing(a) || !standing(b) || airborne(a) || airborne(b)) continue;
           let dx = b.x - a.x;
           let dy = b.y - a.y;
           let d = Math.hypot(dx, dy);
@@ -544,13 +613,15 @@
     const left = a.x <= b.x ? a : b;
     const right = left === a ? b : a;
     const gap = right.x - left.x;
-    if (gap < MIN_SEPARATION) {
+    // Someone in the air goes over the other, not into them.
+    const over = airborne(a) || airborne(b);
+    if (gap < MIN_SEPARATION && !over) {
       const push = (MIN_SEPARATION - gap) / 2;
       left.x -= push;
       right.x += push;
     }
     for (const f of game.fighters) f.x = Math.max(RING_LEFT, Math.min(RING_RIGHT, f.x));
-    if (right.x - left.x < MIN_SEPARATION) {
+    if (right.x - left.x < MIN_SEPARATION && !over) {
       if (left.x <= RING_LEFT) right.x = left.x + MIN_SEPARATION;
       else left.x = right.x - MIN_SEPARATION;
     }
@@ -619,7 +690,7 @@
         setState(def, 'hitstun');
         def.stun = h.hitstun;
         def.hitHeight = hit.height;
-        def.typing = 0; // a hit knocks the cheat code out of your head
+        forgetTyping(def);
         // Guarding the wrong height (or the wrong way) is worth telling the defender about.
         game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding, ...(hit.second ? { second: true } : {}) });
       }
@@ -769,7 +840,7 @@
       if (ring) f.vy += ay * FIST_KNOCKBACK;
       setState(f, 'hitstun');
       f.stun = FIST_HITSTUN;
-      f.typing = 0;
+      forgetTyping(f);
       f.hitHeight = 'head';
     });
     game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
@@ -844,7 +915,7 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
-    cheat, typeKey, airborne, FLIP_CODE, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    cheat, typeKey, airborne, FLIP_CODE, CODES, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
