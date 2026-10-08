@@ -35,6 +35,8 @@ Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` w
 
 Look out for the **giant fist**: every five to fifteen seconds a shadow appears under a random fighter, and a second later a giant fist slams down there. Anyone still under it takes 30 damage, guard or no guard, so get out of the way.
 
+Psst: type **zeffen** during a fight for the Zeffen flip, a front flip that carries you onto your opponent and lands for 50 damage. It can't be blocked, and nothing can touch you while you're in the air (not even the giant fist).
+
 ## Deployment
 
 Live at **https://boxer.cheetahmoongames.com**, one of the games linked from [cheetahmoongames.com](https://cheetahmoongames.com).
