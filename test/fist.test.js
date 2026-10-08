@@ -1,6 +1,7 @@
 'use strict';
 
-// The giant fist: every five to fifteen seconds a shadow under Kyle, then a slam for 30.
+// The giant fist: every five to fifteen seconds a shadow, then a slam for 30.
+// Kyle is more likely to be under it.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -48,14 +49,14 @@ test('the shadow comes five to fifteen seconds in, and the fist a second after i
   assert.strictEqual(G.FIST_MAX_TICKS, 15 * G.TICK_RATE);
 });
 
-test('if Kyle stays under it he takes 30, guard or no guard', () => {
-  const g = fistGame(['B', 'kyle']);
+test('whoever stays under it takes 30, guard or no guard', () => {
+  const g = fistGame(['B', 'kyle'], 0.5);
   G.setHeld(g, 0, { block: true });
   G.setHeld(g, 1, { block: true });
-  const events = run(g, G.FIST_MIN_TICKS + G.FIST_WARN_TICKS);
+  const events = [];
+  while (!events.some((e) => e.type === 'fist')) events.push(...run(g, 1));
   const fist = events.find((e) => e.type === 'fist');
   const target = events.find((e) => e.type === 'fistWarn').target;
-  assert.strictEqual(target, 1, 'it went for Kyle');
   assert.ok(fist.hits.includes(target));
   assert.strictEqual(g.fighters[target].hp, G.MAX_HP - 30);
   assert.strictEqual(g.fighters[target].state, 'hitstun');
@@ -72,7 +73,7 @@ test('walking out from under the shadow dodges it', () => {
   assert.strictEqual(g.fighters[0].hp, G.MAX_HP);
 });
 
-test('it only ever hits Kyle, and can knock him out', () => {
+test('it hits everyone under it, and can knock someone out', () => {
   const g = fistGame(['KYLE', 'B', 'C']);
   run(g, G.FIST_MIN_TICKS - 1);
   // Put B right beside Kyle, Kyle on 20 health.
@@ -87,17 +88,33 @@ test('it only ever hits Kyle, and can knock him out', () => {
   // Hold still (the fighters were pushed apart a little) and let it land.
   const events = run(g, G.FIST_WARN_TICKS);
   const fist = events.find((e) => e.type === 'fist');
-  assert.deepStrictEqual(fist.hits, [0]);
-  assert.strictEqual(g.fighters[1].hp, G.MAX_HP, 'B was under it too, but it only hits Kyle');
+  assert.deepStrictEqual(fist.hits.sort(), [0, 1]);
+  assert.strictEqual(g.fighters[1].hp, G.MAX_HP - 30, 'B was under it too');
+  assert.strictEqual(g.fighters[2].hp, G.MAX_HP, 'C was far away');
   assert.ok(events.some((e) => e.type === 'ko' && e.target === 0));
   assert.strictEqual(g.phase, 'fight', 'Kyle is out; B and C fight on');
 });
 
-test('no Kyle, no fist', () => {
-  const g = fistGame(['A', 'B', 'C']);
-  g.timer = 100000;
-  const events = run(g, 3 * (G.FIST_MAX_TICKS + G.FIST_WARN_TICKS));
-  assert.ok(!events.some((e) => e.type === 'fistWarn' || e.type === 'fist'));
+test('Kyle is three times as likely to be picked, but anyone can be', () => {
+  // A, Kyle, B: the picks split 1 : 3 : 1.
+  const pick = (r) => {
+    const g = fistGame(['A', 'Kyle', 'B'], r);
+    return run(g, G.FIST_MAX_TICKS).find((e) => e.type === 'fistWarn').target;
+  };
+  assert.strictEqual(pick(0.1), 0);
+  assert.strictEqual(pick(0.25), 1);
+  assert.strictEqual(pick(0.75), 1);
+  assert.strictEqual(pick(0.9), 2);
+  assert.strictEqual(G.FIST_KYLE_ODDS, 3);
+});
+
+test('with no Kyle it still comes, for anyone', () => {
+  const targets = new Set();
+  for (const r of [0.1, 0.5, 0.9]) {
+    const g = fistGame(['A', 'B', 'C'], r);
+    targets.add(run(g, G.FIST_MAX_TICKS).find((e) => e.type === 'fistWarn').target);
+  }
+  assert.deepStrictEqual([...targets].sort(), [0, 1, 2]);
 });
 
 test('it keeps coming: the next shadow is five to fifteen seconds after the slam', () => {
