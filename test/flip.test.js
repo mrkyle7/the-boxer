@@ -115,17 +115,24 @@ test('in the ring it lands on the one you are fighting, even from behind', () =>
   assert.strictEqual(c.hp, G.MAX_HP);
 });
 
-test('it only reaches about a quarter as far as it used to: from across the ring it falls short', () => {
+test('it reaches about as far as the Luna vault, but not right across the ring', () => {
+  // From where two fighters start, and a bit further: it lands.
+  for (const gap of [300, 420]) {
+    const g = fight();
+    g.fighters[0].x = 300;
+    g.fighters[1].x = 300 + gap;
+    G.cheat(g, 0, 'zeffen');
+    const events = run(g, FLIP_TICKS + 2);
+    assert.ok(events.some((e) => e.type === 'hit' && e.move === 'flip'), `lands from ${gap} away`);
+  }
+  // From right across the ring it falls short, having carried them its full way.
   const g = fight();
-  g.fighters[0].x = 300;
-  g.fighters[1].x = 700;
+  g.fighters[0].x = 100;
+  g.fighters[1].x = 900;
   G.cheat(g, 0, 'zeffen');
   const events = run(g, FLIP_TICKS + 2);
   assert.ok(!events.some((e) => e.type === 'hit' && e.move === 'flip'));
-  assert.strictEqual(g.fighters[1].hp, G.MAX_HP);
-  // It still carried them forward.
-  assert.ok(Math.abs(g.fighters[0].x - (300 + G.FLIP_MAX_TRAVEL)) < 2);
-  assert.ok(G.FLIP_MAX_TRAVEL + G.MOVES.flip.range <= 230, 'about a quarter of the old reach (around 800)');
+  assert.ok(Math.abs(g.fighters[0].x - (100 + G.FLIP_MAX_TRAVEL)) < 2);
 });
 
 test("it's aimed when you jump, so stepping away dodges it", () => {
@@ -139,7 +146,7 @@ test("it's aimed when you jump, so stepping away dodges it", () => {
   assert.ok(!events.some((e) => e.type === 'hit' && e.move === 'flip'), 'missed');
   assert.strictEqual(g.fighters[1].hp, G.MAX_HP);
 
-  // In the ring, stepping to the side works too.
+  // In the ring, stepping off to the side works too.
   const r = fight(['A', 'B', 'C']);
   const [a, b, c] = r.fighters;
   a.x = 400; a.y = 500;
@@ -149,7 +156,7 @@ test("it's aimed when you jump, so stepping away dodges it", () => {
   run(r, 1);
   G.cheat(r, 0, 'zeffen');
   run(r, 2);
-  G.setHeld(r, 1, { up: true });
+  G.setHeld(r, 1, { up: true, right: true });
   const ringEvents = run(r, FLIP_TICKS);
   assert.ok(!ringEvents.some((e) => e.type === 'hit' && e.move === 'flip'), 'missed in the ring');
 });

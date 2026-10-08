@@ -17,8 +17,8 @@
 // is three times as likely to be picked), and a second later a giant fist
 // slams down there. Anyone still under it takes 30 damage, guard or no guard.
 //
-// The cheat code: type "zeffen" in a fight for the Zeffen flip, a short front
-// flip at your opponent that lands twice, 25 a time, unblockable. It's aimed where they
+// The cheat code: type "zeffen" in a fight for the Zeffen flip, a front flip
+// at your opponent that lands twice, 25 a time, unblockable. It's aimed where they
 // were when you jumped, so they can still get out of the way. While you're in
 // the air nothing can touch you. Everyone can see the letters as they're
 // typed, and getting hit wipes them, so the others can stop it.
@@ -118,7 +118,7 @@
   const FLIP_CODE = 'zeffen';
   const FLIP_CROUCH = 5; // ticks before leaving the ground
   const FLIP_LAND_AT = 100; // aims to land this far from the opponent, in reach
-  const FLIP_MAX_TRAVEL = 60; // furthest it carries you: with the range, about 220 in all
+  const FLIP_MAX_TRAVEL = 330; // furthest it carries you: as far as the Luna vault
 
   // The Luna vault (another cheat code): a flip over the opponent, landing
   // behind them, and a kick in the back. Guards only face forwards, so it
