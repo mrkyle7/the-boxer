@@ -11,6 +11,10 @@
 // faster, her punches and kicks reach further, she steps in when an attack
 // is just out of reach, and in the ring her walking bends towards the
 // opponent she's heading for (aim assist).
+//
+// The giant fist: with fists on, every five to fifteen seconds of fighting a
+// shadow appears under a random fighter, and a second later a giant fist
+// slams down there. Anyone still under it takes 30 damage, guard or no guard.
 (function (root) {
   'use strict';
 
@@ -40,6 +44,15 @@
   const LUNA_LUNGE = 70; // steps in to land an attack up to this far out of reach
   const ASSIST_CONE = 0.5; // cos 60°: ring walking bends towards an opponent roughly ahead
   const ASSIST_PULL = 0.45; // ...by this much
+
+  // The giant fist.
+  const FIST_MIN_TICKS = 5 * TICK_RATE; // gap before the next one, at least...
+  const FIST_MAX_TICKS = 15 * TICK_RATE; // ...and at most
+  const FIST_WARN_TICKS = TICK_RATE; // the shadow shows for a second first
+  const FIST_DAMAGE = 30;
+  const FIST_RADIUS = 90; // centre to centre: further than this and it misses
+  const FIST_KNOCKBACK = 14;
+  const FIST_HITSTUN = 30;
 
   // The ring seen from above: a square, in the same units as the side view.
   const RING_MIN = 90;
@@ -113,8 +126,11 @@
     return { left: false, right: false, up: false, down: false, block: false, aim: 'head', buffered: null, bufferAge: 0 };
   }
 
-  /** A match between two to four fighters, named in order. */
-  function createGame(names) {
+  /**
+   * A match between two to four fighters, named in order. Options:
+   * fists: true for the giant fist; random: a 0..1 function (tests).
+   */
+  function createGame(names, options = {}) {
     const count = Math.max(2, Math.min(MAX_FIGHTERS, (names && names.length) || 2));
     const game = {
       mode: count > 2 ? 'ring' : 'side',
@@ -128,6 +144,10 @@
       roundWinner: null,
       winner: null,
       tick: 0,
+      fists: !!options.fists,
+      random: options.random || Math.random,
+      // Ticks until the next shadow, and the shadow when there is one.
+      fist: { next: 0, warn: null },
     };
     return game;
   }
@@ -562,6 +582,7 @@
       game.phase = 'fight';
       game.phaseT = 0;
       game.events.push({ type: 'fight', round: game.round });
+      game.fist = { next: nextFist(game), warn: null };
     }
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
@@ -593,10 +614,61 @@
     if (game.phase === 'fight') {
       if (game.mode === 'ring') resolveRingHits(game);
       else resolveHits(game);
+      if (game.fists) updateFist(game);
       game.timer--;
       checkRoundOver(game);
     }
     return game;
+  }
+
+  // ---- The giant fist --------------------------------------------------------
+
+  function nextFist(game) {
+    return FIST_MIN_TICKS + Math.floor(game.random() * (FIST_MAX_TICKS - FIST_MIN_TICKS + 1));
+  }
+
+  /** Counts down to the next shadow, then the slam a second after it. */
+  function updateFist(game) {
+    const fist = game.fist;
+    if (!fist.warn) {
+      if (fist.next-- > 0) return;
+      const up = game.fighters.filter(standing);
+      if (!up.length) return;
+      const target = up[Math.floor(game.random() * up.length)];
+      // It comes down where they were when the shadow appeared: move and it misses.
+      fist.warn = { x: target.x, y: target.y, t: 0, target: game.fighters.indexOf(target) };
+      game.events.push({ type: 'fistWarn', x: fist.warn.x, y: fist.warn.y, target: fist.warn.target });
+      return;
+    }
+    if (++fist.warn.t < FIST_WARN_TICKS) return;
+    const { x, y } = fist.warn;
+    const ring = game.mode === 'ring';
+    const hit = [];
+    game.fighters.forEach((f, i) => {
+      if (!standing(f)) return;
+      const dx = f.x - x;
+      const dy = ring ? f.y - y : 0;
+      const d = Math.hypot(dx, dy);
+      if (d > FIST_RADIUS) return;
+      hit.push(i);
+      f.hp = Math.max(0, f.hp - FIST_DAMAGE);
+      // Knocked out from under it (any way at all if it landed right on them).
+      const ax = d > 1 ? dx / d : i % 2 ? 1 : -1;
+      const ay = d > 1 ? dy / d : 0;
+      f.vx += ax * FIST_KNOCKBACK;
+      if (ring) f.vy += ay * FIST_KNOCKBACK;
+      setState(f, 'hitstun');
+      f.stun = FIST_HITSTUN;
+      f.hitHeight = 'head';
+    });
+    game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
+    for (const i of hit) {
+      if (game.fighters[i].hp <= 0) {
+        setState(game.fighters[i], 'ko');
+        game.events.push({ type: 'ko', target: i });
+      }
+    }
+    game.fist = { next: nextFist(game), warn: null };
   }
 
   /**
@@ -629,6 +701,7 @@
       roundWinner: game.roundWinner,
       winner: game.winner,
       tick: game.tick,
+      ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
@@ -653,6 +726,7 @@
     ROUND_TICKS, COUNTDOWN_TICKS, ROUND_END_TICKS, ROUNDS_TO_WIN, MAX_ROUNDS,
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
+    FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
   };
 
