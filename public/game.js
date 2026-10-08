@@ -18,7 +18,7 @@
 // slams down there. Anyone still under it takes 30 damage, guard or no guard.
 //
 // The cheat code: type "zeffen" in a fight for the Zeffen flip, a short front
-// flip at your opponent that lands twice, 50 a time, unblockable. It's aimed where they
+// flip at your opponent that lands twice, 25 a time, unblockable. It's aimed where they
 // were when you jumped, so they can still get out of the way. While you're in
 // the air nothing can touch you. Everyone can see the letters as they're
 // typed, and getting hit wipes them, so the others can stop it.
@@ -106,9 +106,9 @@
   MOVES.flip = {
     startup: 30, active: 14, recovery: 16, range: 160, stamina: 0,
     unblockable: true,
-    first: { damage: 50, hitstun: 24, knockback: 2, winded: 0 },
-    head: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
-    body: { damage: 50, hitstun: 45, knockback: 30, winded: 0 },
+    first: { damage: 25, hitstun: 24, knockback: 2, winded: 0 },
+    head: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
+    body: { damage: 25, hitstun: 45, knockback: 30, winded: 0 },
   };
   const FLIP_SECOND_AT = 10; // ticks after landing for the second hit
   const FLIP_CODE = 'zeffen';
