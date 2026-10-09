@@ -23,8 +23,11 @@
 // the air nothing can touch you. Everyone can see the letters as they're
 // typed, and getting hit wipes them, so the others can stop it.
 //
-// Another: type "luna" for the Luna vault, a flip right over your opponent
+// Another: type "kalya" for the vault, a flip right over your opponent
 // to land behind them and kick them in the back for 30, unblockable.
+// "luna" teleports you to just beside the nearest opponent; "louise" dances
+// (ending in a hip-bump for 30); "tamzin" cartwheels across at them for 30;
+// "grandpa" makes you super fast for three seconds.
 //
 // Two more go on you, not on them: "jemini" makes you a giant for seven
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
@@ -150,9 +153,9 @@
   const FLIP_CODE = 'zeffen';
   const FLIP_CROUCH = 5; // ticks before leaving the ground
   const FLIP_LAND_AT = 100; // aims to land this far from the opponent, in reach
-  const FLIP_MAX_TRAVEL = 330; // furthest it carries you: as far as the Luna vault
+  const FLIP_MAX_TRAVEL = 330; // furthest it carries you: as far as the vault
 
-  // The Luna vault (another cheat code): a flip over the opponent, landing
+  // The vault (Kalya, another cheat code): a flip over the opponent, landing
   // behind them, and a kick in the back. Guards only face forwards, so it
   // can't be blocked.
   MOVES.vault = {
@@ -164,6 +167,27 @@
   const VAULT_BEYOND = 90; // lands this far past the opponent
   const VAULT_MAX_TRAVEL = 330; // furthest it carries you
 
+  // Louise's dance: a groove on the spot (a shimmy, a spin, a spin back) that
+  // finishes with a hip-bump for 30 on whoever is near enough.
+  MOVES.dance = {
+    startup: 42, active: 6, recovery: 14, range: 190, stamina: 0,
+    unblockable: true,
+    head: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
+    body: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
+  };
+  // Tamzin's cartwheel: hand over hand across the ring at them, feet first, for 30.
+  MOVES.cartwheel = {
+    startup: 32, active: 8, recovery: 14, range: 160, stamina: 0,
+    unblockable: true,
+    head: { damage: 30, hitstun: 40, knockback: 26, winded: 0 },
+    body: { damage: 30, hitstun: 40, knockback: 26, winded: 0 },
+  };
+  // Luna: a teleport, to just beside the nearest opponent.
+  const TELEPORT_GAP = 100;
+  // Grandpa: super fast.
+  const GRANDPA_TICKS = 3 * TICK_RATE;
+  const GRANDPA_SPEED = 2.6;
+
   // The power-ups: how long each lasts, and what Jemini adds to your hits.
   const JEMINI_TICKS = 7 * TICK_RATE;
   const JEMINI_DAMAGE = 1.1;
@@ -171,10 +195,10 @@
 
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
-    [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
+    [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
     shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo'];
+  const POWERS = ['luna', 'grandpa', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo'];
 
   // Jay: a vampire. Leo: a lion.
   const VAMPIRE_TICKS = 7 * TICK_RATE;
@@ -266,6 +290,7 @@
       car: null, // driving: { dx, dy, t, hit }
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
+      turbo: 0, // ticks of Grandpa's super speed left
       slip: 0, // ticks left on the floor after a banana skin
       invisible: 0, // ticks of Kyle left
       typed: '', // the last few letters typed in the fight
@@ -362,7 +387,7 @@
     if (action === 'kick' && game.fighters[index] && game.fighters[index].lion > 0) return; // lions swipe, they don't kick
     const input = game.inputs[index];
     // A cheat move that's just gone in isn't replaced by the key that finished it.
-    if (input.buffered === 'flip' || input.buffered === 'vault') return;
+    if (['flip', 'vault', 'dance', 'cartwheel'].includes(input.buffered)) return;
     input.buffered = action;
     input.bufferAge = 0;
   }
@@ -427,6 +452,15 @@
       game.paused = PAUSE_TICKS;
       game.pausedBy = index;
       game.events.push({ type: 'edward', attacker: index });
+      return;
+    }
+    if (which === 'luna') {
+      teleport(game, f);
+      return;
+    }
+    if (which === 'grandpa') {
+      f.turbo = GRANDPA_TICKS;
+      game.events.push({ type: 'grandpa', target: index });
       return;
     }
     if (which === 'jay') {
@@ -623,6 +657,41 @@
     return keep;
   }
 
+  /**
+   * Luna's teleport: gone, and straight back just beside the nearest
+   * opponent (on your side of them if there's room), facing them.
+   */
+  function teleport(game, f) {
+    const others = game.fighters.filter((o) => o !== f && standing(o));
+    if (!others.length) return;
+    const o = others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+    const from = { x: f.x, y: f.y };
+    const ring = game.mode === 'ring';
+    if (ring) {
+      const dx = f.x - o.x;
+      const dy = f.y - o.y;
+      const d = Math.hypot(dx, dy) || 1;
+      let x = o.x + (dx / d) * TELEPORT_GAP;
+      let y = o.y + (dy / d) * TELEPORT_GAP;
+      // Pinned against the ropes: the other side of them instead.
+      if (x < RING_MIN || x > RING_MAX || y < RING_MIN || y > RING_MAX) {
+        x = o.x - (dx / d) * TELEPORT_GAP;
+        y = o.y - (dy / d) * TELEPORT_GAP;
+      }
+      f.x = Math.max(RING_MIN, Math.min(RING_MAX, x));
+      f.y = Math.max(RING_MIN, Math.min(RING_MAX, y));
+      f.angle = Math.atan2(o.y - f.y, o.x - f.x);
+    } else {
+      const side = f.x <= o.x ? -1 : 1;
+      let x = o.x + side * TELEPORT_GAP;
+      if (x < RING_LEFT || x > RING_RIGHT) x = o.x - side * TELEPORT_GAP;
+      f.x = Math.max(RING_LEFT, Math.min(RING_RIGHT, x));
+    }
+    f.vx = 0;
+    f.vy = 0;
+    game.events.push({ type: 'teleport', attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o), from, to: { x: f.x, y: f.y } });
+  }
+
   /** Jay's vampire: whatever a hit takes off them, it gives back to you. */
   function drain(game, att, damage) {
     if (!att || !(att.vampire > 0) || damage <= 0 || !game.fighters.includes(att) || !standing(att)) return;
@@ -736,7 +805,7 @@
    * Aims the flip as you jump: at where your opponent is now, a short way.
    * It doesn't follow them after that, so they can step out of the way.
    */
-  function aimFlip(game, f) {
+  function aimFlip(game, f, move = 'flip') {
     const o = opponentOf(game, f);
     let dir = game.mode === 'ring' ? { x: Math.cos(f.angle), y: Math.sin(f.angle) } : { x: f.facing, y: 0 };
     let travel = FLIP_MAX_TRAVEL;
@@ -749,7 +818,7 @@
       if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
     }
     f.flipHits = 0;
-    const flight = MOVES.flip.startup - FLIP_CROUCH;
+    const flight = MOVES[move].startup - FLIP_CROUCH;
     f.flipStep = { x: (dir.x * travel) / flight, y: (dir.y * travel) / flight };
   }
 
@@ -803,6 +872,12 @@
     } else if (action === 'vault') {
       aimVault(game, f);
       game.events.push({ type: 'vault', attacker: game.fighters.indexOf(f) });
+    } else if (action === 'dance') {
+      f.flipStep = null;
+      game.events.push({ type: 'dance', attacker: game.fighters.indexOf(f) });
+    } else if (action === 'cartwheel') {
+      aimFlip(game, f, 'cartwheel');
+      game.events.push({ type: 'cartwheel', attacker: game.fighters.indexOf(f) });
     } else if (action === 'jump') {
       f.flipStep = null; // straight up and down
     } else if (f.luna) lunge(game, f, m);
@@ -864,6 +939,7 @@
       if (f.giant > 0) f.giant--;
       if (f.invisible > 0) f.invisible--;
       if (f.fast > 0) f.fast--;
+      if (f.turbo > 0) f.turbo--;
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
@@ -888,6 +964,8 @@
       return;
     }
     if (airborne(f)) flipTravel(game, f);
+    // Cartwheeling across (on your hands, not in the air: you can be hit).
+    if (f.state === 'attack' && f.move === 'cartwheel' && f.t >= FLIP_CROUCH && f.t < MOVES.cartwheel.startup) flipTravel(game, f);
     if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
     // The flip's second hit, if the first landed.
     if (f.state === 'attack' && f.move === 'flip' && f.t === MOVES.flip.startup + FLIP_SECOND_AT && f.flipHits === 1) {
@@ -909,7 +987,7 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1);
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
       let mx = dir * norm;
@@ -1443,6 +1521,7 @@
         ...(f.invisible > 0 ? { invisible: f.invisible } : {}),
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
+        ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
@@ -1474,7 +1553,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

@@ -128,6 +128,7 @@
         bolts.length = 0;
         rays.length = 0;
         slashes.length = 0;
+        warps.length = 0;
         bats.length = 0;
         hearts.length = 0;
         texts.length = 0;
@@ -381,6 +382,37 @@
       }
       return;
     }
+    if (e.type === 'dance') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Dance off!', '#ff5fa2', 32);
+      sound.disco();
+      return;
+    }
+    if (e.type === 'cartwheel') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Cartwheel!', '#ff9a3c', 32);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'teleport') {
+      const ring = mode === 'ring';
+      const from = ring ? toScreen(e.from.x, e.from.y) : { x: e.from.x, y: FLOOR - 120 };
+      const to = targetPos(e.attacker, 'body');
+      sparks(from.x, from.y, '#b388ff', 26, 6);
+      sparks(to.x, to.y, '#b388ff', 26, 6);
+      sparks(to.x, to.y, '#ffffff', 12, 4);
+      warps.push({ x: from.x, y: from.y, life: 20 }, { x: to.x, y: to.y, life: 20 });
+      floatText(to.x, to.y - (ring ? 60 : 130), 'Blink!', '#b388ff', 30);
+      sound.blink();
+      if (display && display[e.attacker]) { display[e.attacker].x = e.to.x; display[e.attacker].y = e.to.y; }
+      return;
+    }
+    if (e.type === 'grandpa') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Grandpa speed!', '#c9a46a', 30);
+      sound.whoosh();
+      return;
+    }
     if (e.type === 'jay') {
       const p = targetPos(e.target, 'body');
       for (let k = 0; k < 6; k++) bats.push({ x: p.x, y: p.y, a: Math.random() * Math.PI * 2, r: 20, life: 70 + k * 6 });
@@ -589,6 +621,16 @@
       sound.slam();
       return;
     }
+    if (e.type === 'hit' && (e.move === 'dance' || e.move === 'cartwheel')) {
+      const dance = e.move === 'dance';
+      sparks(hx, p.y, dance ? '#ff5fa2' : '#ff9a3c', 26, 7);
+      sparks(hx, p.y, '#ffffff', 10, 5);
+      shake = Math.max(shake, 14);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 30);
+      floatText(p.x, p.y - 74 * up, dance ? 'Bump!' : 'Wheee!', dance ? '#ff5fa2' : '#ff9a3c', 28);
+      sound.slam();
+      return;
+    }
     if (e.type === 'hit' && snap.fighters[attacker] && snap.fighters[attacker].lion) {
       slashes.push({ x: hx, y: p.y, len: mode === 'ring' ? 40 : 70, life: 22 });
       sparks(hx, p.y, '#ffb13b', 14, 5);
@@ -704,6 +746,16 @@
         const a = ctxOk(); if (!a) return;
         tone(a, 60, 0.35, 0.15, 'sawtooth', 520);
       },
+      // Louise: a little disco riff. Luna: a sparkly blink.
+      disco() {
+        const a = ctxOk(); if (!a) return;
+        [[392, 0], [392, 0.12], [523, 0.24], [466, 0.36], [392, 0.48]].forEach(([fq, at]) => setTimeout(() => tone(a, fq, 0.1, 0.1, 'square'), at * 1000));
+      },
+      blink() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 1800, 0.25, 0.1, 'sine', 300);
+        setTimeout(() => tone(a, 300, 0.2, 0.1, 'sine', 1800), 120);
+      },
       // Jay: a spooky organ chord. Leo: a roar.
       organ() {
         const a = ctxOk(); if (!a) return;
@@ -804,7 +856,7 @@
   // The cheat codes. The server checks the letters (a hit wipes them, and
   // everyone sees them going in). Typing one can press E (aim tummy) on the
   // way, so the aim goes back to what it was before the first letter; and the
-  // letter that finishes it (the A in luna) doesn't also punch.
+  // letter that finishes it (the A in kalya) doesn't also punch.
   const typed = [];
   const CODES = Object.keys(G.CODES);
   const CODE_MAX = Math.max(...CODES.map((c) => c.length));
@@ -1043,6 +1095,10 @@
         const e = phase === 'startup' ? easeOut(p) : p;
         if (f.move === 'jump') {
           jumpPose(P, t);
+        } else if (f.move === 'dance') {
+          dancePose(P, t, phase, clock);
+        } else if (f.move === 'cartwheel') {
+          cartwheelPose(P, t, phase);
         } else if (f.move === 'flip' || f.move === 'vault') {
           flipPose(P, t, phase, p, kickReach, f.move);
         } else if (f.move === 'punch') {
@@ -1149,6 +1205,52 @@
     P.back = { x: 14, y: -190 };
   }
 
+  /**
+   * Louise's dance: a shimmy with the arms up, a twirl, and a hip-bump to
+   * finish (that's the hit).
+   */
+  function dancePose(P, t, phase, clock) {
+    const m = G.MOVES.dance;
+    if (phase === 'startup') {
+      const q = t / m.startup;
+      const beat = Math.sin(t * 0.55);
+      P.lean = beat * 12;
+      P.crouch = 6 + Math.abs(beat) * 12;
+      P.stride = beat * 14;
+      P.front = { x: 22 + beat * 10, y: -262 + Math.abs(beat) * 18 };
+      P.back = { x: 2 - beat * 10, y: -258 - Math.abs(beat) * 14 };
+      if (q > 0.45 && q < 0.85) P.twirl = Math.cos(((q - 0.45) / 0.4) * Math.PI * 4);
+      return;
+    }
+    // The bump: hips out at them, arms flung up.
+    P.stepX = 26;
+    P.lean = -14;
+    P.front = { x: 10, y: -270 };
+    P.back = { x: -10, y: -266 };
+  }
+
+  /** Tamzin's cartwheel: over and over, arms and legs out like a star. */
+  function cartwheelPose(P, t, phase) {
+    const m = G.MOVES.cartwheel;
+    if (phase === 'startup' && t >= G.FLIP_CROUCH) {
+      const q = (t - G.FLIP_CROUCH) / (m.startup - G.FLIP_CROUCH);
+      P.spin = q * Math.PI * 4; // twice over
+      P.lift = Math.abs(Math.sin(q * Math.PI * 2)) * 40;
+      P.front = { x: 40, y: -250 };
+      P.back = { x: -30, y: -250 };
+      P.kick = { x: 60, y: -10 };
+      P.stride = -30;
+      return;
+    }
+    if (phase !== 'startup') {
+      // Landing feet first into them.
+      P.kick = { x: 120, y: -110 };
+      P.lean = -16;
+      P.front = { x: 34, y: -200 };
+      P.back = { x: 14, y: -190 };
+    }
+  }
+
   /** A jump: crouch, up with the knees tucked, down again. */
   function jumpPose(P, t) {
     const m = G.MOVES.jump;
@@ -1211,6 +1313,8 @@
     ctx.fill();
 
     ctx.scale(f.facing, 1);
+    // Twirling (Louise): squashed side to side as they spin round.
+    if (P.twirl !== undefined) ctx.scale(Math.sign(P.twirl || 1) * Math.max(0.12, Math.abs(P.twirl)), 1);
     if (P.stepX) ctx.translate(P.stepX, 0);
     if (P.fall) ctx.rotate(-P.fall * Math.PI * 0.5);
     if (P.spin !== undefined) {
@@ -1334,6 +1438,22 @@
       ctx.beginPath();
       ctx.moveTo(hx + 8, hy + 12); ctx.lineTo(hx + 10, hy + 19); ctx.lineTo(hx + 12, hy + 12);
       ctx.moveTo(hx + 12, hy + 12); ctx.lineTo(hx + 14, hy + 19); ctx.lineTo(hx + 16, hy + 12);
+      ctx.fill();
+    }
+    if (f.turbo) {
+      // Grandpa: a tweed flat cap and a big white moustache.
+      ctx.fillStyle = '#8a7356';
+      ctx.beginPath();
+      ctx.ellipse(hx - 2, hy - 14, 21, 10, -0.1, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillRect(hx - 22, hy - 16, 44, 5);
+      ctx.fillStyle = '#6e5a42';
+      ctx.beginPath();
+      ctx.ellipse(hx + 20, hy - 13, 12, 4, 0.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f4f4f4';
+      ctx.beginPath();
+      ctx.ellipse(hx + 12, hy + 8, 10, 4, 0, 0, Math.PI * 2);
       ctx.fill();
     }
     if (f.lion) {
@@ -1857,6 +1977,10 @@
       ctx.stroke();
     }
     if (f.lion) lionMane(-1, 0, 24, clock);
+    if (f.state === 'attack' && f.move === 'dance') ctx.rotate(t * 0.25); // spinning round on the spot
+    if (f.state === 'attack' && f.move === 'cartwheel' && t < G.MOVES.cartwheel.startup) {
+      ctx.scale(1, 0.4 + 0.6 * Math.abs(Math.cos(t * 0.4))); // flipping side over side
+    }
     // Shoulders, trimmed in the fighter's colour, then the head.
     ctx.fillStyle = skin;
     ctx.beginPath();
@@ -1873,6 +1997,17 @@
     ctx.beginPath();
     ctx.arc(5, 0, 5, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
+    if (f.turbo) {
+      // Grandpa's flat cap, from above, peak to the front.
+      ctx.fillStyle = '#8a7356';
+      ctx.beginPath();
+      ctx.arc(-1, 0, 12, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#6e5a42';
+      ctx.beginPath();
+      ctx.ellipse(11, 0, 6, 9, 0, -Math.PI / 2, Math.PI / 2);
+      ctx.fill();
+    }
     if (snap && snap.theme === 'india') {
       // A marigold garland round the shoulders, from above.
       for (let k = 0; k < 14; k++) {
@@ -1927,6 +2062,7 @@
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
+    if (f.turbo) out.push({ text: `GRANDPA SPEED  ${secs(f.turbo)}s`, short: `SPEED ${secs(f.turbo)}s`, color: '#c9a46a' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
     const secret = i === me ? secretPauseUntil - performance.now() : 0;
     if (secret > 0) out.push({ text: `SECRET PAUSE  ${Math.ceil(secret / 1000)}s`, short: `SHH ${Math.ceil(secret / 1000)}s`, color: '#c9c9d6' });
@@ -2166,7 +2302,11 @@
   const TYPE_FONT = 'Bangers, Anton, Impact, sans-serif';
   const CODE_STYLES = {
     zeffen: { fill: ['#fff7a1', '#ffd23f', '#ff7b1c'], spark: '#fff36b' }, // sunny
-    luna: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight
+    kalya: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight (the vault)
+    luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
+    louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
+    tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
     jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
     harrison: { fill: [], spark: '#ffffff', rainbow: true }, // who knows?
     spreadbury: { fill: [], spark: '#ffffff', bands: 'usa' }, // red, white and blue
@@ -2710,9 +2850,10 @@
       // Zoom: a streak behind them from where they've just been.
       d.trail = d.trail || [];
       const here = feetOf(i);
-      if (f.fast) d.trail.push({ x: here.x, y: here.y });
-      if (!f.fast || d.trail.length > 9) d.trail.shift();
-      if (f.fast && d.trail.length > 1) {
+      const speedy = f.fast || f.turbo;
+      if (speedy) d.trail.push({ x: here.x, y: here.y });
+      if (!speedy || d.trail.length > (f.turbo ? 14 : 9)) d.trail.shift();
+      if (speedy && d.trail.length > 1) {
         const tail = d.trail[0];
         const rows = mode === 'ring' ? [0] : [-70, -130, -190];
         ctx.lineCap = 'round';
@@ -2761,8 +2902,51 @@
     ctx.restore();
   }
 
+  const warps = []; // Luna's teleport: rings closing in where she went and came out
+
+  function drawWarps() {
+    for (let k = warps.length - 1; k >= 0; k--) {
+      const w = warps[k];
+      const r = (mode === 'ring' ? 40 : 90) * (w.life / 20);
+      ctx.save();
+      ctx.strokeStyle = `rgba(179,136,255,${w.life / 20})`;
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (mode === 'ring') ctx.arc(w.x, w.y, r, 0, Math.PI * 2);
+      else ctx.ellipse(w.x, w.y, r * 0.6, r * 1.3, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      if (--w.life <= 0) warps.splice(k, 1);
+    }
+  }
+
+  /** Louise dancing: coloured disco spotlights on her, and music notes. */
+  function drawDisco(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (f.state !== 'attack' || f.move !== 'dance' || hiddenFrom(i, f)) return;
+      const p = targetPos(i, 'body');
+      const r = mode === 'ring' ? 46 : 120;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ['rgba(255,60,160,0.22)', 'rgba(60,200,255,0.22)', 'rgba(255,220,60,0.22)'].forEach((c3, k) => {
+        const a = clock * 4 + (k * Math.PI * 2) / 3;
+        ctx.fillStyle = c3;
+        ctx.beginPath();
+        ctx.arc(p.x + Math.cos(a) * r * 0.35, p.y + Math.sin(a) * r * 0.2, r * 0.7, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.restore();
+      if (Math.random() < 0.18) {
+        texts.push({ x: p.x + (Math.random() - 0.5) * r, y: p.y - r * 0.6, text: Math.random() < 0.5 ? '♪' : '♫',
+          color: ['#ff5fa2', '#4fd8ff', '#ffd23f'][Math.floor(Math.random() * 3)], size: mode === 'ring' ? 18 : 28, life: 40 });
+      }
+    });
+  }
+
   /** Over the fighters: ice blocks, lightning, hearts. */
   function drawSurprisesOver(clock) {
+    drawDisco(clock);
+    drawWarps();
     snap.fighters.forEach((f, i) => {
       if (!f.frozen || hiddenFrom(i, f)) return;
       const p = feetOf(i);
