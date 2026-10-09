@@ -38,6 +38,19 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
+// "spreadbury" turns the whole fight USA-themed for ten seconds, and two
+// hotdogs come floating down at random moments (slower than the giant fist,
+// with a shadow where they'll land). Whoever catches one before it hits the
+// floor gets half their health back. "mamtora" is the same, but India,
+// and dosas.
+//
+// "edward" secretly pauses the fight for three seconds: everything looks
+// the same and everyone keeps fighting, but no hit does any damage and the
+// clock doesn't move. Stamina still goes down (and back up) as normal.
+//
+// "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
+// of it back, and you take only the other 30%.
+//
 // "priya" fires a freeze ray at whoever you're fighting: three seconds in a
 // block of ice, unless they block it (guarding, facing it).
 //
@@ -154,9 +167,26 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora'];
+
+  // Spreadbury: USA! USA! and two hotdogs from the sky. Mamtora: India, and dosas.
+  const THEMES = { spreadbury: { theme: 'usa', treat: 'hotdog' }, mamtora: { theme: 'india', treat: 'dosa' } };
+  const USA_TICKS = 10 * TICK_RATE;
+  const HOTDOGS = 2;
+  const HOTDOG_FIRST = TICK_RATE; // the drops come at random between these
+  const HOTDOG_LAST = 7 * TICK_RATE;
+  const HOTDOG_FALL_TICKS = Math.round(2.5 * TICK_RATE); // the fist's warning is one second
+  const HOTDOG_CATCH_RADIUS = 85;
+  const HOTDOG_HEAL = MAX_HP / 2;
+
+  // Edward: the secret pause button.
+  const PAUSE_TICKS = 3 * TICK_RATE;
+
+  // Daniel: spiky. Hits on you split 30:70, you:them.
+  const SPIKY_TICKS = 5 * TICK_RATE;
+  const SPIKY_KEEP = 0.3;
 
   // Priya: a freeze ray. An icy bolt that flies at whoever you're fighting
   // and freezes them for three seconds, unless they're guarding (facing it).
@@ -217,6 +247,7 @@
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
+      spiky: 0, // ticks of Daniel's spikes left
       tiny: 0, // ticks of being shrunk by Shaan left
       shree: null, // steering the giant fist: { x, y, t, drop }
       car: null, // driving: { dx, dy, t, hit }
@@ -276,6 +307,11 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
+      usa: 0, // ticks of the theme (Spreadbury's USA, Mamtora's India) left
+      theme: null, // 'usa' or 'india'
+      hotdogs: [], // { x, y, at (tick of the USA it drops), t (ticks falling, or -1 waiting) }
+      paused: 0, // ticks of Edward's secret pause left
+      pausedBy: null,
     };
     return game;
   }
@@ -356,6 +392,34 @@
       game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
       return;
     }
+    if (THEMES[which]) {
+      const { theme, treat } = THEMES[which];
+      game.usa = USA_TICKS;
+      game.theme = theme;
+      // Two drops at random moments (at least a second apart), at random spots.
+      const first = HOTDOG_FIRST + Math.floor(game.random() * (HOTDOG_LAST - HOTDOG_FIRST - TICK_RATE));
+      const second = first + TICK_RATE + Math.floor(game.random() * (HOTDOG_LAST - first - TICK_RATE + 1));
+      const ring = game.mode === 'ring';
+      const spot = () => ({
+        x: (ring ? RING_MIN : RING_LEFT) + 40 + game.random() * ((ring ? RING_MAX - RING_MIN : RING_RIGHT - RING_LEFT) - 80),
+        y: ring ? RING_MIN + 40 + game.random() * (RING_MAX - RING_MIN - 80) : 0,
+      });
+      game.hotdogs = [first, second].slice(0, HOTDOGS).map((at) => ({ ...spot(), at, t: -1, kind: treat }));
+      game.usaT = 0;
+      game.events.push({ type: 'theme', theme, attacker: index });
+      return;
+    }
+    if (which === 'edward') {
+      game.paused = PAUSE_TICKS;
+      game.pausedBy = index;
+      game.events.push({ type: 'edward', attacker: index });
+      return;
+    }
+    if (which === 'daniel') {
+      f.spiky = SPIKY_TICKS;
+      game.events.push({ type: 'daniel', target: index });
+      return;
+    }
     if (which === 'priya') {
       const o = foeOf(game, f);
       if (!o) return;
@@ -428,7 +492,7 @@
       hits.push(i);
     });
     f.shree = null;
-    game.events.push({ type: 'shreeSlam', attacker: index, x: s.x, y: s.y, hits, damage: FIST_DAMAGE });
+    game.events.push({ type: 'shreeSlam', attacker: index, x: s.x, y: s.y, hits, damage: game.paused > 0 ? 0 : FIST_DAMAGE });
     for (const i of hits) {
       const o = game.fighters[i];
       const pseudo = { x: s.x, y: s.y, stats: f.stats };
@@ -511,10 +575,33 @@
     }
   }
 
+  /**
+   * Daniel's spikes: a spiky fighter takes 30% of a hit, and whoever hit them
+   * gets the other 70% back. Returns what the spiky one takes.
+   */
+  function spikes(game, def, att, damage) {
+    if (game.paused > 0) return 0; // Edward's secret pause: nothing hurts, either way
+    if (!(def.spiky > 0) || !att || att === def || !game.fighters.includes(att) || !standing(att)) return damage;
+    const keep = Math.round(damage * SPIKY_KEEP);
+    const back = damage - keep;
+    if (back <= 0) return damage;
+    att.hp = Math.max(0, att.hp - back);
+    def.stats.damage += back;
+    const ai = game.fighters.indexOf(att);
+    game.events.push({ type: 'spiked', target: ai, attacker: game.fighters.indexOf(def), damage: back });
+    if (att.hp <= 0) {
+      setState(att, 'ko');
+      game.events.push({ type: 'ko', target: ai });
+    }
+    return keep;
+  }
+
   /** Damage that isn't a punch or kick: no guard stops it. */
   function hurt(game, att, def, damage, stun, knockback, attIndex) {
     if (!def || !standing(def)) return;
     const i = game.fighters.indexOf(def);
+    const hitter = attIndex !== undefined ? game.fighters[attIndex] : att;
+    damage = spikes(game, def, hitter, damage);
     def.hp = Math.max(0, def.hp - damage);
     att.stats.landed++;
     att.stats.damage += damage;
@@ -743,6 +830,7 @@
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
+      if (f.spiky > 0) f.spiky--;
     }
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
@@ -985,7 +1073,7 @@
       const ev = { target: hit.defender, attacker: hit.attacker, move: hit.move, height: hit.height };
 
       if (blocking) {
-        def.hp = Math.max(0, def.hp - m.blockDamage);
+        def.hp = Math.max(0, def.hp - (game.paused > 0 ? 0 : m.blockDamage));
         def.stamina -= m.blockStamina;
         att.stats.blocked++;
         att.stats.damage += m.blockDamage;
@@ -1004,7 +1092,8 @@
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
-        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
+        const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
+        const damage = spikes(game, def, att, full);
         def.hp = Math.max(0, def.hp - damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
@@ -1082,7 +1171,12 @@
       game.events.push({ type: 'fight', round: game.round });
       game.fist = { next: nextFist(game), warn: null };
       game.bolts = [];
+      game.paused = 0;
+      game.usa = 0;
+      game.theme = null;
+      game.hotdogs = [];
     }
+
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
       const stillIn = game.fighters.filter((f) => !f.left).length;
@@ -1115,7 +1209,14 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
-      game.timer--;
+      updateUsa(game);
+      // Edward's secret pause: the clock stands still till it's over.
+      if (game.paused > 0) {
+        game.paused--;
+        if (game.paused === 0) game.events.push({ type: 'unpause', attacker: game.pausedBy });
+      } else {
+        game.timer--;
+      }
       checkRoundOver(game);
     }
     return game;
@@ -1165,6 +1266,44 @@
     });
   }
 
+  /**
+   * Spreadbury: the USA theme counts down, and the hotdogs drop on cue. One
+   * that reaches the floor with a fighter close enough is caught (by the
+   * nearest), for half their health back; otherwise it splats.
+   */
+  function updateUsa(game) {
+    if (game.usa > 0 && --game.usa === 0) game.theme = null;
+    if (!game.hotdogs.length) return;
+    game.usaT++;
+    const ring = game.mode === 'ring';
+    game.hotdogs = game.hotdogs.filter((h) => {
+      if (h.t < 0) {
+        if (game.usaT >= h.at) {
+          h.t = 0;
+          game.events.push({ type: 'hotdogDrop', x: h.x, y: h.y, kind: h.kind });
+        }
+        return true;
+      }
+      if (++h.t < HOTDOG_FALL_TICKS) return true;
+      let best = null;
+      let bestD = HOTDOG_CATCH_RADIUS;
+      game.fighters.forEach((f, i) => {
+        if (!standing(f)) return;
+        const d = Math.hypot(f.x - h.x, ring ? f.y - h.y : 0);
+        if (d <= bestD) { best = i; bestD = d; }
+      });
+      if (best === null) {
+        game.events.push({ type: 'hotdogSplat', x: h.x, y: h.y, kind: h.kind });
+        return false;
+      }
+      const f = game.fighters[best];
+      const before = f.hp;
+      f.hp = Math.min(MAX_HP, f.hp + HOTDOG_HEAL);
+      game.events.push({ type: 'hotdogCaught', target: best, heal: f.hp - before, x: h.x, y: h.y, kind: h.kind });
+      return false;
+    });
+  }
+
   /** Counts down to the next shadow, then the slam a second after it. */
   function updateFist(game) {
     const fist = game.fist;
@@ -1196,7 +1335,7 @@
       const d = Math.hypot(dx, dy);
       if (d > FIST_RADIUS) return;
       hit.push(i);
-      f.hp = Math.max(0, f.hp - FIST_DAMAGE);
+      f.hp = Math.max(0, f.hp - (game.paused > 0 ? 0 : FIST_DAMAGE));
       // Knocked out from under it (any way at all if it landed right on them).
       const ax = d > 1 ? dx / d : i % 2 ? 1 : -1;
       const ay = d > 1 ? dy / d : 0;
@@ -1207,7 +1346,7 @@
       knocked(game, f);
       f.hitHeight = 'head';
     });
-    game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
+    game.events.push({ type: 'fist', x, y, hits: hit, damage: game.paused > 0 ? 0 : FIST_DAMAGE });
     for (const i of hit) {
       if (game.fighters[i].hp <= 0) {
         setState(game.fighters[i], 'ko');
@@ -1252,6 +1391,8 @@
       winner: game.winner,
       tick: game.tick,
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
+      ...(game.usa > 0 ? { usa: game.usa, theme: game.theme } : {}),
+      ...(game.hotdogs.some((h) => h.t >= 0) ? { hotdogs: game.hotdogs.filter((h) => h.t >= 0).map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), t: h.t, kind: h.kind })) } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
@@ -1263,6 +1404,7 @@
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
+        ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
         ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
         ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
@@ -1289,7 +1431,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

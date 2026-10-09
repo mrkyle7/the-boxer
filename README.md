@@ -46,6 +46,12 @@ And three more:
 - **shaan**: a shrink ray at the one you're fighting. They go small for seven seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
 - **parimal**: beep beep! You jump in a car, which revs for a moment and then drives straight at the nearest fighter, for 30. In the ring, step aside. One on one, jump over it with **space** (or the Jump button on a phone). Jumping is too early if you do it the moment you hear the horn, and just right when it sets off. A jump only gets you over the car: you can still be punched in the air.
 
+Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (Uncle Sam hats for everyone, fireworks), and two hotdogs come floating down at random moments, with a shadow where each will land. Whoever catches one before it hits the floor gets half their health back. **mamtora** does the same with India: the tricolour, marigold garlands and petals, and dosas instead of hotdogs.
+
+Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
+
+Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
+
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
 
 And **harrison**? Type it and find out. It's different every time.
