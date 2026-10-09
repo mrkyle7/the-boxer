@@ -35,7 +35,8 @@
 // "shaan" shrinks the one you're fighting (their hits do 10% less), or just
 // brings a Jemini giant back down to size; and "parimal" puts you in a car
 // that drives at the nearest fighter, who has to get out of the way (to the
-// side in the ring, or jump over it one on one: space to jump).
+// side in the ring, or jump over it one on one: space to jump. A jump only
+// gets you over the car: punches and the rest still hit you in the air).
 //
 // And "harrison": a surprise. One of a handful of moves and powers, picked
 // at random each time (see SURPRISES).
@@ -300,7 +301,7 @@
     if (action === 'jump' && game.mode === 'ring') return; // one on one only
     const input = game.inputs[index];
     // A cheat move that's just gone in isn't replaced by the key that finished it.
-    if (AIRBORNE_MOVES.includes(input.buffered)) return;
+    if (input.buffered === 'flip' || input.buffered === 'vault') return;
     input.buffered = action;
     input.bufferAge = 0;
   }
@@ -424,7 +425,7 @@
     if (ring) f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y + c.dy * CAR_SPEED));
     const index = game.fighters.indexOf(f);
     game.fighters.forEach((o, i) => {
-      if (o === f || c.hit.includes(i) || !standing(o) || untouchable(o)) return;
+      if (o === f || c.hit.includes(i) || !standing(o) || untouchable(o) || airborne(o)) return; // jumped over it
       if (Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) > CAR_HIT_RADIUS) return;
       c.hit.push(i);
       game.events.push({ type: 'carHit', attacker: index, target: i });
@@ -550,9 +551,12 @@
       && f.t >= crouch && f.t < MOVES[f.move].startup;
   }
 
-  /** In the air, or in a car: out of reach. */
+  /**
+   * In a flip or vault, or in a car: out of reach. (A plain jump only gets
+   * you over a car: anything else can still hit you on the way up.)
+   */
   function untouchable(f) {
-    return airborne(f) || !!f.car;
+    return (airborne(f) && f.move !== 'jump') || !!f.car;
   }
 
   /**

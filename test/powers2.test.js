@@ -220,3 +220,18 @@ test('jumping the moment it starts revving is too early', () => {
   G.pressAction(g, 1, 'jump');
   assert.ok(run(g, 80).some((e) => e.type === 'carHit'));
 });
+
+test("a jump gets you over the car, but a punch still hits you in the air", () => {
+  const g = fight();
+  const [a, b] = g.fighters;
+  a.x = 400;
+  b.x = 520;
+  G.pressAction(g, 1, 'jump');
+  run(g, G.JUMP_CROUCH + 1);
+  assert.ok(G.airborne(b));
+  assert.ok(!G.untouchable(b));
+  G.pressAction(g, 0, 'punch');
+  const events = run(g, 12);
+  assert.ok(events.some((e) => e.type === 'hit' && e.target === 1), 'the punch landed');
+  assert.ok(b.hp < G.MAX_HP);
+});
