@@ -48,6 +48,11 @@
 // the same and everyone keeps fighting, but no hit does any damage and the
 // clock doesn't move. Stamina still goes down (and back up) as normal.
 //
+// "jay" makes you a vampire for seven seconds: your hits do half damage, and
+// drain it, healing you by as much as they take. "leo" makes you a lion for
+// seven: punches only (a swipe of the claws) for 1.5x damage, no kicks, and
+// no blocking.
+//
 // "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
@@ -167,9 +172,15 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo'];
+
+  // Jay: a vampire. Leo: a lion.
+  const VAMPIRE_TICKS = 7 * TICK_RATE;
+  const VAMPIRE_DAMAGE = 0.5; // hits do half...
+  const LION_TICKS = 7 * TICK_RATE;
+  const LION_DAMAGE = 1.5;
 
   // Spreadbury: USA! USA! and two hotdogs from the sky. Mamtora: India, and dosas.
   const THEMES = { spreadbury: { theme: 'usa', treat: 'hotdog' }, mamtora: { theme: 'india', treat: 'dosa' } };
@@ -248,6 +259,8 @@
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
       spiky: 0, // ticks of Daniel's spikes left
+      vampire: 0, // ticks of Jay's vampire left
+      lion: 0, // ticks of Leo's lion left
       tiny: 0, // ticks of being shrunk by Shaan left
       shree: null, // steering the giant fist: { x, y, t, drop }
       car: null, // driving: { dx, dy, t, hit }
@@ -346,6 +359,7 @@
   function pressAction(game, index, action) {
     if (!ACTIONS.includes(action)) return;
     if (action === 'jump' && game.mode === 'ring') return; // one on one only
+    if (action === 'kick' && game.fighters[index] && game.fighters[index].lion > 0) return; // lions swipe, they don't kick
     const input = game.inputs[index];
     // A cheat move that's just gone in isn't replaced by the key that finished it.
     if (input.buffered === 'flip' || input.buffered === 'vault') return;
@@ -413,6 +427,19 @@
       game.paused = PAUSE_TICKS;
       game.pausedBy = index;
       game.events.push({ type: 'edward', attacker: index });
+      return;
+    }
+    if (which === 'jay') {
+      f.vampire = VAMPIRE_TICKS;
+      game.events.push({ type: 'jay', target: index });
+      return;
+    }
+    if (which === 'leo') {
+      f.lion = LION_TICKS;
+      const input = game.inputs[index];
+      if (input.buffered === 'kick') input.buffered = null;
+      if (f.state === 'block') setState(f, 'idle');
+      game.events.push({ type: 'leo', target: index });
       return;
     }
     if (which === 'daniel') {
@@ -596,13 +623,23 @@
     return keep;
   }
 
+  /** Jay's vampire: whatever a hit takes off them, it gives back to you. */
+  function drain(game, att, damage) {
+    if (!att || !(att.vampire > 0) || damage <= 0 || !game.fighters.includes(att) || !standing(att)) return;
+    const before = att.hp;
+    att.hp = Math.min(MAX_HP, att.hp + damage);
+    if (att.hp > before) game.events.push({ type: 'drain', target: game.fighters.indexOf(att), heal: att.hp - before });
+  }
+
   /** Damage that isn't a punch or kick: no guard stops it. */
   function hurt(game, att, def, damage, stun, knockback, attIndex) {
     if (!def || !standing(def)) return;
     const i = game.fighters.indexOf(def);
     const hitter = attIndex !== undefined ? game.fighters[attIndex] : att;
+    if (hitter && hitter.vampire > 0) damage = Math.round(damage * VAMPIRE_DAMAGE);
     damage = spikes(game, def, hitter, damage);
     def.hp = Math.max(0, def.hp - damage);
+    drain(game, hitter, damage);
     att.stats.landed++;
     att.stats.damage += damage;
     const dx = def.x - att.x;
@@ -831,6 +868,8 @@
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
       if (f.spiky > 0) f.spiky--;
+      if (f.vampire > 0) f.vampire--;
+      if (f.lion > 0) f.lion--;
     }
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
@@ -864,7 +903,7 @@
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       // Up and down only mean anything in the ring.
       const dirY = game.mode === 'ring' ? (input.down ? 1 : 0) - (input.up ? 1 : 0) : 0;
-      const wantBlock = input.block;
+      const wantBlock = input.block && !(f.lion > 0); // lions don't block
       const next = wantBlock ? 'block' : dir !== 0 || dirY !== 0 ? 'walk' : 'idle';
       if (next !== f.state) {
         f.state = next;
@@ -1092,9 +1131,11 @@
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
-        const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
+        const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1)
+          * (att.lion > 0 ? LION_DAMAGE : 1) * (att.vampire > 0 ? VAMPIRE_DAMAGE : 1));
         const damage = spikes(game, def, att, full);
         def.hp = Math.max(0, def.hp - damage);
+        drain(game, att, damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
         att.stats.damage += damage;
@@ -1405,6 +1446,8 @@
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
+        ...(f.vampire > 0 ? { vampire: f.vampire } : {}),
+        ...(f.lion > 0 ? { lion: f.lion } : {}),
         ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
         ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
@@ -1431,7 +1474,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

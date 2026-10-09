@@ -52,6 +52,8 @@ Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (
 
 Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
+Or **jay**: a vampire for seven seconds. Your hits do half damage, but drain it, healing you by as much as they take. Or **leo**: a lion for seven seconds. Punches become claw swipes for 1.5x damage, but no kicks and no blocking.
+
 Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
 
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
