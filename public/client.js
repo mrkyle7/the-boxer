@@ -127,6 +127,8 @@
         slams.length = 0;
         bolts.length = 0;
         rays.length = 0;
+        slashes.length = 0;
+        bats.length = 0;
         hearts.length = 0;
         texts.length = 0;
         held.aim = 'head';
@@ -379,6 +381,28 @@
       }
       return;
     }
+    if (e.type === 'jay') {
+      const p = targetPos(e.target, 'body');
+      for (let k = 0; k < 6; k++) bats.push({ x: p.x, y: p.y, a: Math.random() * Math.PI * 2, r: 20, life: 70 + k * 6 });
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Vampire!', '#ff2a3a', 34);
+      sound.organ();
+      return;
+    }
+    if (e.type === 'drain') {
+      const to = targetPos(e.target, 'head');
+      const victim = snap.fighters.findIndex((f, i) => i !== e.target && f.state === 'hitstun');
+      if (victim >= 0) bloodStream(targetPos(victim, 'head'), to);
+      floatText(to.x, to.y - (mode === 'ring' ? 40 : 70), `+${e.heal}`, '#ff4a5a', 26);
+      return;
+    }
+    if (e.type === 'leo') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#ffb13b', 30, 7);
+      shake = Math.max(shake, 10);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Roar!', '#ffb13b', 38);
+      sound.roar();
+      return;
+    }
     if (e.type === 'daniel') {
       const p = targetPos(e.target, 'body');
       sparks(p.x, p.y, '#b6e24a', 28, 7);
@@ -565,6 +589,15 @@
       sound.slam();
       return;
     }
+    if (e.type === 'hit' && snap.fighters[attacker] && snap.fighters[attacker].lion) {
+      slashes.push({ x: hx, y: p.y, len: mode === 'ring' ? 40 : 70, life: 22 });
+      sparks(hx, p.y, '#ffb13b', 14, 5);
+      shake = Math.max(shake, 7);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 26);
+      floatText(p.x, p.y - 72 * up, 'Swipe!', '#ffb13b', 24);
+      sound.hit(0.8);
+      return;
+    }
     if (e.type === 'hit') {
       const heavy = e.move === 'kick';
       sparks(hx, p.y, e.counter ? '#f4c542' : '#ffffff', heavy ? 18 : 9, heavy ? 6 : 4);
@@ -670,6 +703,16 @@
       tapeStart() {
         const a = ctxOk(); if (!a) return;
         tone(a, 60, 0.35, 0.15, 'sawtooth', 520);
+      },
+      // Jay: a spooky organ chord. Leo: a roar.
+      organ() {
+        const a = ctxOk(); if (!a) return;
+        [147, 175, 220, 294].forEach((fq) => tone(a, fq, 0.9, 0.06, 'sawtooth'));
+      },
+      roar() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.7, 500, 0.7);
+        tone(a, 110, 0.7, 0.35, 'sawtooth', 60);
       },
       // Daniel: a metallic 'shing'.
       spikes() {
@@ -1189,8 +1232,29 @@
     const gF = { x: P.front.x + P.lean * 0.4, y: P.front.y + ty };
     const gB = { x: P.back.x + P.lean * 0.4, y: P.back.y + ty };
 
-    const skin = hurt ? mix(c.skin, '#ffffff', 0.45) : c.skin;
-    const skinDark = hurt ? mix(c.skinDark, '#ffffff', 0.35) : c.skinDark;
+    const pale = (k) => (f.vampire ? mix(k, '#dcd6ea', 0.6) : k); // vampires go pale
+    const skin = hurt ? mix(pale(c.skin), '#ffffff', 0.45) : pale(c.skin);
+    const skinDark = hurt ? mix(pale(c.skinDark), '#ffffff', 0.35) : pale(c.skinDark);
+
+    // Jay's vampire: a cape, high-collared, billowing behind.
+    if (f.vampire) {
+      const flap = Math.sin(clock * 5) * 10;
+      ctx.fillStyle = '#12060c';
+      ctx.beginPath();
+      ctx.moveTo(shX - 22, shoulderY - 16);
+      ctx.lineTo(shX + 6, shoulderY - 18);
+      ctx.quadraticCurveTo(hipX - 40 - flap, hipY - 20, hipX - 62 - flap, -8);
+      ctx.lineTo(hipX - 10 - flap * 0.5, -14);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#8e0b1c';
+      ctx.beginPath();
+      ctx.moveTo(shX - 18, shoulderY - 10);
+      ctx.quadraticCurveTo(hipX - 32 - flap, hipY - 14, hipX - 50 - flap, -12);
+      ctx.lineTo(hipX - 18 - flap * 0.5, -16);
+      ctx.closePath();
+      ctx.fill();
+    }
 
     // Back arm (behind torso)
     drawArm(backSh, gB, skinDark, c.gloveDark, P.backArc);
@@ -1236,6 +1300,7 @@
     // Head
     const hx = shX + P.headX;
     const hy = shoulderY - 30 + P.headY;
+    if (f.lion) lionMane(hx, hy, 34, clock);
     ctx.fillStyle = skin;
     ctx.fillRect(hx - 7, hy + 10, 14, 16);
     ctx.beginPath();
@@ -1259,6 +1324,30 @@
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(hx + 6, hy + 10, 10, 3);
+    if (f.vampire) {
+      // Red eyes and a pair of fangs.
+      ctx.fillStyle = '#ff2a3a';
+      ctx.beginPath();
+      ctx.arc(hx + 10, hy - 2, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(hx + 8, hy + 12); ctx.lineTo(hx + 10, hy + 19); ctx.lineTo(hx + 12, hy + 12);
+      ctx.moveTo(hx + 12, hy + 12); ctx.lineTo(hx + 14, hy + 19); ctx.lineTo(hx + 16, hy + 12);
+      ctx.fill();
+    }
+    if (f.lion) {
+      // Lion ears and a nose.
+      ctx.fillStyle = '#c98a24';
+      ctx.beginPath();
+      ctx.arc(hx - 10, hy - 22, 7, 0, Math.PI * 2);
+      ctx.arc(hx + 8, hy - 24, 7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3b1d0a';
+      ctx.beginPath();
+      ctx.ellipse(hx + 18, hy + 2, 4, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (snap && snap.theme === 'usa' && !echo) unclesamHat(hx, hy - 16);
     if (snap && snap.theme === 'india' && !echo) garland(hx, shoulderY + 6, clock);
 
@@ -1270,6 +1359,7 @@
 
     // Front arm
     drawArm(frontSh, gF, skin, c.glove);
+    if (f.lion) { claws(gB, 1); claws(gF, 1); }
 
     ctx.restore();
   }
@@ -1575,7 +1665,8 @@
     const c = PALETTE[i];
     const p = toScreen(d.x, d.y);
     const hurt = f.state === 'hitstun' && t < 5;
-    const skin = hurt ? mix(c.skin, '#ffffff', 0.5) : c.skin;
+    const baseSkin = f.vampire ? mix(c.skin, '#dcd6ea', 0.6) : c.skin;
+    const skin = hurt ? mix(baseSkin, '#ffffff', 0.5) : baseSkin;
     const low = f.aim === 'body';
 
     ctx.save();
@@ -1734,6 +1825,7 @@
       ctx.beginPath();
       ctx.arc(g.x + 2, g.y - 2, 3, 0, Math.PI * 2);
       ctx.fill();
+      if (f.lion) claws(g, 0.45);
     };
     const arm = (g, color) => {
       ctx.strokeStyle = color;
@@ -1750,6 +1842,21 @@
       arm(front, skin); glove(front, c.glove);
     }
 
+    // From above: a vampire's cape spread behind, a lion's mane all round.
+    if (f.vampire) {
+      const flap = Math.sin(clock * 5) * 4;
+      ctx.fillStyle = '#12060c';
+      ctx.beginPath();
+      ctx.moveTo(4, -26);
+      ctx.quadraticCurveTo(-30 - flap, -30, -36 - flap, 0);
+      ctx.quadraticCurveTo(-30 - flap, 30, 4, 26);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#8e0b1c';
+      ctx.lineWidth = 3;
+      ctx.stroke();
+    }
+    if (f.lion) lionMane(-1, 0, 24, clock);
     // Shoulders, trimmed in the fighter's colour, then the head.
     ctx.fillStyle = skin;
     ctx.beginPath();
@@ -1823,6 +1930,8 @@
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
     const secret = i === me ? secretPauseUntil - performance.now() : 0;
     if (secret > 0) out.push({ text: `SECRET PAUSE  ${Math.ceil(secret / 1000)}s`, short: `SHH ${Math.ceil(secret / 1000)}s`, color: '#c9c9d6' });
+    if (f.vampire) out.push({ text: `VAMPIRE  ${secs(f.vampire)}s`, short: `VAMPIRE ${secs(f.vampire)}s`, color: '#ff4a5a' });
+    if (f.lion) out.push({ text: `LION  ${secs(f.lion)}s · NO KICK, NO BLOCK`, short: `LION ${secs(f.lion)}s`, color: '#f2b33d' });
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
@@ -2067,6 +2176,8 @@
     parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
     priya: { fill: ['#f4ffff', '#7ff3ff', '#1a9bbf'], spark: '#e6fdff' }, // frosty
     daniel: { fill: ['#f2f7e6', '#b6e24a', '#4f7d12'], spark: '#d9ff7a' }, // cactus green
+    jay: { fill: ['#ff9aa5', '#c2102a', '#3a0510'], spark: '#ff4a5a' }, // blood red
+    leo: { fill: ['#fff1c2', '#f2b33d', '#a8601a'], spark: '#ffd27a' }, // lion gold
     edward: { fill: ['#ffffff', '#c9c9d6', '#6b6b80'], spark: '#ffffff' }, // VHS grey
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
@@ -2351,6 +2462,101 @@
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  /** Three white claws sticking out of the front of a glove (+x is forward). */
+  function claws(g, k) {
+    ctx.save();
+    ctx.fillStyle = '#fbf7ea';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth = 1;
+    for (const dy of [-9, 0, 9]) {
+      ctx.beginPath();
+      ctx.moveTo(g.x + 10 * k, g.y + dy * k - 4 * k);
+      ctx.quadraticCurveTo(g.x + 30 * k, g.y + dy * k - 2 * k, g.x + 36 * k, g.y + dy * k + 6 * k);
+      ctx.lineTo(g.x + 10 * k, g.y + dy * k + 4 * k);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** Leo's lion: a shaggy golden mane round the head. */
+  function lionMane(x, y, r, clock) {
+    ctx.save();
+    const n = 16;
+    for (let layer = 0; layer < 2; layer++) {
+      ctx.fillStyle = layer ? '#e3a43a' : '#a8601a';
+      ctx.beginPath();
+      for (let k = 0; k <= n * 2; k++) {
+        const a = (k / (n * 2)) * Math.PI * 2;
+        const rr = (k % 2 ? r * 0.72 : r) * (layer ? 0.82 : 1) + Math.sin(clock * 6 + k) * 1.5;
+        ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  const slashes = []; // Leo's claw marks, for a moment
+  const bats = []; // flapping off a new vampire
+
+  function drawBats(clock) {
+    for (let k = bats.length - 1; k >= 0; k--) {
+      const b = bats[k];
+      b.r += 2.4;
+      b.a += 0.05;
+      const x = b.x + Math.cos(b.a) * b.r;
+      const y = b.y + Math.sin(b.a) * b.r * 0.5 - (70 - b.life);
+      const wing = Math.sin(clock * 30 + k) * 6;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, b.life / 15);
+      ctx.fillStyle = '#16070d';
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x - 8, y - 8 - wing, x - 16, y - wing);
+      ctx.quadraticCurveTo(x - 9, y + 1, x, y + 4);
+      ctx.quadraticCurveTo(x + 9, y + 1, x + 16, y - wing);
+      ctx.quadraticCurveTo(x + 8, y - 8 - wing, x, y);
+      ctx.fill();
+      ctx.restore();
+      if (--b.life <= 0) bats.splice(k, 1);
+    }
+  }
+
+  function drawSlashes() {
+    for (let k = slashes.length - 1; k >= 0; k--) {
+      const sl = slashes[k];
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, sl.life / 10);
+      ctx.translate(sl.x, sl.y);
+      ctx.rotate(-0.6);
+      for (let n = -1; n <= 1; n++) {
+        for (const [w, color] of [[7, 'rgba(255,90,40,0.45)'], [3, '#ffffff']]) {
+          ctx.strokeStyle = color;
+          ctx.lineWidth = w;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(-sl.len / 2 + n * 4, n * 12);
+          ctx.quadraticCurveTo(0, n * 12 - 8, sl.len / 2 + n * 4, n * 12);
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
+      if (--sl.life <= 0) slashes.splice(k, 1);
+    }
+  }
+
+  /** Jay's vampire draining: red drops streaming from one to the other. */
+  function bloodStream(from, to) {
+    for (let k = 0; k < 14; k++) {
+      const q = Math.random();
+      effects.push({ x: from.x + (to.x - from.x) * q * 0.3, y: from.y + (to.y - from.y) * q * 0.3,
+        vx: (to.x - from.x) / 18 + (Math.random() - 0.5), vy: (to.y - from.y) / 18 - 2 + (Math.random() - 0.5),
+        life: 18 + Math.random() * 6, color: Math.random() < 0.6 ? '#c2102a' : '#ff4a5a' });
+    }
   }
 
   /** Shaan's shrink ray: a wobbly pink beam from one to the other. */
@@ -3183,6 +3389,8 @@
     drawSurprisesOver(clock);
     drawHotdogs(clock);
     drawRays();
+    drawSlashes();
+    drawBats(clock);
     drawBolts(clock);
     drawTyping();
 
