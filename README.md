@@ -41,6 +41,11 @@ Or type **luna** for the Luna vault: a flip right over your opponent, landing be
 
 Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself).
 
+And three more:
+- **shree**: you take control of the giant fist. Move its shadow with left and right (and up and down in the ring), then punch to drop it on someone for 30. You stand still while you steer it, and getting hit makes you let go. If you don't punch, it drops by itself after six seconds.
+- **shaan**: a shrink ray at the one you're fighting. They go small for seven seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
+- **parimal**: beep beep! You jump in a car, which revs for a moment and then drives straight at the nearest fighter, for 30. In the ring, step aside. One on one, jump over it with **space** (or the Jump button on a phone). Jumping is too early if you do it the moment you hear the horn, and just right when it sets off.
+
 And **harrison**? Type it and find out. It's different every time.
 
 ## Deployment
