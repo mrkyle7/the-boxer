@@ -231,6 +231,7 @@ canvas {
 .ring-only { display: none; }
 body.ring .ring-only { display: inline; }
 body.ring .touch button.ring-only { display: inline-flex; align-items: center; justify-content: center; }
+body.ring .side-only { display: none !important; }
 
 /* Phones and tablets held sideways: the buttons go either side of the ring,
    and the canvas fits the screen's height, so everything is on screen. */

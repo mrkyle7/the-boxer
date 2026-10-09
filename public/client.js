@@ -126,6 +126,7 @@
         effects.length = 0;
         slams.length = 0;
         bolts.length = 0;
+        rays.length = 0;
         hearts.length = 0;
         texts.length = 0;
         held.aim = 'head';
@@ -328,6 +329,58 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'shree') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), "Shree's fist!", '#ff6b4a', 32);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'shreeSlam') {
+      const p = fistSpot(e.x, e.y);
+      slams.push({ x: e.x, y: e.y, life: SLAM_LIFE });
+      shake = Math.max(shake, 18);
+      crowdHype = 1;
+      sparks(p.x, p.y, '#ff6b4a', 30, 8);
+      sound.slam();
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 300), e.hits.length ? 'Bullseye!' : 'Missed!', '#ff6b4a', 30);
+      return;
+    }
+    if (e.type === 'shreeCancel') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Lost the fist!', '#cfd6e4', 24);
+      return;
+    }
+    if (e.type === 'shaan') {
+      const from = targetPos(e.attacker, 'body');
+      const to = targetPos(e.target, 'body');
+      rays.push({ x0: from.x, y0: from.y, x1: to.x, y1: to.y, life: 24 });
+      sparks(to.x, to.y, '#ff6ad5', 24, 6);
+      floatText(to.x, to.y - (mode === 'ring' ? 60 : 140), e.unbig ? 'Back to normal!' : 'Shrunk!', '#ff6ad5', 32);
+      sound.shrink();
+      return;
+    }
+    if (e.type === 'parimal') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Beep beep!', '#ffffff', 34);
+      sound.horn();
+      return;
+    }
+    if (e.type === 'carHit') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#ffffff', 26, 9);
+      sparks(p.x, p.y, '#ff4a4f', 18, 7);
+      shake = Math.max(shake, 20);
+      crowdHype = 1;
+      floatText(p.x, p.y - (mode === 'ring' ? 80 : 160), 'Crash!', '#ff4a4f', 36);
+      sound.slam();
+      return;
+    }
+    if (e.type === 'carStop') {
+      const p = targetPos(e.attacker, 'body');
+      puff(p.x, p.y, false);
+      sound.screech();
+      return;
+    }
     if (e.type === 'harrison') {
       onSurprise(e);
       return;
@@ -499,6 +552,22 @@
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
       },
+      // Shaan: a falling 'boing'. Parimal: a horn, and a skid at the end.
+      shrink() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 900, 0.45, 0.14, 'square', 140);
+      },
+      horn() {
+        const a = ctxOk(); if (!a) return;
+        [0, 0.22].forEach((at) => setTimeout(() => {
+          tone(a, 392, 0.16, 0.12, 'square');
+          tone(a, 494, 0.16, 0.08, 'square');
+        }, at * 1000));
+      },
+      screech() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.35, 3000, 0.25);
+      },
       // Harrison's surprises.
       zap() {
         const a = ctxOk(); if (!a) return;
@@ -601,6 +670,11 @@
     if (KEY_ACT[e.code]) {
       e.preventDefault();
       if (!e.repeat) send({ t: 'action', a: KEY_ACT[e.code] });
+    }
+    // Space: jump (one on one: over a car, say).
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!e.repeat && mode !== 'ring') send({ t: 'action', a: 'jump' });
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -752,7 +826,9 @@
       case 'attack': {
         const { phase, p } = attackProgress(f, t);
         const e = phase === 'startup' ? easeOut(p) : p;
-        if (f.move === 'flip' || f.move === 'vault') {
+        if (f.move === 'jump') {
+          jumpPose(P, t);
+        } else if (f.move === 'flip' || f.move === 'vault') {
           flipPose(P, t, phase, p, kickReach, f.move);
         } else if (f.move === 'punch') {
           P.front = { x: lerp(42, reach, e), y: lerp(-212, low ? -150 : -214, e) };
@@ -856,6 +932,22 @@
     P.crouch = 18 * p;
     P.front = { x: 34, y: -200 };
     P.back = { x: 14, y: -190 };
+  }
+
+  /** A jump: crouch, up with the knees tucked, down again. */
+  function jumpPose(P, t) {
+    const m = G.MOVES.jump;
+    if (t < G.JUMP_CROUCH) {
+      P.crouch = 4 + 26 * (t / G.JUMP_CROUCH);
+      return;
+    }
+    const q = clamp01((t - G.JUMP_CROUCH) / (m.startup - G.JUMP_CROUCH));
+    P.spin = 0;
+    P.lift = Math.sin(q * Math.PI) * 150;
+    P.crouch = 24;
+    P.front = { x: 40, y: -200 };
+    P.back = { x: 26, y: -192 };
+    P.kick = { x: 40, y: -60 }; // knees up
   }
 
   function limb(sx, sy, gx, gy, len, bendDown) {
@@ -1527,6 +1619,8 @@
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
+    if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
+    if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
     if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
     if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
     return out;
@@ -1761,6 +1855,9 @@
     luna: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight
     jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
     harrison: { fill: [], spark: '#ffffff', rainbow: true }, // who knows?
+    shree: { fill: ['#ffe0d6', '#ff6b4a', '#b3200e'], spark: '#ffb199' }, // fiery fist red
+    shaan: { fill: ['#ffe3fb', '#ff6ad5', '#a0158a'], spark: '#ffb3ee' }, // shrink-ray pink
+    parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
   const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
@@ -1932,6 +2029,151 @@
   function feetOf(i) {
     const d = display[i];
     return mode === 'ring' ? toScreen(d.x, d.y) : { x: d.x, y: FLOOR };
+  }
+
+  const rays = []; // Shaan's shrink ray, for a moment
+
+  /** Shaan's shrink ray: a wobbly pink beam from one to the other. */
+  function drawRays() {
+    for (let k = rays.length - 1; k >= 0; k--) {
+      const r = rays[k];
+      const dx = r.x1 - r.x0;
+      const dy = r.y1 - r.y0;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, r.life / 10);
+      for (const [w, color] of [[14, 'rgba(255,106,213,0.35)'], [5, '#ff6ad5'], [2, '#ffffff']]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = w;
+        ctx.beginPath();
+        for (let n = 0; n <= 20; n++) {
+          const q = n / 20;
+          const wob = Math.sin(q * 18 + r.life) * 8 * Math.sin(q * Math.PI);
+          const x = r.x0 + dx * q + nx * wob;
+          const y = r.y0 + dy * q + ny * wob;
+          if (n) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+        }
+        ctx.stroke();
+      }
+      // Rings shrinking in on the target.
+      ctx.strokeStyle = '#ffb3ee';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(r.x1, r.y1, 10 + r.life * 2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+      if (--r.life <= 0) rays.splice(k, 1);
+    }
+  }
+
+  /** Parimal's car, with whoever's driving it sat in it. */
+  function drawCar(i, f, clock) {
+    const c = PALETTE[i];
+    const p = feetOf(i);
+    const ring = mode === 'ring';
+    // Exhaust behind it.
+    if (Math.random() < 0.7) {
+      const back = ring ? { x: -f.car.dx, y: -f.car.dy } : { x: -Math.sign(f.car.dx || 1), y: 0 };
+      const ex = p.x + back.x * (ring ? 40 : 120);
+      const ey = (ring ? p.y + back.y * 40 : p.y - 30);
+      effects.push({ x: ex, y: ey, vx: back.x * 2 + (Math.random() - 0.5), vy: -1.5 - Math.random(), life: 18, color: Math.random() < 0.5 ? '#9aa7bd' : '#d9e2f0' });
+    }
+    ctx.save();
+    ctx.translate(p.x, p.y);
+    // Revving: shaking on the spot, puffing smoke.
+    if (f.car.rev) {
+      ctx.translate((Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3);
+      if (Math.random() < 0.5) puff(p.x - (ring ? f.car.dx * 30 : Math.sign(f.car.dx || 1) * 110), ring ? p.y - f.car.dy * 30 : p.y - 25, false);
+    }
+    if (ring) {
+      ctx.rotate(Math.atan2(f.car.dy, f.car.dx));
+      ctx.scale(fighterScale(), fighterScale());
+      // Wheels, body, windscreen, and the driver's head.
+      ctx.fillStyle = '#111';
+      for (const [wx, wy] of [[-24, -22], [20, -22], [-24, 22], [20, 22]]) ctx.fillRect(wx - 7, wy - 5, 14, 10);
+      ctx.fillStyle = c.glove;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(-38, -22, 76, 44, 12) : ctx.rect(-38, -22, 76, 44);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.35)';
+      ctx.fillRect(-30, -18, 60, 6);
+      ctx.fillStyle = '#9fd4ff';
+      ctx.fillRect(10, -16, 12, 32);
+      ctx.fillStyle = c.hair;
+      ctx.beginPath();
+      ctx.arc(-6, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillRect(34, -18, 5, 8);
+      ctx.fillRect(34, 10, 5, 8);
+    } else {
+      const dir = f.car.dx >= 0 ? 1 : -1;
+      ctx.scale(dir, 1);
+      const bounce = Math.sin(clock * 40) * 2;
+      ctx.translate(0, bounce);
+      // Speed lines behind.
+      ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+      ctx.lineWidth = 3;
+      for (const ly of [-40, -70, -100]) {
+        ctx.beginPath();
+        ctx.moveTo(-150 - Math.random() * 40, ly);
+        ctx.lineTo(-115, ly);
+        ctx.stroke();
+      }
+      // Body.
+      ctx.fillStyle = c.glove;
+      ctx.beginPath();
+      ctx.moveTo(-110, -20);
+      ctx.lineTo(-110, -70);
+      ctx.lineTo(-60, -75);
+      ctx.lineTo(-35, -120);
+      ctx.lineTo(40, -120);
+      ctx.lineTo(70, -78);
+      ctx.lineTo(110, -70);
+      ctx.lineTo(115, -20);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = c.gloveDark;
+      ctx.fillRect(-110, -32, 225, 12);
+      // Window, with the driver in it.
+      ctx.fillStyle = '#9fd4ff';
+      ctx.beginPath();
+      ctx.moveTo(-25, -78);
+      ctx.lineTo(-10, -112);
+      ctx.lineTo(34, -112);
+      ctx.lineTo(56, -78);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = c.skin;
+      ctx.beginPath();
+      ctx.arc(12, -96, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = c.hair;
+      ctx.beginPath();
+      ctx.arc(10, -104, 14, Math.PI, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.fillRect(18, -98, 4, 4);
+      // Headlight, and wheels spinning.
+      ctx.fillStyle = '#ffe14d';
+      ctx.fillRect(104, -62, 10, 12);
+      for (const wx of [-65, 70]) {
+        ctx.save();
+        ctx.translate(wx, -18);
+        ctx.fillStyle = '#111';
+        ctx.beginPath();
+        ctx.arc(0, 0, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.rotate(clock * 30);
+        ctx.fillStyle = '#9aa7bd';
+        ctx.fillRect(-12, -3, 24, 6);
+        ctx.fillRect(-3, -12, 6, 24);
+        ctx.restore();
+      }
+    }
+    ctx.restore();
   }
 
   /** Under the fighters: banana skins, and zoom trails. */
@@ -2185,6 +2427,24 @@
   /** Under the fighters: the shadow of a fist on its way, and the dent it left. */
   function drawFistUnder() {
     if (snap.fist) drawFistShadow(snap.fist.x, snap.fist.y, Math.min(1, snap.fist.t / G.FIST_WARN_TICKS));
+    // Shree's fist: its shadow, and a dotted line back to whoever's steering it.
+    snap.fighters.forEach((f, i) => {
+      if (!f.shree || hiddenFrom(i, f)) return;
+      const p = fistSpot(f.shree.x, f.shree.y);
+      const me2 = feetOf(i);
+      ctx.save();
+      ctx.strokeStyle = PALETTE[i].glove;
+      ctx.globalAlpha = 0.6;
+      ctx.lineWidth = 2;
+      ctx.setLineDash([4, 8]);
+      ctx.lineDashOffset = -performance.now() / 30;
+      ctx.beginPath();
+      ctx.moveTo(me2.x, me2.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      ctx.restore();
+      drawFistShadow(f.shree.x, f.shree.y, f.shree.drop >= 0 ? 1 : 0.4);
+    });
     for (const sl of slams) {
       const p = fistSpot(sl.x, sl.y);
       const age = 1 - sl.life / SLAM_LIFE;
@@ -2208,6 +2468,14 @@
       // See-through on the way down, so you can still see who's under it.
       if (k > drop) drawGiantFist(snap.fist.x, snap.fist.y, (k - drop) / (1 - drop), Math.min(0.6, (k - drop) * 4));
     }
+    snap.fighters.forEach((f, i) => {
+      if (!f.shree || hiddenFrom(i, f)) return;
+      // Hovering high while it's steered, bobbing; then down it comes.
+      const bob = Math.sin(performance.now() / 160) * 0.03;
+      const hover = mode === 'ring' ? 0.22 : 0.42;
+      const k = f.shree.drop >= 0 ? hover + (1 - hover) * clamp01(f.shree.drop / G.SHREE_DROP_TICKS) : hover + bob;
+      drawGiantFist(f.shree.x, f.shree.y, k, f.shree.drop >= 0 ? 0.85 : mode === 'ring' ? 0.38 : 0.55);
+    });
     for (let i = slams.length - 1; i >= 0; i--) {
       const sl = slams[i];
       const lift = Math.max(0, 1 - sl.life / (SLAM_LIFE * 0.4)); // rests, then lifts and fades
@@ -2261,7 +2529,7 @@
       while (turn < -Math.PI) turn += Math.PI * 2;
       d.angle += turn * k;
       // Growing into a giant (and back) takes a moment.
-      const want = f.giant ? GIANT_SCALE : 1;
+      const want = f.giant ? GIANT_SCALE : f.tiny ? 0.62 : 1;
       d.size = (d.size || 1) + (want - (d.size || 1)) * Math.min(1, dt * 7);
       // Coming back from Kyle: a puff where they reappear.
       if (d.wasInvisible && !f.invisible && !f.left) {
@@ -2294,6 +2562,7 @@
       for (const i of order) {
         const f = snap.fighters[i];
         if (hiddenFrom(i, f)) continue;
+        if (f.car) { drawCar(i, f, clock); continue; }
         drawRingFighter(i, f, display[i], f.t + ticksSince, clock);
         if (f.giant) { const gp = toScreen(display[i].x, display[i].y); giantGlitter(gp.x, gp.y, 50 * fighterScale()); }
       }
@@ -2307,6 +2576,7 @@
       for (const i of order) {
         const f = snap.fighters[i];
         if (hiddenFrom(i, f)) continue;
+        if (f.car) { drawCar(i, f, clock); continue; }
         if (f.giant) {
           // Jemini: a see-through twin a step behind, a beat behind.
           ctx.save();
@@ -2332,6 +2602,7 @@
     if (!ring) drawFrontRopes();
     drawFistOver();
     drawSurprisesOver(clock);
+    drawRays();
     drawTyping();
 
     for (let i = texts.length - 1; i >= 0; i--) {

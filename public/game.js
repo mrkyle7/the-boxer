@@ -30,6 +30,14 @@
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
 // others for five (that's only in how they're drawn: the fight's the same).
 //
+// Three more: "shree" puts you in charge of the giant fist (left and right
+// to move it, punch to drop it; a hit on you while you steer cancels it);
+// "shaan" shrinks the one you're fighting (their hits do 10% less), or just
+// brings a Jemini giant back down to size; and "parimal" puts you in a car
+// that drives at the nearest fighter, who has to get out of the way (to the
+// side in the ring, or jump over it one on one: space to jump. A jump only
+// gets you over the car: punches and the rest still hit you in the air).
+//
 // And "harrison": a surprise. One of a handful of moves and powers, picked
 // at random each time (see SURPRISES).
 (function (root) {
@@ -141,8 +149,26 @@
   const KYLE_TICKS = 5 * TICK_RATE;
 
   // Cheat codes, and the move (or power-up) each one does.
-  const CODES = { [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison' };
-  const POWERS = ['jemini', 'kyle', 'harrison'];
+  const CODES = {
+    [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal',
+  };
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal'];
+
+  // Shree: steering the giant fist.
+  const SHREE_TICKS = 6 * TICK_RATE; // drops by itself if you haven't punched by then
+  const SHREE_SPEED = 9; // how fast its shadow moves
+  const SHREE_DROP_TICKS = 16; // from the punch to the slam
+  // Shaan: shrunk.
+  const SHAAN_TICKS = 7 * TICK_RATE;
+  const SHAAN_DAMAGE = 0.9;
+  // Parimal: the car.
+  const CAR_REV_TICKS = 30; // revs on the spot for half a second first: time to get out of the way
+  const CAR_SPEED = 10;
+  const CAR_TICKS = CAR_REV_TICKS + 60; // the longest it goes for
+  const CAR_DAMAGE = 30;
+  const CAR_HIT_RADIUS = 75;
+  const CAR_KNOCKBACK = 32;
 
   // Harrison's surprises: one of these, at random.
   //  zap: lightning strikes whoever you're fighting, for 25 (no guard stops it)
@@ -159,10 +185,18 @@
   const ZOOM_SPEED = 1.8;
   const SNACK_HEAL = 30;
   const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
-  const AIRBORNE_MOVES = ['flip', 'vault'];
+  const AIRBORNE_MOVES = ['flip', 'vault', 'jump'];
+
+  // Jumping (one on one only): up and down again, over a car (or anything).
+  const JUMP_CROUCH = 2; // off the ground quick
+  MOVES.jump = {
+    startup: 40, active: 0, recovery: 6, range: 0, stamina: 12,
+    head: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
+    body: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
+  };
 
   const AIMS = ['head', 'body'];
-  const ACTIONS = ['punch', 'kick'];
+  const ACTIONS = ['punch', 'kick', 'jump'];
 
   const DEFAULT_NAMES = ['Red', 'Blue', 'Green', 'Gold'];
 
@@ -173,6 +207,9 @@
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
+      tiny: 0, // ticks of being shrunk by Shaan left
+      shree: null, // steering the giant fist: { x, y, t, drop }
+      car: null, // driving: { dx, dy, t, hit }
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
       slip: 0, // ticks left on the floor after a banana skin
@@ -261,9 +298,10 @@
 
   function pressAction(game, index, action) {
     if (!ACTIONS.includes(action)) return;
+    if (action === 'jump' && game.mode === 'ring') return; // one on one only
     const input = game.inputs[index];
     // A cheat move that's just gone in isn't replaced by the key that finished it.
-    if (AIRBORNE_MOVES.includes(input.buffered)) return;
+    if (input.buffered === 'flip' || input.buffered === 'vault') return;
     input.buffered = action;
     input.bufferAge = 0;
   }
@@ -289,9 +327,125 @@
       surprise(game, index);
       return;
     }
-    if (which === 'jemini') f.giant = JEMINI_TICKS;
-    else f.invisible = KYLE_TICKS;
+    if (which === 'shree') {
+      if (f.shree || f.car) return;
+      f.shree = { x: f.x, y: f.y, t: 0, drop: -1 };
+      setState(f, 'idle');
+      game.inputs[index].buffered = null;
+      game.events.push({ type: 'shree', attacker: index });
+      return;
+    }
+    if (which === 'shaan') {
+      const o = foeOf(game, f);
+      if (!o) return;
+      // A Jemini giant just comes back down to size; anyone else shrinks.
+      const unbig = o.giant > 0;
+      if (unbig) o.giant = 0;
+      else o.tiny = SHAAN_TICKS;
+      game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
+      return;
+    }
+    if (which === 'parimal') {
+      if (f.car || f.shree) return;
+      const others = game.fighters.filter((o) => o !== f && standing(o));
+      if (!others.length) return;
+      const o = others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      // Aimed where they are now: it doesn't steer after them.
+      f.car = { dx: dx / d, dy: dy / d, t: 0, hit: [] };
+      if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
+      setState(f, 'idle');
+      game.inputs[index].buffered = null;
+      game.events.push({ type: 'parimal', attacker: index, target: game.fighters.indexOf(o) });
+      return;
+    }
+    if (which === 'jemini') {
+      f.giant = JEMINI_TICKS;
+      f.tiny = 0;
+    } else {
+      f.invisible = KYLE_TICKS;
+    }
     game.events.push({ type: which, target: index });
+  }
+
+  /** Whoever you're fighting, or the nearest one up if they're not. */
+  function foeOf(game, f) {
+    const o = opponentOf(game, f);
+    if (o && standing(o) && o !== f) return o;
+    const others = game.fighters.filter((x) => x !== f && standing(x));
+    if (!others.length) return null;
+    return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+  }
+
+  /** Steering the giant fist: move its shadow, punch to drop it. */
+  function steerFist(game, f, input) {
+    const s = f.shree;
+    s.t++;
+    const ring = game.mode === 'ring';
+    if (s.drop < 0) {
+      const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+      const dirY = ring ? (input.down ? 1 : 0) - (input.up ? 1 : 0) : 0;
+      const norm = dir && dirY ? Math.SQRT1_2 : 1;
+      s.x = Math.max(ring ? RING_MIN : RING_LEFT, Math.min(ring ? RING_MAX : RING_RIGHT, s.x + dir * norm * SHREE_SPEED));
+      if (ring) s.y = Math.max(RING_MIN, Math.min(RING_MAX, s.y + dirY * norm * SHREE_SPEED));
+      if (input.buffered === 'punch' || s.t >= SHREE_TICKS) s.drop = 0;
+      input.buffered = null;
+      return;
+    }
+    if (++s.drop < SHREE_DROP_TICKS) return;
+    // Down it comes, on anyone under it but you.
+    const index = game.fighters.indexOf(f);
+    const hits = [];
+    game.fighters.forEach((o, i) => {
+      if (o === f || !standing(o) || untouchable(o)) return;
+      const d = Math.hypot(o.x - s.x, ring ? o.y - s.y : 0);
+      if (d > FIST_RADIUS) return;
+      hits.push(i);
+    });
+    f.shree = null;
+    game.events.push({ type: 'shreeSlam', attacker: index, x: s.x, y: s.y, hits, damage: FIST_DAMAGE });
+    for (const i of hits) {
+      const o = game.fighters[i];
+      const pseudo = { x: s.x, y: s.y, stats: f.stats };
+      hurt(game, pseudo, o, FIST_DAMAGE, FIST_HITSTUN, FIST_KNOCKBACK, index);
+    }
+  }
+
+  /** Driving: straight on, knocking down whoever's in the way, until it stops. */
+  function drive(game, f) {
+    const c = f.car;
+    c.t++;
+    if (c.t <= CAR_REV_TICKS) return; // brrm brrm
+    const ring = game.mode === 'ring';
+    const x0 = f.x;
+    const y0 = f.y;
+    f.x = Math.max(ring ? RING_MIN : RING_LEFT, Math.min(ring ? RING_MAX : RING_RIGHT, f.x + c.dx * CAR_SPEED));
+    if (ring) f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y + c.dy * CAR_SPEED));
+    const index = game.fighters.indexOf(f);
+    game.fighters.forEach((o, i) => {
+      if (o === f || c.hit.includes(i) || !standing(o) || untouchable(o) || airborne(o)) return; // jumped over it
+      if (Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) > CAR_HIT_RADIUS) return;
+      c.hit.push(i);
+      game.events.push({ type: 'carHit', attacker: index, target: i });
+      hurt(game, f, o, CAR_DAMAGE, 40, CAR_KNOCKBACK);
+    });
+    // Out of road (the ropes), or out of petrol.
+    const stuck = Math.abs(f.x - x0) < 1 && Math.abs(f.y - y0) < 1;
+    if (c.t >= CAR_TICKS || stuck) {
+      f.car = null;
+      game.events.push({ type: 'carStop', attacker: index });
+    }
+  }
+
+  /** Knocked about: the cheat code goes out of your head, and you let go of the fist. */
+  function knocked(game, f) {
+    forgetTyping(f);
+    if (f.shree) {
+      f.shree = null;
+      game.events.push({ type: 'shreeCancel', attacker: game.fighters.indexOf(f) });
+    }
   }
 
   /** Harrison: one of the surprises, at random. */
@@ -303,11 +457,7 @@
     if (!others.length && ['zap', 'banana', 'freeze'].includes(pick)) pick = 'snack';
     const ev = { type: 'harrison', surprise: pick, attacker: index };
     // Whoever you're fighting (or the nearest, in the ring).
-    const foe = () => {
-      const o = opponentOf(game, f);
-      if (o && standing(o)) return o;
-      return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
-    };
+    const foe = () => foeOf(game, f);
     if (pick === 'zap') {
       const o = foe();
       ev.target = game.fighters.indexOf(o);
@@ -339,7 +489,7 @@
   }
 
   /** Damage that isn't a punch or kick: no guard stops it. */
-  function hurt(game, att, def, damage, stun, knockback) {
+  function hurt(game, att, def, damage, stun, knockback, attIndex) {
     if (!def || !standing(def)) return;
     const i = game.fighters.indexOf(def);
     def.hp = Math.max(0, def.hp - damage);
@@ -353,8 +503,8 @@
     setState(def, 'hitstun');
     def.stun = stun;
     def.hitHeight = 'head';
-    forgetTyping(def);
-    game.events.push({ type: 'hurt', target: i, attacker: game.fighters.indexOf(att), damage });
+    knocked(game, def);
+    game.events.push({ type: 'hurt', target: i, attacker: attIndex !== undefined ? attIndex : game.fighters.indexOf(att), damage });
     if (def.hp <= 0) {
       def.slip = 0;
       setState(def, 'ko');
@@ -394,10 +544,19 @@
     f.typing = '';
   }
 
-  /** Off the ground in a flip or vault, where nothing can touch you. */
+  /** Off the ground in a flip, vault or jump, where nothing can touch you. */
   function airborne(f) {
+    const crouch = f.move === 'jump' ? JUMP_CROUCH : FLIP_CROUCH;
     return f.state === 'attack' && AIRBORNE_MOVES.includes(f.move)
-      && f.t >= FLIP_CROUCH && f.t < MOVES[f.move].startup;
+      && f.t >= crouch && f.t < MOVES[f.move].startup;
+  }
+
+  /**
+   * In a flip or vault, or in a car: out of reach. (A plain jump only gets
+   * you over a car: anything else can still hit you on the way up.)
+   */
+  function untouchable(f) {
+    return (airborne(f) && f.move !== 'jump') || !!f.car;
   }
 
   /**
@@ -486,7 +645,7 @@
     const m = MOVES[action];
     if (f.stamina < m.stamina) return;
     f.stamina -= m.stamina;
-    f.stats.thrown++;
+    if (action !== 'jump') f.stats.thrown++;
     setState(f, 'attack', action);
     // The attack's height is locked in when it starts.
     f.aim = input.aim;
@@ -497,8 +656,9 @@
     } else if (action === 'vault') {
       aimVault(game, f);
       game.events.push({ type: 'vault', attacker: game.fighters.indexOf(f) });
-    }
-    else if (f.luna) lunge(game, f, m);
+    } else if (action === 'jump') {
+      f.flipStep = null; // straight up and down
+    } else if (f.luna) lunge(game, f, m);
   }
 
   /** How far this fighter's attack reaches. */
@@ -559,11 +719,22 @@
       if (f.fast > 0) f.fast--;
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
+      if (f.tiny > 0) f.tiny--;
     }
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
     if (f.frozen > 0) {
       input.buffered = null;
+      return;
+    }
+    // Steering the giant fist, or driving: your fighter stands (or sits) still.
+    if (f.shree) {
+      steerFist(game, f, input);
+      return;
+    }
+    if (f.car) {
+      input.buffered = null;
+      drive(game, f);
       return;
     }
     if (airborne(f)) flipTravel(game, f);
@@ -678,7 +849,7 @@
         for (let j = i + 1; j < inRing.length; j++) {
           const a = inRing[i];
           const b = inRing[j];
-          if (!standing(a) || !standing(b) || airborne(a) || airborne(b)) continue;
+          if (!standing(a) || !standing(b) || untouchable(a) || untouchable(b)) continue;
           let dx = b.x - a.x;
           let dy = b.y - a.y;
           let d = Math.hypot(dx, dy);
@@ -707,7 +878,7 @@
       let def = null;
       let bestD = Infinity;
       game.fighters.forEach((o, j) => {
-        if (j === i || !standing(o) || airborne(o)) return;
+        if (j === i || !standing(o) || untouchable(o)) return;
         const d = distance(att, o);
         if (d > reach(att, m) || d >= bestD) return;
         // The flip lands on whoever is nearest, whichever way they are.
@@ -744,7 +915,7 @@
     const right = left === a ? b : a;
     const gap = right.x - left.x;
     // Someone in the air goes over the other, not into them.
-    const over = airborne(a) || airborne(b);
+    const over = untouchable(a) || untouchable(b);
     if (gap < MIN_SEPARATION && !over) {
       const push = (MIN_SEPARATION - gap) / 2;
       left.x -= push;
@@ -766,7 +937,7 @@
       const def = game.fighters[1 - i];
       const m = MOVES[att.move];
       if (Math.abs(def.x - att.x) > reach(att, m)) return;
-      if (def.state === 'ko' || airborne(def)) return;
+      if (def.state === 'ko' || untouchable(def)) return;
       att.hitLanded = true;
       pending.push({
         attacker: i, defender: 1 - i, move: att.move, height: att.aim, second: flipHit(att),
@@ -810,7 +981,7 @@
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
-        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1));
+        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
         def.hp = Math.max(0, def.hp - damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
@@ -820,7 +991,7 @@
         setState(def, 'hitstun');
         def.stun = h.hitstun;
         def.hitHeight = hit.height;
-        forgetTyping(def);
+        knocked(game, def);
         // Guarding the wrong height (or the wrong way) is worth telling the defender about.
         game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding, ...(hit.second ? { second: true } : {}) });
       }
@@ -956,7 +1127,7 @@
     const ring = game.mode === 'ring';
     const hit = [];
     game.fighters.forEach((f, i) => {
-      if (!standing(f) || airborne(f)) return; // flipped clean over it
+      if (!standing(f) || untouchable(f)) return; // flipped clean over it (or drove out from under it)
       const dx = f.x - x;
       const dy = ring ? f.y - y : 0;
       const d = Math.hypot(dx, dy);
@@ -970,7 +1141,7 @@
       if (ring) f.vy += ay * FIST_KNOCKBACK;
       setState(f, 'hitstun');
       f.stun = FIST_HITSTUN;
-      forgetTyping(f);
+      knocked(game, f);
       f.hitHeight = 'head';
     });
     game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
@@ -1027,6 +1198,9 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
+        ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
+        ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
+        ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
@@ -1050,7 +1224,8 @@
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
-    cheat, typeKey, airborne, FLIP_CODE, CODES, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
+    SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
