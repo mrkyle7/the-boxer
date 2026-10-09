@@ -329,6 +329,16 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'edward') {
+      sound.tapeStop();
+      return;
+    }
+    if (e.type === 'unpause') {
+      flash = Math.max(flash, 0.35);
+      announce('Play!', 40, '#ffffff');
+      sound.tapeStart();
+      return;
+    }
     if (e.type === 'daniel') {
       const p = targetPos(e.target, 'body');
       sparks(p.x, p.y, '#b6e24a', 28, 7);
@@ -595,6 +605,15 @@
       grow() {
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
+      },
+      // Edward: a tape grinding to a halt, and starting up again.
+      tapeStop() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 520, 0.6, 0.18, 'sawtooth', 40);
+      },
+      tapeStart() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 60, 0.35, 0.15, 'sawtooth', 520);
       },
       // Daniel: a metallic 'shing'.
       spikes() {
@@ -1669,6 +1688,58 @@
     ctx.fillText(label, p.x, p.y + below);
   }
 
+  /**
+   * Edward's pause: the picture goes grey and grainy like a paused video,
+   * with a big pause sign, who pressed it, and the seconds till it plays on.
+   */
+  function drawPaused(s) {
+    const now = performance.now();
+    ctx.save();
+    ctx.fillStyle = 'rgba(20,22,34,0.45)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'saturation';
+    ctx.fillStyle = '#808080';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalCompositeOperation = 'source-over';
+    // Scanlines, and a band of tracking noise rolling down.
+    ctx.fillStyle = 'rgba(0,0,0,0.18)';
+    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
+    const band = ((now / 6) % (H + 60)) - 30;
+    for (let k = 0; k < 40; k++) {
+      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.25})`;
+      ctx.fillRect(Math.random() * W, band + Math.random() * 24, 20 + Math.random() * 80, 2);
+    }
+    // The pause sign.
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const sz = Math.min(W, H) * 0.12;
+    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    ctx.fillRect(cx - sz * 0.75, cy - sz, sz * 0.5, sz * 2);
+    ctx.fillRect(cx + sz * 0.25, cy - sz, sz * 0.5, sz * 2);
+    ctx.textAlign = 'center';
+    ctx.font = `${Math.round(sz * 0.7)}px Bangers, Anton, Impact, sans-serif`;
+    ctx.lineWidth = 6;
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
+    const by = s.pausedBy !== null && s.fighters[s.pausedBy] ? s.fighters[s.pausedBy].name.toUpperCase() : 'SOMEONE';
+    const line1 = `${by} PRESSED PAUSE`;
+    ctx.strokeText(line1, cx, cy + sz * 1.7);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillText(line1, cx, cy + sz * 1.7);
+    const secs = Math.ceil(s.paused / G.TICK_RATE);
+    ctx.font = `${Math.round(sz * 0.55)}px Anton, Impact, sans-serif`;
+    ctx.strokeText(`▶ in ${secs}`, cx, cy + sz * 2.5);
+    ctx.fillStyle = '#f4c542';
+    ctx.fillText(`▶ in ${secs}`, cx, cy + sz * 2.5);
+    // A blinking "PAUSE" in the corner, like an old video player.
+    if (Math.floor(now / 500) % 2) {
+      ctx.textAlign = 'left';
+      ctx.font = '700 22px Barlow, sans-serif';
+      ctx.fillStyle = '#ffffff';
+      ctx.fillText('❚❚ PAUSE', 18, H - 18);
+    }
+    ctx.restore();
+  }
+
   /** What's running on a fighter, for the HUD. */
   function powerLabels(i, f) {
     const out = [];
@@ -1917,6 +1988,7 @@
     parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
     priya: { fill: ['#f4ffff', '#7ff3ff', '#1a9bbf'], spark: '#e6fdff' }, // frosty
     daniel: { fill: ['#f2f7e6', '#b6e24a', '#4f7d12'], spark: '#d9ff7a' }, // cactus green
+    edward: { fill: ['#ffffff', '#c9c9d6', '#6b6b80'], spark: '#ffffff' }, // VHS grey
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
   const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
@@ -2678,7 +2750,8 @@
       return;
     }
 
-    const ticksSince = Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
+    // Paused: no guessing ahead, everyone holds still.
+    const ticksSince = snap.paused ? 0 : Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
     snap.fighters.forEach((f, i) => {
       const d = display[i];
       const k = Math.min(1, dt * 22);
@@ -2789,6 +2862,7 @@
     if (ring) drawRingHud(snap);
     else drawHud(snap);
     drawBanner();
+    if (snap.paused) drawPaused(snap);
 
     if (flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${flash * 0.6})`;

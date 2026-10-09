@@ -38,6 +38,9 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
+// "edward" pauses the whole fight for three seconds: nobody moves, the
+// clock stops, then it carries on where it left off.
+//
 // "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
@@ -157,9 +160,12 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward'];
+
+  // Edward: the pause button.
+  const PAUSE_TICKS = 3 * TICK_RATE;
 
   // Daniel: spiky. Hits on you split 30:70, you:them.
   const SPIKY_TICKS = 5 * TICK_RATE;
@@ -284,6 +290,8 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
+      paused: 0, // ticks of Edward's pause left
+      pausedBy: null,
     };
     return game;
   }
@@ -362,6 +370,13 @@
       if (unbig) o.giant = 0;
       else o.tiny = SHAAN_TICKS;
       game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
+      return;
+    }
+    if (which === 'edward') {
+      if (game.paused > 0) return;
+      game.paused = PAUSE_TICKS;
+      game.pausedBy = index;
+      game.events.push({ type: 'edward', attacker: index });
       return;
     }
     if (which === 'daniel') {
@@ -576,7 +591,7 @@
    */
   function typeKey(game, index, key) {
     const f = game.fighters[index];
-    if (!f || game.phase !== 'fight' || !standing(f)) return;
+    if (!f || game.phase !== 'fight' || !standing(f) || game.paused > 0) return;
     const k = String(key || '').toLowerCase();
     if (!/^[a-z]$/.test(k)) return;
     f.typed = (f.typed + k).slice(-CODE_MAX);
@@ -1119,6 +1134,14 @@
       game.events.push({ type: 'fight', round: game.round });
       game.fist = { next: nextFist(game), warn: null };
       game.bolts = [];
+      game.paused = 0;
+    }
+
+    // Paused by Edward: nothing moves, nothing counts down, until it's over.
+    if (game.phase === 'fight' && game.paused > 0) {
+      game.paused--;
+      if (game.paused === 0) game.events.push({ type: 'unpause', attacker: game.pausedBy });
+      return game;
     }
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
@@ -1289,6 +1312,7 @@
       winner: game.winner,
       tick: game.tick,
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
+      ...(game.paused > 0 ? { paused: game.paused, pausedBy: game.pausedBy } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
@@ -1327,7 +1351,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

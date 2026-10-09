@@ -46,6 +46,8 @@ And three more:
 - **shaan**: a shrink ray at the one you're fighting. They go small for seven seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
 - **parimal**: beep beep! You jump in a car, which revs for a moment and then drives straight at the nearest fighter, for 30. In the ring, step aside. One on one, jump over it with **space** (or the Jump button on a phone). Jumping is too early if you do it the moment you hear the horn, and just right when it sets off. A jump only gets you over the car: you can still be punched in the air.
 
+Or **edward**: pause! The whole fight stops for three seconds (everyone, the clock, anything flying), then carries on.
+
 Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
 
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
