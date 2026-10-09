@@ -38,6 +38,12 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
+// "spreadbury" turns the whole fight USA-themed for ten seconds, and two
+// hotdogs come floating down at random moments (slower than the giant fist,
+// with a shadow where they'll land). Whoever catches one before it hits the
+// floor gets half their health back. "mamtora" is the same, but India,
+// and dosas.
+//
 // "edward" secretly pauses the fight for three seconds: everything looks
 // the same and everyone keeps fighting, but no hit does any damage and the
 // clock doesn't move. Stamina still goes down (and back up) as normal.
@@ -161,9 +167,19 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora'];
+
+  // Spreadbury: USA! USA! and two hotdogs from the sky. Mamtora: India, and dosas.
+  const THEMES = { spreadbury: { theme: 'usa', treat: 'hotdog' }, mamtora: { theme: 'india', treat: 'dosa' } };
+  const USA_TICKS = 10 * TICK_RATE;
+  const HOTDOGS = 2;
+  const HOTDOG_FIRST = TICK_RATE; // the drops come at random between these
+  const HOTDOG_LAST = 7 * TICK_RATE;
+  const HOTDOG_FALL_TICKS = Math.round(2.5 * TICK_RATE); // the fist's warning is one second
+  const HOTDOG_CATCH_RADIUS = 85;
+  const HOTDOG_HEAL = MAX_HP / 2;
 
   // Edward: the secret pause button.
   const PAUSE_TICKS = 3 * TICK_RATE;
@@ -291,6 +307,9 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
+      usa: 0, // ticks of the theme (Spreadbury's USA, Mamtora's India) left
+      theme: null, // 'usa' or 'india'
+      hotdogs: [], // { x, y, at (tick of the USA it drops), t (ticks falling, or -1 waiting) }
       paused: 0, // ticks of Edward's secret pause left
       pausedBy: null,
     };
@@ -371,6 +390,23 @@
       if (unbig) o.giant = 0;
       else o.tiny = SHAAN_TICKS;
       game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
+      return;
+    }
+    if (THEMES[which]) {
+      const { theme, treat } = THEMES[which];
+      game.usa = USA_TICKS;
+      game.theme = theme;
+      // Two drops at random moments (at least a second apart), at random spots.
+      const first = HOTDOG_FIRST + Math.floor(game.random() * (HOTDOG_LAST - HOTDOG_FIRST - TICK_RATE));
+      const second = first + TICK_RATE + Math.floor(game.random() * (HOTDOG_LAST - first - TICK_RATE + 1));
+      const ring = game.mode === 'ring';
+      const spot = () => ({
+        x: (ring ? RING_MIN : RING_LEFT) + 40 + game.random() * ((ring ? RING_MAX - RING_MIN : RING_RIGHT - RING_LEFT) - 80),
+        y: ring ? RING_MIN + 40 + game.random() * (RING_MAX - RING_MIN - 80) : 0,
+      });
+      game.hotdogs = [first, second].slice(0, HOTDOGS).map((at) => ({ ...spot(), at, t: -1, kind: treat }));
+      game.usaT = 0;
+      game.events.push({ type: 'theme', theme, attacker: index });
       return;
     }
     if (which === 'edward') {
@@ -1136,6 +1172,9 @@
       game.fist = { next: nextFist(game), warn: null };
       game.bolts = [];
       game.paused = 0;
+      game.usa = 0;
+      game.theme = null;
+      game.hotdogs = [];
     }
 
 
@@ -1170,6 +1209,7 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
+      updateUsa(game);
       // Edward's secret pause: the clock stands still till it's over.
       if (game.paused > 0) {
         game.paused--;
@@ -1222,6 +1262,44 @@
       o.vy = 0;
       knocked(game, o);
       game.events.push({ type: 'rayFreeze', attacker: b.owner, target: i });
+      return false;
+    });
+  }
+
+  /**
+   * Spreadbury: the USA theme counts down, and the hotdogs drop on cue. One
+   * that reaches the floor with a fighter close enough is caught (by the
+   * nearest), for half their health back; otherwise it splats.
+   */
+  function updateUsa(game) {
+    if (game.usa > 0 && --game.usa === 0) game.theme = null;
+    if (!game.hotdogs.length) return;
+    game.usaT++;
+    const ring = game.mode === 'ring';
+    game.hotdogs = game.hotdogs.filter((h) => {
+      if (h.t < 0) {
+        if (game.usaT >= h.at) {
+          h.t = 0;
+          game.events.push({ type: 'hotdogDrop', x: h.x, y: h.y, kind: h.kind });
+        }
+        return true;
+      }
+      if (++h.t < HOTDOG_FALL_TICKS) return true;
+      let best = null;
+      let bestD = HOTDOG_CATCH_RADIUS;
+      game.fighters.forEach((f, i) => {
+        if (!standing(f)) return;
+        const d = Math.hypot(f.x - h.x, ring ? f.y - h.y : 0);
+        if (d <= bestD) { best = i; bestD = d; }
+      });
+      if (best === null) {
+        game.events.push({ type: 'hotdogSplat', x: h.x, y: h.y, kind: h.kind });
+        return false;
+      }
+      const f = game.fighters[best];
+      const before = f.hp;
+      f.hp = Math.min(MAX_HP, f.hp + HOTDOG_HEAL);
+      game.events.push({ type: 'hotdogCaught', target: best, heal: f.hp - before, x: h.x, y: h.y, kind: h.kind });
       return false;
     });
   }
@@ -1313,6 +1391,8 @@
       winner: game.winner,
       tick: game.tick,
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
+      ...(game.usa > 0 ? { usa: game.usa, theme: game.theme } : {}),
+      ...(game.hotdogs.some((h) => h.t >= 0) ? { hotdogs: game.hotdogs.filter((h) => h.t >= 0).map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), t: h.t, kind: h.kind })) } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
@@ -1351,7 +1431,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

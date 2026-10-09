@@ -330,6 +330,40 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'theme') {
+      if (e.theme === 'india') {
+        announce('Chak de India!', 90, '#ff9933', 'Dosas incoming');
+        sound.raga();
+      } else {
+        announce('USA! USA!', 90, '#ffffff', 'Hotdogs incoming');
+        sound.fanfare();
+      }
+      flash = Math.max(flash, 0.3);
+      return;
+    }
+    if (e.type === 'hotdogDrop') {
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'hotdogCaught') {
+      const p = targetPos(e.target, 'head');
+      for (let k = 0; k < 8; k++) {
+        hearts.push({ x: p.x + (Math.random() - 0.5) * 60, y: p.y + 10, vy: -1 - Math.random() * 1.5,
+          s: 0.6 + Math.random() * 0.6, life: 50 + Math.random() * 20 });
+      }
+      sparks(p.x, p.y, '#ffd31a', 20, 5);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), (e.kind === 'dosa' ? 'Dosa!' : 'Hotdog!') + (e.heal > 0 ? ` +${e.heal}` : ''), '#ffd31a', 32);
+      sound.chomp();
+      return;
+    }
+    if (e.type === 'hotdogSplat') {
+      const p = hotdogSpot(e);
+      sparks(p.x, p.y, '#d4281d', 22, 6);
+      sparks(p.x, p.y, '#ffd31a', 12, 5);
+      floatText(p.x, p.y - (mode === 'ring' ? 30 : 60), 'Splat!', '#d4281d', 28);
+      sound.block();
+      return;
+    }
     // Edward's pause is a secret: only Edward hears it start and stop.
     if (e.type === 'edward') {
       if (e.attacker === me) {
@@ -611,6 +645,22 @@
       grow() {
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
+      },
+      // Spreadbury: a little bugle fanfare; a chomp for a caught hotdog.
+      fanfare() {
+        const a = ctxOk(); if (!a) return;
+        [[392, 0], [523, 0.15], [659, 0.3], [784, 0.45], [659, 0.65], [784, 0.8]].forEach(([fq, at]) =>
+          setTimeout(() => tone(a, fq, at === 0.8 ? 0.5 : 0.16, 0.1, 'square'), at * 1000));
+      },
+      raga() {
+        const a = ctxOk(); if (!a) return;
+        // Sa re ga pa dha sa, on a bright pluck.
+        [262, 294, 330, 392, 440, 523].forEach((fq, k) => setTimeout(() => tone(a, fq, 0.3, 0.09, 'triangle'), k * 130));
+      },
+      chomp() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.08, 1200, 0.4);
+        setTimeout(() => noise(a, 0.08, 1000, 0.35), 130);
       },
       // Edward (only Edward hears it): a tape grinding to a halt, and starting up again.
       tapeStop() {
@@ -1168,6 +1218,8 @@
     ctx.fill();
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(hx + 6, hy + 10, 10, 3);
+    if (snap && snap.theme === 'usa' && !echo) unclesamHat(hx, hy - 16);
+    if (snap && snap.theme === 'india' && !echo) garland(hx, shoulderY + 6, clock);
 
     if (P.kick) {
       drawLeg({ x: hipX + 10, y: hipY }, feetFront, skin, true);
@@ -1673,6 +1725,32 @@
     ctx.beginPath();
     ctx.arc(5, 0, 5, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
+    if (snap && snap.theme === 'india') {
+      // A marigold garland round the shoulders, from above.
+      for (let k = 0; k < 14; k++) {
+        const a = (k / 14) * Math.PI * 2;
+        ctx.fillStyle = k % 2 ? '#ff9933' : '#ffc61a';
+        ctx.beginPath();
+        ctx.arc(Math.cos(a) * 15, Math.sin(a) * 26, 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    if (snap && snap.theme === 'usa') {
+      // Uncle Sam's hat from above: a white brim, a striped crown, a blue top with a star.
+      ctx.fillStyle = '#f4f4f4';
+      ctx.beginPath();
+      ctx.arc(-1, 0, 15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#e0303a';
+      ctx.beginPath();
+      ctx.arc(-1, 0, 10, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2f5fd0';
+      ctx.beginPath();
+      ctx.arc(-1, 0, 7, 0, Math.PI * 2);
+      ctx.fill();
+      drawStar(-1, 0, 4, '#ffffff');
+    }
 
     if (!gloveLow) {
       arm(back, c.skinDark); glove(back, c.gloveDark);
@@ -1941,6 +2019,8 @@
     luna: { fill: ['#fde8ff', '#d39bff', '#8a3ffc'], spark: '#e3b8ff' }, // moonlight
     jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
     harrison: { fill: [], spark: '#ffffff', rainbow: true }, // who knows?
+    spreadbury: { fill: [], spark: '#ffffff', bands: 'usa' }, // red, white and blue
+    mamtora: { fill: [], spark: '#ffb347', bands: 'india' }, // saffron, white and green
     shree: { fill: ['#ffe0d6', '#ff6b4a', '#b3200e'], spark: '#ffb199' }, // fiery fist red
     shaan: { fill: ['#ffe3fb', '#ff6ad5', '#a0158a'], spark: '#ffb3ee' }, // shrink-ray pink
     parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
@@ -2011,7 +2091,14 @@
         ctx.lineWidth = size * 0.1;
         ctx.strokeText(word[k], 0, 0);
         const g = ctx.createLinearGradient(0, -size * 0.75, 0, 0);
-        if (style.rainbow) {
+        if (style.bands) {
+          const c3 = (style.bands === 'india'
+            ? [['#ffd08a', '#ff9933', '#c4620a'], ['#ffffff', '#f2f2f2', '#b9c0cc'], ['#9be59b', '#138808', '#0a5404']]
+            : [['#ff8a8f', '#e0303a', '#9c0f1a'], ['#ffffff', '#f2f2f2', '#b9c0cc'], ['#8fb3ff', '#2f5fd0', '#16337c']])[k % 3];
+          g.addColorStop(0, c3[0]);
+          g.addColorStop(0.5, c3[1]);
+          g.addColorStop(1, c3[2]);
+        } else if (style.rainbow) {
           // A different colour for every letter, slowly cycling.
           const hue = (k * 45 + now / 8) % 360;
           g.addColorStop(0, `hsl(${hue},100%,88%)`);
@@ -2512,6 +2599,258 @@
     }
   }
 
+  // ---- Spreadbury: USA! USA! ------------------------------------------------------
+
+  function drawStar(x, y, r, color) {
+    ctx.save();
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    for (let k = 0; k < 10; k++) {
+      const a = -Math.PI / 2 + (k * Math.PI) / 5;
+      const rr = k % 2 ? r * 0.45 : r;
+      ctx.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr);
+    }
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Uncle Sam's top hat, side on, sat on a head at (x, y). */
+  function unclesamHat(x, y) {
+    ctx.save();
+    ctx.fillStyle = '#f4f4f4';
+    ctx.fillRect(x - 26, y - 2, 52, 7); // brim
+    const w = 30;
+    const h = 44;
+    for (let k = 0; k < 5; k++) {
+      ctx.fillStyle = k % 2 ? '#ffffff' : '#e0303a';
+      ctx.fillRect(x - w / 2 + (k * w) / 5, y - h, w / 5 + 0.5, h);
+    }
+    ctx.fillStyle = '#2f5fd0';
+    ctx.fillRect(x - w / 2 - 1, y - 14, w + 2, 12); // band
+    drawStar(x, y - 8, 5, '#ffffff');
+    ctx.restore();
+  }
+
+  /** A marigold garland hanging round the neck, side on. */
+  function garland(x, y, clock) {
+    ctx.save();
+    for (let k = 0; k <= 12; k++) {
+      const q = k / 12;
+      const px = x - 28 + q * 56;
+      const py = y + Math.sin(q * Math.PI) * 44 + Math.sin(clock * 6 + k) * 1.5;
+      ctx.fillStyle = k % 2 ? '#ff9933' : '#ffc61a';
+      ctx.beginPath();
+      ctx.arc(px, py, 6.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(180,70,0,0.5)';
+      ctx.beginPath();
+      ctx.arc(px, py, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** The Ashoka Chakra: a navy wheel with 24 spokes. */
+  function chakra(x, y, r) {
+    ctx.save();
+    ctx.strokeStyle = '#000080';
+    ctx.lineWidth = Math.max(1.5, r / 10);
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.lineWidth = Math.max(1, r / 20);
+    for (let k = 0; k < 24; k++) {
+      const a = (k / 24) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y);
+      ctx.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /** The theme over everything: Spreadbury's USA, or Mamtora's India. */
+  function drawUsa(clock) {
+    if (!snap.usa) return;
+    if (snap.theme === 'india') { drawIndia(clock); return; }
+    const fade = Math.min(1, snap.usa / 40, (G.USA_TICKS - snap.usa) / 20 + 0.001);
+    ctx.save();
+    ctx.globalAlpha = 0.16 * fade;
+    const stripe = H / 13;
+    for (let k = 0; k < 13; k += 2) {
+      ctx.fillStyle = '#e0303a';
+      // A gentle wave along the stripes.
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 20) {
+        const y = k * stripe + Math.sin(x / 90 + clock * 3) * 6;
+        if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      for (let x = W; x >= 0; x -= 20) ctx.lineTo(x, (k + 1) * stripe + Math.sin(x / 90 + clock * 3) * 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.globalAlpha = 0.28 * fade;
+    ctx.fillStyle = '#2f5fd0';
+    ctx.fillRect(0, 0, W * 0.38, stripe * 7);
+    ctx.globalAlpha = 0.5 * fade;
+    for (let r = 0; r < 5; r++) {
+      for (let c2 = 0; c2 < 8; c2++) drawStar(22 + c2 * (W * 0.38 - 30) / 8 + (r % 2) * 12, 18 + r * (stripe * 7 - 20) / 5, 6, '#ffffff');
+    }
+    ctx.restore();
+    // Fireworks, every so often.
+    if (Math.random() < 0.05 * fade) {
+      const x = 80 + Math.random() * (W - 160);
+      const y = 40 + Math.random() * (mode === 'ring' ? H - 80 : 160);
+      sparks(x, y, ['#e0303a', '#ffffff', '#4f86ff'][Math.floor(Math.random() * 3)], 26, 5);
+    }
+  }
+
+  /** India: the tricolour faint over everything, the chakra, and marigold petals drifting down. */
+  function drawIndia(clock) {
+    const fade = Math.min(1, snap.usa / 40, (G.USA_TICKS - snap.usa) / 20 + 0.001);
+    ctx.save();
+    ctx.globalAlpha = 0.18 * fade;
+    ['#ff9933', '#ffffff', '#138808'].forEach((c3, k) => {
+      ctx.fillStyle = c3;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 20) {
+        const y = (k * H) / 3 + (k ? Math.sin(x / 90 + clock * 3) * 6 : 0);
+        if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      for (let x = W; x >= 0; x -= 20) ctx.lineTo(x, ((k + 1) * H) / 3 + (k < 2 ? Math.sin(x / 90 + clock * 3) * 6 : 0));
+      ctx.closePath();
+      ctx.fill();
+    });
+    ctx.globalAlpha = 0.35 * fade;
+    ctx.translate(W / 2, H / 2);
+    ctx.rotate(clock * 0.4);
+    chakra(0, 0, Math.min(W, H) * 0.14);
+    ctx.restore();
+    // Marigold petals falling, and the odd burst of colour (like Holi powder).
+    if (Math.random() < 0.5 * fade) {
+      effects.push({ x: Math.random() * W, y: -10, vx: (Math.random() - 0.5) * 1.2, vy: 1 + Math.random(), life: 60,
+        color: ['#ff9933', '#ffc61a', '#ff6f3c'][Math.floor(Math.random() * 3)] });
+    }
+    if (Math.random() < 0.04 * fade) {
+      const x = 80 + Math.random() * (W - 160);
+      const y = 40 + Math.random() * (mode === 'ring' ? H - 80 : 160);
+      sparks(x, y, ['#ff4fa3', '#ff9933', '#21c25e', '#ffd31a', '#7b5cff'][Math.floor(Math.random() * 5)], 26, 5);
+    }
+  }
+
+  /** A dosa: a long golden crêpe rolled up, browned in spots, with a little pot of chutney. */
+  function drawDosa(x, y, scale, spin) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(spin);
+    ctx.scale(scale, scale);
+    const g = ctx.createLinearGradient(0, -12, 0, 12);
+    g.addColorStop(0, '#f2c46b');
+    g.addColorStop(0.5, '#d9962f');
+    g.addColorStop(1, '#a8661a');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-62, -6);
+    ctx.quadraticCurveTo(0, -16, 62, -10);
+    ctx.lineTo(62, 10);
+    ctx.quadraticCurveTo(0, 16, -62, 6);
+    ctx.closePath();
+    ctx.fill();
+    // The rolled end, and crispy brown spots.
+    ctx.fillStyle = '#e8b45a';
+    ctx.beginPath();
+    ctx.ellipse(62, 0, 5, 10, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(120,60,10,0.45)';
+    for (const [sx, sy] of [[-40, -2], [-18, 3], [6, -4], [28, 2], [46, -3]]) {
+      ctx.beginPath();
+      ctx.arc(sx, sy, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#f4f4ee';
+    ctx.beginPath();
+    ctx.arc(-50, 18, 9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#7ccf7a';
+    ctx.beginPath();
+    ctx.arc(-50, 16, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** A hotdog in a bun, with a squiggle of mustard. */
+  function drawHotdog(x, y, scale, spin) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(spin);
+    ctx.scale(scale, scale);
+    ctx.fillStyle = '#d99a4e';
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 46, 15, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#b5481e';
+    ctx.beginPath();
+    ctx.ellipse(0, -2, 52, 9, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#e8ad62';
+    ctx.beginPath();
+    ctx.ellipse(0, -8, 42, 8, 0, Math.PI, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#ffd31a';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    for (let k = 0; k <= 12; k++) {
+      const px = -38 + k * 6.3;
+      const py = -3 + (k % 2 ? 3 : -3);
+      if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  /** Where a hotdog will land, on screen. */
+  const hotdogSpot = (h) => (mode === 'ring' ? toScreen(h.x, h.y) : { x: h.x, y: FLOOR });
+
+  /** Under the fighters: each falling hotdog's shadow, darker as it nears. */
+  function drawHotdogShadows() {
+    for (const h of snap.hotdogs || []) {
+      const k = Math.min(1, h.t / G.HOTDOG_FALL_TICKS);
+      const p = hotdogSpot(h);
+      const r = (mode === 'ring' ? G.HOTDOG_CATCH_RADIUS * VK : G.HOTDOG_CATCH_RADIUS) * (1.3 - 0.4 * k);
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      if (mode !== 'ring') ctx.scale(1, 0.25);
+      ctx.fillStyle = `rgba(0,0,0,${0.15 + 0.35 * k})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(255,211,26,0.7)';
+      ctx.lineWidth = mode === 'ring' ? 2 : 6;
+      ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      ctx.arc(0, 0, r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /** Over the fighters: the hotdogs coming down. */
+  function drawHotdogs(clock) {
+    for (const h of snap.hotdogs || []) {
+      const k = Math.min(1, h.t / G.HOTDOG_FALL_TICKS);
+      const p = hotdogSpot(h);
+      const draw = h.kind === 'dosa' ? drawDosa : drawHotdog;
+      if (mode === 'ring') {
+        // From above: big (near us) shrinking to life size as it falls.
+        draw(p.x, p.y, (2.4 - 1.6 * k) * VK * 1.6, clock * 2);
+      } else {
+        const y = -60 + (p.y - 30 + 60) * k;
+        draw(p.x + Math.sin(clock * 3) * 20 * (1 - k), y, 1.1, Math.sin(clock * 4) * 0.4);
+      }
+    }
+  }
+
   // ---- The giant fist ----------------------------------------------------------
 
   const slams = [];
@@ -2746,6 +3085,8 @@
     const ring = snap.mode === 'ring';
     if (ring) {
       drawRingScene(clock);
+      drawUsa(clock);
+      drawHotdogShadows();
       drawFistUnder();
       drawSurprisesUnder(clock);
       // Those down first, then attackers last so their gloves are on top.
@@ -2762,6 +3103,8 @@
       }
     } else {
       drawScene(clock);
+      drawUsa(clock);
+      drawHotdogShadows();
       drawFistUnder();
       drawSurprisesUnder(clock);
 
@@ -2797,6 +3140,7 @@
     if (!ring) drawFrontRopes();
     drawFistOver();
     drawSurprisesOver(clock);
+    drawHotdogs(clock);
     drawRays();
     drawBolts(clock);
     drawTyping();
