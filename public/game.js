@@ -44,7 +44,7 @@
 // "spreadbury" turns the whole fight USA-themed for ten seconds, and two
 // hotdogs come floating down at random moments (slower than the giant fist,
 // with a shadow where they'll land). Whoever catches one before it hits the
-// floor gets half their health back. "mamtora" is the same, but India,
+// floor (reaching up for it as it comes down) gets half their health back. "mamtora" is the same, but India,
 // and dosas.
 //
 // "edward" secretly pauses the fight for three seconds: everything looks
@@ -215,6 +215,10 @@
   const HOTDOG_FALL_TICKS = Math.round(2.5 * TICK_RATE); // the fist's warning is one second
   const HOTDOG_CATCH_RADIUS = 85;
   const HOTDOG_HEAL = MAX_HP / 2;
+  // How far down it has to come before you can reach up and grab it (as a
+  // share of the fall): about head height. Jumping reaches it sooner.
+  const HOTDOG_REACH_AT = 0.55;
+  const HOTDOG_JUMP_REACH_AT = 0.3;
 
   // Edward: the secret pause button.
   const PAUSE_TICKS = 3 * TICK_RATE;
@@ -1403,15 +1407,19 @@
         }
         return true;
       }
-      if (++h.t < HOTDOG_FALL_TICKS) return true;
+      const k = ++h.t / HOTDOG_FALL_TICKS;
+      // Caught on the way down: whoever is under it and can reach it (the
+      // nearest, if there's more than one).
       let best = null;
       let bestD = HOTDOG_CATCH_RADIUS;
       game.fighters.forEach((f, i) => {
         if (!standing(f)) return;
+        if (k < (airborne(f) ? HOTDOG_JUMP_REACH_AT : HOTDOG_REACH_AT)) return;
         const d = Math.hypot(f.x - h.x, ring ? f.y - h.y : 0);
         if (d <= bestD) { best = i; bestD = d; }
       });
       if (best === null) {
+        if (k < 1) return true;
         game.events.push({ type: 'hotdogSplat', x: h.x, y: h.y, kind: h.kind });
         return false;
       }
@@ -1553,7 +1561,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

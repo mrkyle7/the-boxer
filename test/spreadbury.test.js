@@ -106,3 +106,48 @@ test('mamtora: the same, but India, and dosas', () => {
   assert.strictEqual(a.hp, G.MAX_HP);
   assert.ok(!('theme' in G.snapshot(g)));
 });
+
+test('catch it on the way down: once it is low enough to reach, before it lands', () => {
+  const g = fight(['A', 'B'], 0);
+  const [a, b] = g.fighters;
+  a.hp = 30;
+  a.x = 120;
+  b.x = 880;
+  type(g, 0, 'spreadbury');
+  let drop = null;
+  let caughtAt = null;
+  for (let i = 0; i < G.USA_TICKS && caughtAt === null; i++) {
+    G.step(g);
+    for (const e of g.events) {
+      if (e.type === 'hotdogDrop' && !drop) drop = { e, at: i };
+      if (e.type === 'hotdogCaught') caughtAt = i;
+    }
+    g.events = [];
+    // Run under it halfway down.
+    if (drop && i === drop.at + Math.floor(G.HOTDOG_FALL_TICKS / 2)) a.x = drop.e.x;
+  }
+  assert.ok(caughtAt !== null);
+  const fell = caughtAt - drop.at;
+  assert.ok(fell < G.HOTDOG_FALL_TICKS, `caught after ${fell} ticks, before it landed`);
+  assert.ok(fell >= Math.floor(G.HOTDOG_FALL_TICKS * G.HOTDOG_REACH_AT) - 1, 'not while still high up');
+});
+
+test('jumping reaches it sooner', () => {
+  const g = fight(['A', 'B'], 0);
+  const [a, b] = g.fighters;
+  a.x = 120;
+  b.x = 880;
+  type(g, 0, 'spreadbury');
+  let drop = null;
+  let caughtAt = null;
+  for (let i = 0; i < G.USA_TICKS && caughtAt === null; i++) {
+    G.step(g);
+    for (const e of g.events) {
+      if (e.type === 'hotdogDrop' && !drop) { drop = { e, at: i }; a.x = e.x; }
+      if (e.type === 'hotdogCaught') caughtAt = i;
+    }
+    g.events = [];
+    if (drop && i === drop.at + Math.floor(G.HOTDOG_FALL_TICKS * G.HOTDOG_JUMP_REACH_AT) - 4) G.pressAction(g, 0, 'jump');
+  }
+  assert.ok(caughtAt - drop.at < G.HOTDOG_FALL_TICKS * G.HOTDOG_REACH_AT, 'grabbed in the air');
+});

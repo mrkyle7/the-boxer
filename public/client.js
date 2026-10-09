@@ -3256,9 +3256,11 @@
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,211,26,0.7)';
-      ctx.lineWidth = mode === 'ring' ? 2 : 6;
-      ctx.setLineDash([8, 8]);
+      // Dashed while it's out of reach; solid and bright once you can grab it.
+      const reachable = k >= G.HOTDOG_REACH_AT;
+      ctx.strokeStyle = reachable ? '#7dff6b' : 'rgba(255,211,26,0.7)';
+      ctx.lineWidth = (mode === 'ring' ? 2 : 6) * (reachable ? 1.6 : 1);
+      ctx.setLineDash(reachable ? [] : [8, 8]);
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.stroke();
