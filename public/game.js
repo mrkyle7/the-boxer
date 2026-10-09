@@ -38,6 +38,9 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
+// "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
+// of it back, and you take only the other 30%.
+//
 // "priya" fires a freeze ray at whoever you're fighting: three seconds in a
 // block of ice, unless they block it (guarding, facing it).
 //
@@ -154,9 +157,13 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel'];
+
+  // Daniel: spiky. Hits on you split 30:70, you:them.
+  const SPIKY_TICKS = 5 * TICK_RATE;
+  const SPIKY_KEEP = 0.3;
 
   // Priya: a freeze ray. An icy bolt that flies at whoever you're fighting
   // and freezes them for three seconds, unless they're guarding (facing it).
@@ -217,6 +224,7 @@
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
+      spiky: 0, // ticks of Daniel's spikes left
       tiny: 0, // ticks of being shrunk by Shaan left
       shree: null, // steering the giant fist: { x, y, t, drop }
       car: null, // driving: { dx, dy, t, hit }
@@ -354,6 +362,11 @@
       if (unbig) o.giant = 0;
       else o.tiny = SHAAN_TICKS;
       game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
+      return;
+    }
+    if (which === 'daniel') {
+      f.spiky = SPIKY_TICKS;
+      game.events.push({ type: 'daniel', target: index });
       return;
     }
     if (which === 'priya') {
@@ -511,10 +524,32 @@
     }
   }
 
+  /**
+   * Daniel's spikes: a spiky fighter takes 30% of a hit, and whoever hit them
+   * gets the other 70% back. Returns what the spiky one takes.
+   */
+  function spikes(game, def, att, damage) {
+    if (!(def.spiky > 0) || !att || att === def || !game.fighters.includes(att) || !standing(att)) return damage;
+    const keep = Math.round(damage * SPIKY_KEEP);
+    const back = damage - keep;
+    if (back <= 0) return damage;
+    att.hp = Math.max(0, att.hp - back);
+    def.stats.damage += back;
+    const ai = game.fighters.indexOf(att);
+    game.events.push({ type: 'spiked', target: ai, attacker: game.fighters.indexOf(def), damage: back });
+    if (att.hp <= 0) {
+      setState(att, 'ko');
+      game.events.push({ type: 'ko', target: ai });
+    }
+    return keep;
+  }
+
   /** Damage that isn't a punch or kick: no guard stops it. */
   function hurt(game, att, def, damage, stun, knockback, attIndex) {
     if (!def || !standing(def)) return;
     const i = game.fighters.indexOf(def);
+    const hitter = attIndex !== undefined ? game.fighters[attIndex] : att;
+    damage = spikes(game, def, hitter, damage);
     def.hp = Math.max(0, def.hp - damage);
     att.stats.landed++;
     att.stats.damage += damage;
@@ -743,6 +778,7 @@
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
+      if (f.spiky > 0) f.spiky--;
     }
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
@@ -1004,7 +1040,8 @@
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
         const counter = !m.unblockable && (hit.defPhase === 'startup' || hit.defPhase === 'recovery'
           || hit.defState === 'guardbreak');
-        const damage = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
+        const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1));
+        const damage = spikes(game, def, att, full);
         def.hp = Math.max(0, def.hp - damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
@@ -1263,6 +1300,7 @@
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
+        ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
         ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
         ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
@@ -1289,7 +1327,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

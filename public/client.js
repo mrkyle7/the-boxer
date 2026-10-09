@@ -329,6 +329,23 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'daniel') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#b6e24a', 28, 7);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Spiky!', '#b6e24a', 34);
+      sound.spikes();
+      return;
+    }
+    if (e.type === 'spiked') {
+      if (display && display[e.attacker]) display[e.attacker].spikedAt = performance.now();
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#ff4a4f', 18, 6);
+      sparks(p.x, p.y, '#b6e24a', 10, 5);
+      shake = Math.max(shake, 7);
+      floatText(p.x, p.y - (mode === 'ring' ? 30 : 50), `Ouch! -${e.damage}`, '#b6e24a', 28);
+      sound.hit(0.7);
+      return;
+    }
     if (e.type === 'priya') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Freeze ray!', '#7ff3ff', 32);
@@ -578,6 +595,12 @@
       grow() {
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
+      },
+      // Daniel: a metallic 'shing'.
+      spikes() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 1400, 0.4, 0.1, 'sawtooth', 2600);
+        tone(a, 2100, 0.3, 0.06, 'square', 3200);
       },
       // Priya: an icy 'pew'.
       pew() {
@@ -1652,6 +1675,7 @@
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
+    if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
     if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
@@ -1892,6 +1916,7 @@
     shaan: { fill: ['#ffe3fb', '#ff6ad5', '#a0158a'], spark: '#ffb3ee' }, // shrink-ray pink
     parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
     priya: { fill: ['#f4ffff', '#7ff3ff', '#1a9bbf'], spark: '#e6fdff' }, // frosty
+    daniel: { fill: ['#f2f7e6', '#b6e24a', '#4f7d12'], spark: '#d9ff7a' }, // cactus green
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
   const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
@@ -2118,6 +2143,56 @@
           vx: back.x * 1.5, vy: -0.5, life: 16, color: Math.random() < 0.5 ? '#ffffff' : '#bff8ff' });
       }
     }
+  }
+
+  /**
+   * Daniel's spikes: a ring of green-tipped steel spikes all round them,
+   * turning slowly and pulsing, that flashes red-hot just after it bites.
+   */
+  function drawSpikes(i, f, clock) {
+    const ring = mode === 'ring';
+    const size = display[i].size || 1;
+    const d = display[i];
+    let cx; let cy; let rx; let ry;
+    if (ring) {
+      const p = toScreen(d.x, d.y);
+      cx = p.x; cy = p.y; rx = ry = 34 * fighterScale() * size;
+    } else {
+      cx = d.x; cy = FLOOR - 118 * size; rx = 72 * size; ry = 128 * size;
+    }
+    const n = ring ? 14 : 18;
+    const pulse = 1 + 0.08 * Math.sin(clock * 9);
+    const hot = clamp01((d.spikedAt ? 1 - (performance.now() - d.spikedAt) / 400 : 0));
+    const fading = f.spiky < 40 ? 0.35 + 0.65 * Math.abs(Math.sin(clock * 12)) : 1; // flickers as it wears off
+    ctx.save();
+    ctx.globalAlpha *= fading;
+    for (let k = 0; k < n; k++) {
+      const a = (k / n) * Math.PI * 2 + clock * 0.8;
+      const ox = Math.cos(a);
+      const oy = Math.sin(a);
+      const bx = cx + ox * rx;
+      const by = cy + oy * ry;
+      const len = (ring ? 13 : 22) * pulse * size;
+      const w = (ring ? 5 : 8) * size;
+      // Perpendicular, for the base of the spike.
+      const px = -oy;
+      const py = ox;
+      const g = ctx.createLinearGradient(bx, by, bx + ox * len, by + oy * len);
+      g.addColorStop(0, '#8a96a8');
+      g.addColorStop(0.6, '#e6ecf2');
+      g.addColorStop(1, hot > 0 ? '#ff4a4f' : '#b6e24a');
+      ctx.fillStyle = g;
+      ctx.strokeStyle = 'rgba(20,24,30,0.8)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(bx + px * w, by + py * w);
+      ctx.lineTo(bx + ox * len, by + oy * len);
+      ctx.lineTo(bx - px * w, by - py * w);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** Shaan's shrink ray: a wobbly pink beam from one to the other. */
@@ -2651,6 +2726,7 @@
         if (hiddenFrom(i, f)) continue;
         if (f.car) { drawCar(i, f, clock); continue; }
         drawRingFighter(i, f, display[i], f.t + ticksSince, clock);
+        if (f.spiky) drawSpikes(i, f, clock);
         if (f.giant) { const gp = toScreen(display[i].x, display[i].y); giantGlitter(gp.x, gp.y, 50 * fighterScale()); }
       }
     } else {
@@ -2674,6 +2750,7 @@
           giantGlitter(display[i].x, FLOOR - 140 * (display[i].size || 1), 120);
         }
         drawFighter(i, f, display[i].x, f.t + ticksSince, clock, display[1 - i].x);
+        if (f.spiky) drawSpikes(i, f, clock);
       }
     }
 
