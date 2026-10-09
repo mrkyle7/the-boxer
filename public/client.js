@@ -1964,9 +1964,7 @@
     snap.fighters.forEach((f, i) => {
       const d = display[i];
       // Someone else's Kyle doesn't give themselves away by typing, either.
-      let word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
-      // Edward's pause is a secret: only Edward sees his letters go in.
-      if (i !== me && word && 'EDWARD'.startsWith(word)) word = '';
+      const word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
       const style = styleFor(word);
       const p = targetPos(i, 'head');
       const y = p.y - (ring ? 52 : 118);
