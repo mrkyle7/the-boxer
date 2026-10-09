@@ -38,6 +38,9 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
+// "priya" fires a freeze ray at whoever you're fighting: three seconds in a
+// block of ice, unless they block it (guarding, facing it).
+//
 // And "harrison": a surprise. One of a handful of moves and powers, picked
 // at random each time (see SURPRISES).
 (function (root) {
@@ -151,9 +154,16 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', luna: 'vault', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya',
   };
-  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal'];
+  const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya'];
+
+  // Priya: a freeze ray. An icy bolt that flies at whoever you're fighting
+  // and freezes them for three seconds, unless they're guarding (facing it).
+  const RAY_SPEED = 18;
+  const RAY_RANGE = 1100; // fizzles out after this far
+  const RAY_HIT_RADIUS = 50;
+  const RAY_FREEZE_TICKS = 3 * TICK_RATE;
 
   // Shree: steering the giant fist.
   const SHREE_TICKS = 6 * TICK_RATE; // drops by itself if you haven't punched by then
@@ -265,6 +275,7 @@
       random: options.random || Math.random,
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
+      bolts: [], // Priya's freeze rays in flight
     };
     return game;
   }
@@ -343,6 +354,18 @@
       if (unbig) o.giant = 0;
       else o.tiny = SHAAN_TICKS;
       game.events.push({ type: 'shaan', attacker: index, target: game.fighters.indexOf(o), unbig });
+      return;
+    }
+    if (which === 'priya') {
+      const o = foeOf(game, f);
+      if (!o) return;
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      // Fired at where they are now: it flies straight, it doesn't follow them.
+      game.bolts.push({ owner: index, x: f.x, y: f.y, dx: dx / d, dy: dy / d, dist: 0 });
+      if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
+      game.events.push({ type: 'priya', attacker: index, target: game.fighters.indexOf(o) });
       return;
     }
     if (which === 'parimal') {
@@ -1058,6 +1081,7 @@
       game.phaseT = 0;
       game.events.push({ type: 'fight', round: game.round });
       game.fist = { next: nextFist(game), warn: null };
+      game.bolts = [];
     }
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
@@ -1090,6 +1114,7 @@
       if (game.mode === 'ring') resolveRingHits(game);
       else resolveHits(game);
       if (game.fists) updateFist(game);
+      updateBolts(game);
       game.timer--;
       checkRoundOver(game);
     }
@@ -1100,6 +1125,44 @@
 
   function nextFist(game) {
     return FIST_MIN_TICKS + Math.floor(game.random() * (FIST_MAX_TICKS - FIST_MIN_TICKS + 1));
+  }
+
+  /**
+   * Priya's freeze rays: each flies straight on until it meets someone (not
+   * whoever fired it, and not anyone in the air or in a car) or fizzles out.
+   * A guard facing it stops it; otherwise they're frozen solid.
+   */
+  function updateBolts(game) {
+    const ring = game.mode === 'ring';
+    game.bolts = game.bolts.filter((b) => {
+      b.x += b.dx * RAY_SPEED;
+      b.y += b.dy * RAY_SPEED;
+      b.dist += RAY_SPEED;
+      const i = game.fighters.findIndex((o, j) => j !== b.owner && standing(o) && !untouchable(o)
+        && Math.hypot(o.x - b.x, ring ? o.y - b.y : 0) <= RAY_HIT_RADIUS);
+      if (i < 0) {
+        const out = ring ? b.x < RING_MIN - 60 || b.x > RING_MAX + 60 || b.y < RING_MIN - 60 || b.y > RING_MAX + 60
+          : b.x < RING_LEFT - 60 || b.x > RING_RIGHT + 60;
+        if (b.dist < RAY_RANGE && !out) return true;
+        game.events.push({ type: 'rayFizzle', x: b.x, y: b.y });
+        return false;
+      }
+      const o = game.fighters[i];
+      const guarding = o.state === 'block' || o.state === 'blockstun';
+      // Facing it: one on one they always face the other way; in the ring the guard covers the front.
+      const faced = ring ? angleDiff(o.angle, Math.atan2(-b.dy, -b.dx)) <= GUARD_ARC : o.facing === -Math.sign(b.dx || 1);
+      if (guarding && faced) {
+        game.events.push({ type: 'rayBlocked', attacker: b.owner, target: i });
+        return false;
+      }
+      o.frozen = RAY_FREEZE_TICKS;
+      if (o.state !== 'hitstun') setState(o, 'idle');
+      o.vx = 0;
+      o.vy = 0;
+      knocked(game, o);
+      game.events.push({ type: 'rayFreeze', attacker: b.owner, target: i });
+      return false;
+    });
   }
 
   /** Counts down to the next shadow, then the slam a second after it. */
@@ -1189,6 +1252,7 @@
       winner: game.winner,
       tick: game.tick,
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
+      ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
@@ -1225,7 +1289,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

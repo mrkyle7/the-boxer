@@ -329,6 +329,33 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    if (e.type === 'priya') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Freeze ray!', '#7ff3ff', 32);
+      sound.pew();
+      return;
+    }
+    if (e.type === 'rayFreeze') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#e6fdff', 30, 7);
+      sparks(p.x, p.y, '#7ff3ff', 16, 5);
+      shake = Math.max(shake, 8);
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 150), 'Frozen!', '#7ff3ff', 34);
+      sound.tinkle();
+      return;
+    }
+    if (e.type === 'rayBlocked') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y + 20, '#e6fdff', 22, 6);
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Blocked!', '#9cc4ff', 28);
+      sound.block();
+      return;
+    }
+    if (e.type === 'rayFizzle') {
+      const p = mode === 'ring' ? toScreen(e.x, e.y) : { x: e.x, y: FLOOR - 160 };
+      sparks(p.x, p.y, '#e6fdff', 10, 3);
+      return;
+    }
     if (e.type === 'shree') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), "Shree's fist!", '#ff6b4a', 32);
@@ -551,6 +578,12 @@
       grow() {
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
+      },
+      // Priya: an icy 'pew'.
+      pew() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 2200, 0.3, 0.12, 'triangle', 600);
+        noise(a, 0.15, 6000, 0.15);
       },
       // Shaan: a falling 'boing'. Parimal: a horn, and a skid at the end.
       shrink() {
@@ -1858,6 +1891,7 @@
     shree: { fill: ['#ffe0d6', '#ff6b4a', '#b3200e'], spark: '#ffb199' }, // fiery fist red
     shaan: { fill: ['#ffe3fb', '#ff6ad5', '#a0158a'], spark: '#ffb3ee' }, // shrink-ray pink
     parimal: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#ffffff' }, // shiny chrome
+    priya: { fill: ['#f4ffff', '#7ff3ff', '#1a9bbf'], spark: '#e6fdff' }, // frosty
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
   const styleFor = (word) => CODE_STYLES[Object.keys(G.CODES).find((c) => c.startsWith(word.toLowerCase()))] || CODE_STYLES.zeffen;
@@ -2032,6 +2066,59 @@
   }
 
   const rays = []; // Shaan's shrink ray, for a moment
+
+  /**
+   * Priya's freeze rays in flight: a glowing ice ball at chest height, a
+   * frosty streak behind it, and snowflakes coming off.
+   */
+  function drawBolts(clock) {
+    for (const b of snap.bolts || []) {
+      const owner = snap.fighters[b.owner];
+      if (owner && hiddenFrom(b.owner, owner)) continue;
+      const ring = mode === 'ring';
+      const p = ring ? toScreen(b.x, b.y) : { x: b.x, y: FLOOR - 160 };
+      const back = ring ? { x: -b.dx, y: -b.dy } : { x: -Math.sign(b.dx || 1), y: 0 };
+      const len = ring ? 70 : 130;
+      const tail = { x: p.x + back.x * len, y: p.y + back.y * len };
+      const g = ctx.createLinearGradient(tail.x, tail.y, p.x, p.y);
+      g.addColorStop(0, 'rgba(127,243,255,0)');
+      g.addColorStop(1, 'rgba(200,250,255,0.9)');
+      ctx.save();
+      ctx.strokeStyle = g;
+      ctx.lineCap = 'round';
+      ctx.lineWidth = ring ? 10 : 16;
+      ctx.beginPath();
+      ctx.moveTo(tail.x, tail.y);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+      const r = (ring ? 10 : 16) * (1 + 0.12 * Math.sin(clock * 30));
+      const glow = ctx.createRadialGradient(p.x, p.y, 1, p.x, p.y, r * 2.4);
+      glow.addColorStop(0, 'rgba(255,255,255,1)');
+      glow.addColorStop(0.35, 'rgba(160,245,255,0.9)');
+      glow.addColorStop(1, 'rgba(127,243,255,0)');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r * 2.4, 0, Math.PI * 2);
+      ctx.fill();
+      // A spinning snowflake in the middle.
+      ctx.translate(p.x, p.y);
+      ctx.rotate(clock * 8);
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2;
+      for (let k = 0; k < 3; k++) {
+        ctx.rotate(Math.PI / 3);
+        ctx.beginPath();
+        ctx.moveTo(-r, 0);
+        ctx.lineTo(r, 0);
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (Math.random() < 0.6) {
+        effects.push({ x: p.x + back.x * 20 + (Math.random() - 0.5) * 14, y: p.y + (Math.random() - 0.5) * 14,
+          vx: back.x * 1.5, vy: -0.5, life: 16, color: Math.random() < 0.5 ? '#ffffff' : '#bff8ff' });
+      }
+    }
+  }
 
   /** Shaan's shrink ray: a wobbly pink beam from one to the other. */
   function drawRays() {
@@ -2603,6 +2690,7 @@
     drawFistOver();
     drawSurprisesOver(clock);
     drawRays();
+    drawBolts(clock);
     drawTyping();
 
     for (let i = texts.length - 1; i >= 0; i--) {
