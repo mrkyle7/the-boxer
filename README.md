@@ -39,7 +39,7 @@ On a phone, tap the **⌨** button to bring up a letter pad for the cheat codes.
 
 Psst: type **zeffen** during a fight for the Zeffen flip, a front flip at your opponent (it reaches about as far as the Luna vault) that hits twice, 25 a time. It can't be blocked, but it's aimed where they were when you jumped, so they can still step out of the way. Nothing can touch you while you're in the air (not even the giant fist). Everyone can see the letters going in over your head, and getting hit wipes them, so hit them before they finish typing.
 
-Or type **luna** for the Luna vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked.
+Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent. **louise** busts out a dance (a shimmy, a twirl) ending in a hip-bump for 30 on whoever is close by; **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for three seconds.
 
 Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself).
 
@@ -48,7 +48,7 @@ And three more:
 - **shaan**: a shrink ray at the one you're fighting. They go small for seven seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
 - **parimal**: beep beep! You jump in a car, which revs for a moment and then drives straight at the nearest fighter, for 30. In the ring, step aside. One on one, jump over it with **space** (or the Jump button on a phone). Jumping is too early if you do it the moment you hear the horn, and just right when it sets off. A jump only gets you over the car: you can still be punched in the air.
 
-Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (Uncle Sam hats for everyone, fireworks), and two hotdogs come floating down at random moments, with a shadow where each will land. Whoever catches one before it hits the floor gets half their health back. **mamtora** does the same with India: the tricolour, marigold garlands and petals, and dosas instead of hotdogs.
+Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (Uncle Sam hats for everyone, fireworks), and two hotdogs come floating down at random moments, with a shadow where each will land. Get under one and grab it on the way down (once it's about head height; jump to reach it sooner, one on one) for half your health back. If nobody catches it, it splats on the floor. **mamtora** does the same with India: the tricolour, marigold garlands and petals, and dosas instead of hotdogs.
 
 Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
