@@ -813,7 +813,47 @@
   });
   window.addEventListener('blur', () => ['left', 'right', 'up', 'down', 'block'].forEach((k) => setHold(k, false)));
 
-  document.querySelectorAll('#touch button').forEach((btn) => {
+  // ---- Cheat-code keyboard (phones) ----------------------------------------------
+  // A letter pad over the bottom of the ring, opened with the ⌨ button. Each
+  // tap sends one letter, the same as typing it on a keyboard (but never
+  // punches or kicks: these are only letters).
+  const kb = $('kb');
+  ['qwertyuiop', 'asdfghjkl', 'zxcvbnm'].forEach((row, r) => {
+    const div = document.createElement('div');
+    div.className = 'kb-row';
+    for (const k of row) {
+      const b = document.createElement('button');
+      b.textContent = k.toUpperCase();
+      b.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        sound.unlock();
+        send({ t: 'type', k });
+        b.classList.add('hit');
+        setTimeout(() => b.classList.remove('hit'), 120);
+      });
+      div.appendChild(b);
+    }
+    if (r === 2) {
+      const close = document.createElement('button');
+      close.className = 'kb-close';
+      close.textContent = '✕';
+      close.setAttribute('aria-label', 'Hide keyboard');
+      close.addEventListener('pointerdown', (e) => { e.preventDefault(); showKeyboard(false); });
+      div.appendChild(close);
+    }
+    kb.appendChild(div);
+  });
+  function showKeyboard(on) {
+    kb.hidden = !on;
+    $('kb-toggle').classList.toggle('on', on);
+  }
+  $('kb-toggle').addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    sound.unlock();
+    showKeyboard(kb.hidden);
+  });
+
+  document.querySelectorAll('#touch button:not(#kb-toggle)').forEach((btn) => {
     const hold = btn.dataset.hold;
     const act = btn.dataset.act;
     const aim = btn.dataset.aim;
@@ -902,6 +942,7 @@
     $('rematch-note').textContent = names.length > 2 ? 'Waiting for the others…' : `Waiting for ${names[1 - me]}…`;
   });
   const toLobby = () => {
+    showKeyboard(false);
     send({ t: 'leave' });
     snap = null;
     $('result').hidden = true;
