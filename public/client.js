@@ -309,6 +309,7 @@
   }
 
   function floatText(x, y, text, color, size) {
+    if (text === '-0') return; // during Edward's secret pause hits do nothing, quietly
     const scale = mode === 'ring' ? 0.7 : 1;
     texts.push({ x, y, text, color, size: Math.round((size || 22) * scale), life: 50 });
   }
@@ -329,14 +330,19 @@
     if (e.type === 'matchEnd') return;
 
     if (e.type === 'left') return;
+    // Edward's pause is a secret: only Edward hears it start and stop.
     if (e.type === 'edward') {
-      sound.tapeStop();
+      if (e.attacker === me) {
+        secretPauseUntil = performance.now() + 3000;
+        sound.tapeStop();
+      }
       return;
     }
     if (e.type === 'unpause') {
-      flash = Math.max(flash, 0.35);
-      announce('Play!', 40, '#ffffff');
-      sound.tapeStart();
+      if (e.attacker === me) {
+        secretPauseUntil = 0;
+        sound.tapeStart();
+      }
       return;
     }
     if (e.type === 'daniel') {
@@ -606,7 +612,7 @@
         const a = ctxOk(); if (!a) return;
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
       },
-      // Edward: a tape grinding to a halt, and starting up again.
+      // Edward (only Edward hears it): a tape grinding to a halt, and starting up again.
       tapeStop() {
         const a = ctxOk(); if (!a) return;
         tone(a, 520, 0.6, 0.18, 'sawtooth', 40);
@@ -1688,57 +1694,7 @@
     ctx.fillText(label, p.x, p.y + below);
   }
 
-  /**
-   * Edward's pause: the picture goes grey and grainy like a paused video,
-   * with a big pause sign, who pressed it, and the seconds till it plays on.
-   */
-  function drawPaused(s) {
-    const now = performance.now();
-    ctx.save();
-    ctx.fillStyle = 'rgba(20,22,34,0.45)';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'saturation';
-    ctx.fillStyle = '#808080';
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalCompositeOperation = 'source-over';
-    // Scanlines, and a band of tracking noise rolling down.
-    ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    for (let y = 0; y < H; y += 4) ctx.fillRect(0, y, W, 2);
-    const band = ((now / 6) % (H + 60)) - 30;
-    for (let k = 0; k < 40; k++) {
-      ctx.fillStyle = `rgba(255,255,255,${Math.random() * 0.25})`;
-      ctx.fillRect(Math.random() * W, band + Math.random() * 24, 20 + Math.random() * 80, 2);
-    }
-    // The pause sign.
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const sz = Math.min(W, H) * 0.12;
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
-    ctx.fillRect(cx - sz * 0.75, cy - sz, sz * 0.5, sz * 2);
-    ctx.fillRect(cx + sz * 0.25, cy - sz, sz * 0.5, sz * 2);
-    ctx.textAlign = 'center';
-    ctx.font = `${Math.round(sz * 0.7)}px Bangers, Anton, Impact, sans-serif`;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-    const by = s.pausedBy !== null && s.fighters[s.pausedBy] ? s.fighters[s.pausedBy].name.toUpperCase() : 'SOMEONE';
-    const line1 = `${by} PRESSED PAUSE`;
-    ctx.strokeText(line1, cx, cy + sz * 1.7);
-    ctx.fillStyle = '#ffffff';
-    ctx.fillText(line1, cx, cy + sz * 1.7);
-    const secs = Math.ceil(s.paused / G.TICK_RATE);
-    ctx.font = `${Math.round(sz * 0.55)}px Anton, Impact, sans-serif`;
-    ctx.strokeText(`▶ in ${secs}`, cx, cy + sz * 2.5);
-    ctx.fillStyle = '#f4c542';
-    ctx.fillText(`▶ in ${secs}`, cx, cy + sz * 2.5);
-    // A blinking "PAUSE" in the corner, like an old video player.
-    if (Math.floor(now / 500) % 2) {
-      ctx.textAlign = 'left';
-      ctx.font = '700 22px Barlow, sans-serif';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText('❚❚ PAUSE', 18, H - 18);
-    }
-    ctx.restore();
-  }
+  let secretPauseUntil = 0; // when my own secret pause (Edward) runs out
 
   /** What's running on a fighter, for the HUD. */
   function powerLabels(i, f) {
@@ -1746,6 +1702,8 @@
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
+    const secret = i === me ? secretPauseUntil - performance.now() : 0;
+    if (secret > 0) out.push({ text: `SECRET PAUSE  ${Math.ceil(secret / 1000)}s`, short: `SHH ${Math.ceil(secret / 1000)}s`, color: '#c9c9d6' });
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
@@ -2006,7 +1964,9 @@
     snap.fighters.forEach((f, i) => {
       const d = display[i];
       // Someone else's Kyle doesn't give themselves away by typing, either.
-      const word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
+      let word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
+      // Edward's pause is a secret: only Edward sees his letters go in.
+      if (i !== me && word && 'EDWARD'.startsWith(word)) word = '';
       const style = styleFor(word);
       const p = targetPos(i, 'head');
       const y = p.y - (ring ? 52 : 118);
@@ -2751,7 +2711,7 @@
     }
 
     // Paused: no guessing ahead, everyone holds still.
-    const ticksSince = snap.paused ? 0 : Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
+    const ticksSince = Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
     snap.fighters.forEach((f, i) => {
       const d = display[i];
       const k = Math.min(1, dt * 22);
@@ -2862,7 +2822,6 @@
     if (ring) drawRingHud(snap);
     else drawHud(snap);
     drawBanner();
-    if (snap.paused) drawPaused(snap);
 
     if (flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${flash * 0.6})`;

@@ -38,8 +38,9 @@
 // side in the ring, or jump over it one on one: space to jump. A jump only
 // gets you over the car: punches and the rest still hit you in the air).
 //
-// "edward" pauses the whole fight for three seconds: nobody moves, the
-// clock stops, then it carries on where it left off.
+// "edward" secretly pauses the fight for three seconds: everything looks
+// the same and everyone keeps fighting, but no hit does any damage and the
+// clock doesn't move. Stamina still goes down (and back up) as normal.
 //
 // "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
@@ -164,7 +165,7 @@
   };
   const POWERS = ['jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward'];
 
-  // Edward: the pause button.
+  // Edward: the secret pause button.
   const PAUSE_TICKS = 3 * TICK_RATE;
 
   // Daniel: spiky. Hits on you split 30:70, you:them.
@@ -290,7 +291,7 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
-      paused: 0, // ticks of Edward's pause left
+      paused: 0, // ticks of Edward's secret pause left
       pausedBy: null,
     };
     return game;
@@ -373,7 +374,6 @@
       return;
     }
     if (which === 'edward') {
-      if (game.paused > 0) return;
       game.paused = PAUSE_TICKS;
       game.pausedBy = index;
       game.events.push({ type: 'edward', attacker: index });
@@ -456,7 +456,7 @@
       hits.push(i);
     });
     f.shree = null;
-    game.events.push({ type: 'shreeSlam', attacker: index, x: s.x, y: s.y, hits, damage: FIST_DAMAGE });
+    game.events.push({ type: 'shreeSlam', attacker: index, x: s.x, y: s.y, hits, damage: game.paused > 0 ? 0 : FIST_DAMAGE });
     for (const i of hits) {
       const o = game.fighters[i];
       const pseudo = { x: s.x, y: s.y, stats: f.stats };
@@ -544,6 +544,7 @@
    * gets the other 70% back. Returns what the spiky one takes.
    */
   function spikes(game, def, att, damage) {
+    if (game.paused > 0) return 0; // Edward's secret pause: nothing hurts, either way
     if (!(def.spiky > 0) || !att || att === def || !game.fighters.includes(att) || !standing(att)) return damage;
     const keep = Math.round(damage * SPIKY_KEEP);
     const back = damage - keep;
@@ -591,7 +592,7 @@
    */
   function typeKey(game, index, key) {
     const f = game.fighters[index];
-    if (!f || game.phase !== 'fight' || !standing(f) || game.paused > 0) return;
+    if (!f || game.phase !== 'fight' || !standing(f)) return;
     const k = String(key || '').toLowerCase();
     if (!/^[a-z]$/.test(k)) return;
     f.typed = (f.typed + k).slice(-CODE_MAX);
@@ -1036,7 +1037,7 @@
       const ev = { target: hit.defender, attacker: hit.attacker, move: hit.move, height: hit.height };
 
       if (blocking) {
-        def.hp = Math.max(0, def.hp - m.blockDamage);
+        def.hp = Math.max(0, def.hp - (game.paused > 0 ? 0 : m.blockDamage));
         def.stamina -= m.blockStamina;
         att.stats.blocked++;
         att.stats.damage += m.blockDamage;
@@ -1137,12 +1138,6 @@
       game.paused = 0;
     }
 
-    // Paused by Edward: nothing moves, nothing counts down, until it's over.
-    if (game.phase === 'fight' && game.paused > 0) {
-      game.paused--;
-      if (game.paused === 0) game.events.push({ type: 'unpause', attacker: game.pausedBy });
-      return game;
-    }
 
     if (game.phase === 'roundEnd' && game.phaseT >= ROUND_END_TICKS) {
       const stillIn = game.fighters.filter((f) => !f.left).length;
@@ -1175,7 +1170,13 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
-      game.timer--;
+      // Edward's secret pause: the clock stands still till it's over.
+      if (game.paused > 0) {
+        game.paused--;
+        if (game.paused === 0) game.events.push({ type: 'unpause', attacker: game.pausedBy });
+      } else {
+        game.timer--;
+      }
       checkRoundOver(game);
     }
     return game;
@@ -1256,7 +1257,7 @@
       const d = Math.hypot(dx, dy);
       if (d > FIST_RADIUS) return;
       hit.push(i);
-      f.hp = Math.max(0, f.hp - FIST_DAMAGE);
+      f.hp = Math.max(0, f.hp - (game.paused > 0 ? 0 : FIST_DAMAGE));
       // Knocked out from under it (any way at all if it landed right on them).
       const ax = d > 1 ? dx / d : i % 2 ? 1 : -1;
       const ay = d > 1 ? dy / d : 0;
@@ -1267,7 +1268,7 @@
       knocked(game, f);
       f.hitHeight = 'head';
     });
-    game.events.push({ type: 'fist', x, y, hits: hit, damage: FIST_DAMAGE });
+    game.events.push({ type: 'fist', x, y, hits: hit, damage: game.paused > 0 ? 0 : FIST_DAMAGE });
     for (const i of hit) {
       if (game.fighters[i].hp <= 0) {
         setState(game.fighters[i], 'ko');
@@ -1312,7 +1313,6 @@
       winner: game.winner,
       tick: game.tick,
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
-      ...(game.paused > 0 ? { paused: game.paused, pausedBy: game.pausedBy } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,

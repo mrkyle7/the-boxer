@@ -1,6 +1,7 @@
 'use strict';
 
-// "edward": the whole fight pauses for three seconds.
+// "edward": a secret pause for three seconds. The fight carries on, but no
+// hit does any damage and the clock stands still. Stamina still counts.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -25,48 +26,64 @@ function run(g, ticks) {
 
 const type = (g, i, word) => { for (const k of word) G.typeKey(g, i, k); };
 
-test('edward: everything stops for three seconds, Edward included, then carries on', () => {
-  const g = fight();
-  const [a, b] = g.fighters;
-  G.setHeld(g, 0, { left: true });
-  G.setHeld(g, 1, { right: true });
-  run(g, 5);
-  type(g, 0, 'edward');
-  assert.ok(G.snapshot(g).paused > 0, 'everyone sees it');
-  const ax = a.x;
-  const bx = b.x;
-  const timer = g.timer;
-  run(g, G.PAUSE_TICKS - 1);
-  assert.strictEqual(a.x, ax);
-  assert.strictEqual(b.x, bx);
-  assert.strictEqual(g.timer, timer, 'the clock stops too');
-  const events = run(g, 1);
-  assert.ok(events.some((e) => e.type === 'unpause'));
-  run(g, 5);
-  assert.ok(a.x < ax && b.x > bx, 'moving again');
-  assert.ok(g.timer < timer);
-});
-
-test('edward: attacks in progress freeze mid-way, and land afterwards', () => {
+test('edward: hits land but do no damage, and the clock stands still', () => {
   const g = fight();
   const [a, b] = g.fighters;
   a.x = 400;
   b.x = 520;
-  G.pressAction(g, 0, 'punch');
-  run(g, 3);
   type(g, 1, 'edward');
-  const during = run(g, G.PAUSE_TICKS - 1);
-  assert.ok(!during.some((e) => e.type === 'hit'));
-  const after = run(g, 20);
-  assert.ok(after.some((e) => e.type === 'hit' && e.target === 1));
+  const timer = g.timer;
+  G.pressAction(g, 0, 'kick');
+  const events = run(g, 40);
+  const hit = events.find((e) => e.type === 'hit');
+  assert.ok(hit, 'the kick still lands (hit-stun, knock-back and all)');
+  assert.strictEqual(hit.damage, 0);
+  assert.strictEqual(b.hp, G.MAX_HP);
+  assert.strictEqual(g.timer, timer);
+  assert.ok(a.stamina < G.MAX_STAMINA, 'the kick still cost stamina');
 });
 
-test("edward: can't be stacked or typed over while paused", () => {
+test('edward: everyone still moves, and nobody is told', () => {
   const g = fight();
-  type(g, 0, 'edward');
-  run(g, 60);
+  const a = g.fighters[0];
+  const x = a.x;
   type(g, 1, 'edward');
-  assert.strictEqual(g.paused, G.PAUSE_TICKS - 60);
-  type(g, 1, 'zeffen');
-  assert.strictEqual(g.fighters[1].typing, '');
+  assert.ok(!('paused' in G.snapshot(g)), 'nothing in what everyone sees');
+  G.setHeld(g, 0, { left: true });
+  run(g, 10);
+  assert.ok(a.x < x);
+});
+
+test('edward: after three seconds hits hurt again and the clock runs', () => {
+  const g = fight();
+  const [a, b] = g.fighters;
+  type(g, 1, 'edward');
+  const events = run(g, G.PAUSE_TICKS);
+  assert.ok(events.some((e) => e.type === 'unpause' && e.attacker === 1));
+  const timer = g.timer;
+  a.x = 400;
+  b.x = 520;
+  G.pressAction(g, 0, 'punch');
+  run(g, 20);
+  assert.ok(b.hp < G.MAX_HP);
+  assert.ok(g.timer < timer);
+});
+
+test('edward: covers the cheat moves and the giant fist too, and the spikes', () => {
+  const g = fight();
+  const [a, b] = g.fighters;
+  a.x = 400;
+  b.x = 600;
+  type(g, 1, 'daniel');
+  type(g, 1, 'edward');
+  G.cheat(g, 0, 'zeffen');
+  run(g, 60);
+  assert.strictEqual(b.hp, G.MAX_HP);
+  assert.strictEqual(a.hp, G.MAX_HP, 'no spikes back either');
+  const f = G.createGame(['Kyle', 'B'], { fists: true, random: () => 0 });
+  while (f.phase !== 'fight') G.step(f);
+  run(f, G.FIST_MIN_TICKS);
+  type(f, 1, 'edward');
+  run(f, G.FIST_WARN_TICKS);
+  assert.strictEqual(f.fighters[0].hp, G.MAX_HP);
 });
