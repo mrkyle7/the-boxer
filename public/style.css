@@ -203,6 +203,33 @@ canvas {
 }
 .touch button.on { background: var(--red-deep); border-color: var(--red); }
 
+/* The cheat-code keyboard (phones): letters over the bottom of the ring. */
+.kb {
+  position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%);
+  width: min(560px, calc(100% - 12px));
+  display: flex; flex-direction: column; gap: 5px; padding: 6px;
+  background: rgba(10, 13, 20, 0.72); border: 1px solid var(--line); border-radius: 10px;
+  backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
+  touch-action: none; user-select: none; -webkit-user-select: none;
+}
+.kb[hidden] { display: none; }
+.kb-row { display: flex; gap: 5px; justify-content: center; }
+.kb button {
+  flex: 0 1 9%; min-width: 0; height: clamp(30px, 7vh, 44px);
+  font: 400 clamp(16px, 4.2vw, 22px) Bangers, Anton, Impact, sans-serif; letter-spacing: 1px;
+  color: #ffd23f; background: rgba(32, 38, 54, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 6px;
+  touch-action: none;
+}
+.kb button.hit { background: #ffd23f; color: #1b1030; transform: scale(1.12); }
+.kb button.kb-close { flex-basis: 14%; color: var(--muted); font-family: inherit; font-size: 16px; }
+.touch button.kb-toggle { font-size: 24px; }
+/* Phone held upright: there's room under the ring, so the keyboard goes there. */
+@media (pointer: coarse) and (orientation: portrait) {
+  .kb { position: static; transform: none; width: 100%; margin-top: 8px; background: var(--panel); }
+}
+.touch button.kb-toggle.on { background: #3a2f0a; border-color: #ffd23f; color: #ffd23f; }
+
 @media (pointer: coarse) {
   .touch { display: flex; }
   .hint { display: none; }
