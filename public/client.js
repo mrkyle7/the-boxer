@@ -3165,6 +3165,30 @@
     snap.fighters.forEach((f, i) => {
       if (f.state !== 'attack' || f.move !== 'dance' || hiddenFrom(i, f)) return;
       const p = targetPos(i, 'body');
+      // The pull: a wavy pink ribbon reeling them in.
+      if (f.pulling !== undefined && snap.fighters[f.pulling] && f.t < G.MOVES.dance.startup) {
+        const q = targetPos(f.pulling, 'body');
+        const dx = q.x - p.x;
+        const dy = q.y - p.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        ctx.save();
+        for (const [w, c3] of [[10, 'rgba(255,95,162,0.3)'], [4, '#ff5fa2'], [1.5, '#ffffff']]) {
+          ctx.strokeStyle = c3;
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          for (let n = 0; n <= 24; n++) {
+            const k = n / 24;
+            const wob = Math.sin(k * 14 - clock * 12) * 10 * Math.sin(k * Math.PI);
+            const x = p.x + dx * k + nx * wob;
+            const y = p.y + dy * k + ny * wob;
+            if (n) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       const r = mode === 'ring' ? 46 : 120;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';

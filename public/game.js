@@ -25,8 +25,8 @@
 //
 // Another: type "kalya" for the vault, a flip right over your opponent
 // to land behind them and kick them in the back for 30, unblockable.
-// "luna" teleports you to just beside the nearest opponent; "louise" dances
-// (ending in a hip-bump for 30); "tamzin" cartwheels across at them for 30;
+// "luna" teleports you to just beside the nearest opponent; "louise" dances,
+// reeling the nearest opponent in, and hip-bumps them for 30; "tamzin" cartwheels across at them for 30;
 // "grandpa" makes you super fast for three seconds. (Luna's teleport ends in a
 // kick.) "fart" turns you round and gasses them: poisoned for the match, 5
 // every 10 seconds, unless they jump it. "water" floods the ring for ten
@@ -178,6 +178,10 @@
     head: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
     body: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
   };
+  // Louise's dance pulls the nearest opponent in towards bump range (from too far away
+  // they may not get all the way, and the bump misses).
+  const DANCE_PULL_TO = 110; // how close they're reeled in
+  const DANCE_PULL_SPEED = 12; // fastest they are pulled, per tick (about 500 over the dance)
   // Tamzin's cartwheel: hand over hand across the ring at them, feet first, for 30.
   MOVES.cartwheel = {
     startup: 32, active: 8, recovery: 14, range: 160, stamina: 0,
@@ -932,7 +936,9 @@
       game.events.push({ type: 'vault', attacker: game.fighters.indexOf(f) });
     } else if (action === 'dance') {
       f.flipStep = null;
-      game.events.push({ type: 'dance', attacker: game.fighters.indexOf(f) });
+      const o = nearestFoe(game, f);
+      f.pulling = o ? game.fighters.indexOf(o) : null;
+      game.events.push({ type: 'dance', attacker: game.fighters.indexOf(f), target: f.pulling });
     } else if (action === 'fart') {
       f.flipStep = null;
       game.events.push({ type: 'fart', attacker: game.fighters.indexOf(f) });
@@ -1036,6 +1042,8 @@
     if (airborne(f)) flipTravel(game, f);
     // The fart goes off: a cloud drifting at whoever you're fighting.
     if (f.state === 'attack' && f.move === 'fart' && f.t === MOVES.fart.startup) launchCloud(game, f);
+    // Louise's dance reels the nearest opponent in, ready for the bump.
+    if (f.state === 'attack' && f.move === 'dance' && f.t < MOVES.dance.startup) pullIn(game, f);
     // Cartwheeling across (on your hands, not in the air: you can be hit).
     if (f.state === 'attack' && f.move === 'cartwheel' && f.t >= FLIP_CROUCH && f.t < MOVES.cartwheel.startup) flipTravel(game, f);
     if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
@@ -1432,6 +1440,26 @@
    * whoever fired it, and not anyone in the air or in a car) or fizzles out.
    * A guard facing it stops it; otherwise they're frozen solid.
    */
+  /** The nearest opponent still up. */
+  function nearestFoe(game, f) {
+    const others = game.fighters.filter((o) => o !== f && standing(o));
+    if (!others.length) return null;
+    return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+  }
+
+  /** Louise dancing: whoever she's pulling slides in towards her. */
+  function pullIn(game, f) {
+    const o = f.pulling !== null && f.pulling !== undefined ? game.fighters[f.pulling] : null;
+    if (!o || !standing(o) || untouchable(o)) return;
+    const dx = f.x - o.x;
+    const dy = game.mode === 'ring' ? f.y - o.y : 0;
+    const d = Math.hypot(dx, dy) || 1;
+    const step = Math.min(DANCE_PULL_SPEED, d - DANCE_PULL_TO);
+    if (step <= 0) return;
+    o.x += (dx / d) * step;
+    o.y += (dy / d) * step;
+  }
+
   /** The fart: a cloud from behind you, drifting at whoever you're fighting. */
   function launchCloud(game, f) {
     const o = foeOf(game, f);
@@ -1665,6 +1693,7 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
+        ...(f.state === 'attack' && f.move === 'dance' && f.pulling !== null && f.pulling !== undefined ? { pulling: f.pulling } : {}),
         ...(f.poison ? { poison: true } : {}),
         ...(f.afloat > 0 ? { afloat: f.afloat } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
@@ -1698,7 +1727,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
