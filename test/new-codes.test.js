@@ -43,12 +43,44 @@ test('louise: a dance that bumps them for 30, through a guard', () => {
   assert.strictEqual(a.x, 400, 'danced on the spot');
 });
 
-test('louise: too far away and the dance misses', () => {
+test('louise: the dance reels them in for the bump', () => {
   const g = fight();
-  g.fighters[0].x = 200;
-  g.fighters[1].x = 700;
+  const [a, b] = g.fighters;
+  a.x = 150;
+  b.x = 650;
   type(g, 0, 'louise');
-  assert.ok(!run(g, ticks('dance')).some((e) => e.type === 'hit'));
+  const events = run(g, G.MOVES.dance.startup - 1);
+  assert.strictEqual(a.x, 150, 'Louise stays put');
+  assert.ok(Math.abs(b.x - (150 + G.DANCE_PULL_TO)) < 2, `pulled in to ${b.x}`);
+  events.push(...run(g, 10));
+  assert.ok(events.some((e) => e.type === 'hit' && e.move === 'dance' && e.target === 1));
+  assert.strictEqual(b.hp, G.MAX_HP - 30);
+});
+
+test('louise: from right across the ring they come closer, but may not get there in time', () => {
+  const g = fight();
+  const [a, b] = g.fighters;
+  a.x = 100;
+  b.x = 900;
+  type(g, 0, 'louise');
+  const events = run(g, G.MOVES.dance.startup + G.MOVES.dance.active + 2);
+  assert.ok(b.x < 600, 'pulled a long way');
+  assert.ok(!events.some((e) => e.type === 'hit'), 'but the bump missed');
+});
+
+test('louise in the ring: pulls the nearest one in, not the others', () => {
+  const g = fight(['A', 'B', 'C']);
+  const [a, b, c] = g.fighters;
+  a.x = 200; a.y = 200;
+  b.x = 800; b.y = 800;
+  c.x = 600; c.y = 250;
+  type(g, 0, 'louise');
+  const events = run(g, G.MOVES.dance.startup - 1);
+  assert.ok(Math.hypot(c.x - a.x, c.y - a.y) < 140, 'C pulled in');
+  assert.ok(Math.hypot(b.x - 800, b.y - 800) < 1, 'B left where they were');
+  events.push(...run(g, 10));
+  assert.ok(events.some((e) => e.type === 'hit' && e.move === 'dance' && e.target === 2));
+  assert.strictEqual(b.hp, G.MAX_HP);
 });
 
 test('tamzin: a cartwheel across at them for 30', () => {

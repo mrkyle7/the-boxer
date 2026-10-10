@@ -25,9 +25,12 @@
 //
 // Another: type "kalya" for the vault, a flip right over your opponent
 // to land behind them and kick them in the back for 30, unblockable.
-// "luna" teleports you to just beside the nearest opponent; "louise" dances
-// (ending in a hip-bump for 30); "tamzin" cartwheels across at them for 30;
-// "grandpa" makes you super fast for three seconds.
+// "luna" teleports you to just beside the nearest opponent; "louise" dances,
+// reeling the nearest opponent in, and hip-bumps them for 30; "tamzin" cartwheels across at them for 30;
+// "grandpa" makes you super fast for three seconds. (Luna's teleport ends in a
+// kick.) "fart" turns you round and gasses them: poisoned for the match, 5
+// every 10 seconds, unless they jump it. "water" floods the ring for ten
+// seconds: first to type "boat" gets the boat, the rest keep typing "swim".
 //
 // Two more go on you, not on them: "jemini" makes you a giant for seven
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
@@ -175,6 +178,10 @@
     head: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
     body: { damage: 30, hitstun: 40, knockback: 28, winded: 0 },
   };
+  // Louise's dance pulls the nearest opponent in towards bump range (from too far away
+  // they may not get all the way, and the bump misses).
+  const DANCE_PULL_TO = 110; // how close they're reeled in
+  const DANCE_PULL_SPEED = 12; // fastest they are pulled, per tick (about 500 over the dance)
   // Tamzin's cartwheel: hand over hand across the ring at them, feet first, for 30.
   MOVES.cartwheel = {
     startup: 32, active: 8, recovery: 14, range: 160, stamina: 0,
@@ -184,6 +191,24 @@
   };
   // Luna: a teleport, to just beside the nearest opponent.
   const TELEPORT_GAP = 100;
+  // Fart: turn round and let one go. The cloud drifts at whoever you're
+  // fighting; if it reaches them they're poisoned for the rest of the match,
+  // 5 damage every 10 seconds. Jump (or flip) over it to dodge it.
+  MOVES.fart = {
+    startup: 24, active: 1, recovery: 22, range: 0, stamina: 0,
+    head: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
+    body: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
+  };
+  const CLOUD_SPEED = 6;
+  const CLOUD_RANGE = 800;
+  const CLOUD_HIT_RADIUS = 70;
+  const POISON_DAMAGE = 5;
+  const POISON_EVERY = 10 * TICK_RATE;
+  // Water: the ring floods for ten seconds (the clock stops). The first to
+  // type "boat" gets a boat; everyone else has to keep typing "swim" to stay
+  // afloat, or they sink (knocked out).
+  const WATER_TICKS = 10 * TICK_RATE;
+  const SWIM_TICKS = Math.round(2.5 * TICK_RATE); // how long one "swim" keeps you up
   // Grandpa: super fast.
   const GRANDPA_TICKS = 3 * TICK_RATE;
   const GRANDPA_SPEED = 2.6;
@@ -195,10 +220,10 @@
 
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
-    [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
+    [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
     shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo',
   };
-  const POWERS = ['luna', 'grandpa', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo'];
 
   // Jay: a vampire. Leo: a lion.
   const VAMPIRE_TICKS = 7 * TICK_RATE;
@@ -295,6 +320,9 @@
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
       turbo: 0, // ticks of Grandpa's super speed left
+      poison: false, // gassed by a fart: poisoned for the rest of the match
+      poisonT: 0, // ticks till the poison bites again
+      afloat: 0, // in the water: ticks till you sink unless you swim
       slip: 0, // ticks left on the floor after a banana skin
       invisible: 0, // ticks of Kyle left
       typed: '', // the last few letters typed in the fight
@@ -349,6 +377,8 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
+      clouds: [], // fart clouds drifting across
+      water: null, // the flood: { t, boat }
       usa: 0, // ticks of the theme (Spreadbury's USA, Mamtora's India) left
       theme: null, // 'usa' or 'india'
       hotdogs: [], // { x, y, at (tick of the USA it drops), t (ticks falling, or -1 waiting) }
@@ -364,6 +394,9 @@
       const fresh = createFighter(i, f.name, count);
       fresh.roundsWon = f.roundsWon;
       fresh.stats = f.stats;
+      // Poison lasts the whole match.
+      fresh.poison = f.poison;
+      fresh.poisonT = f.poisonT;
       // Someone who left the ring stays out for the rest of the match.
       if (f.left) {
         fresh.left = true;
@@ -391,7 +424,7 @@
     if (action === 'kick' && game.fighters[index] && game.fighters[index].lion > 0) return; // lions swipe, they don't kick
     const input = game.inputs[index];
     // A cheat move that's just gone in isn't replaced by the key that finished it.
-    if (['flip', 'vault', 'dance', 'cartwheel'].includes(input.buffered)) return;
+    if (['flip', 'vault', 'dance', 'cartwheel', 'fart'].includes(input.buffered)) return;
     input.buffered = action;
     input.bufferAge = 0;
   }
@@ -460,6 +493,26 @@
     }
     if (which === 'luna') {
       teleport(game, f);
+      return;
+    }
+    if (which === 'water') {
+      if (game.water) return;
+      game.water = { t: WATER_TICKS, boat: null };
+      for (const o of game.fighters) if (standing(o)) o.afloat = SWIM_TICKS;
+      game.events.push({ type: 'water', attacker: index });
+      return;
+    }
+    if (which === 'boat') {
+      if (!game.water || game.water.boat !== null) return;
+      game.water.boat = index;
+      f.afloat = 0;
+      game.events.push({ type: 'boat', target: index });
+      return;
+    }
+    if (which === 'swim') {
+      if (!game.water || game.water.boat === index) return;
+      f.afloat = SWIM_TICKS;
+      game.events.push({ type: 'swim', target: index });
       return;
     }
     if (which === 'grandpa') {
@@ -694,6 +747,11 @@
     f.vx = 0;
     f.vy = 0;
     game.events.push({ type: 'teleport', attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o), from, to: { x: f.x, y: f.y } });
+    // ...and straight into a kick.
+    if (game.mode !== 'ring') f.facing = o.x >= f.x ? 1 : -1;
+    setState(f, 'attack', 'kick');
+    f.aim = game.inputs[game.fighters.indexOf(f)].aim;
+    f.stats.thrown++;
   }
 
   /** Jay's vampire: whatever a hit takes off them, it gives back to you. */
@@ -878,7 +936,12 @@
       game.events.push({ type: 'vault', attacker: game.fighters.indexOf(f) });
     } else if (action === 'dance') {
       f.flipStep = null;
-      game.events.push({ type: 'dance', attacker: game.fighters.indexOf(f) });
+      const o = nearestFoe(game, f);
+      f.pulling = o ? game.fighters.indexOf(o) : null;
+      game.events.push({ type: 'dance', attacker: game.fighters.indexOf(f), target: f.pulling });
+    } else if (action === 'fart') {
+      f.flipStep = null;
+      game.events.push({ type: 'fart', attacker: game.fighters.indexOf(f) });
     } else if (action === 'cartwheel') {
       aimFlip(game, f, 'cartwheel');
       game.events.push({ type: 'cartwheel', attacker: game.fighters.indexOf(f) });
@@ -944,6 +1007,15 @@
       if (f.invisible > 0) f.invisible--;
       if (f.fast > 0) f.fast--;
       if (f.turbo > 0) f.turbo--;
+      if (f.poison && standing(f) && --f.poisonT <= 0) {
+        f.poisonT = POISON_EVERY;
+        f.hp = Math.max(0, f.hp - POISON_DAMAGE);
+        game.events.push({ type: 'poison', target: index, damage: POISON_DAMAGE });
+        if (f.hp <= 0) {
+          setState(f, 'ko');
+          game.events.push({ type: 'ko', target: index });
+        }
+      }
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
@@ -968,6 +1040,10 @@
       return;
     }
     if (airborne(f)) flipTravel(game, f);
+    // The fart goes off: a cloud drifting at whoever you're fighting.
+    if (f.state === 'attack' && f.move === 'fart' && f.t === MOVES.fart.startup) launchCloud(game, f);
+    // Louise's dance reels the nearest opponent in, ready for the bump.
+    if (f.state === 'attack' && f.move === 'dance' && f.t < MOVES.dance.startup) pullIn(game, f);
     // Cartwheeling across (on your hands, not in the air: you can be hit).
     if (f.state === 'attack' && f.move === 'cartwheel' && f.t >= FLIP_CROUCH && f.t < MOVES.cartwheel.startup) flipTravel(game, f);
     if (f.state === 'attack' && f.move === 'vault' && f.t === MOVES.vault.startup) turnAround(game, f);
@@ -1239,6 +1315,10 @@
 
   function endRound(game, winner) {
     game.phase = 'roundEnd';
+    // The flood drains, and anything still drifting goes.
+    game.water = null;
+    game.clouds = [];
+    for (const f of game.fighters) f.afloat = 0;
     game.phaseT = 0;
     game.roundWinner = winner;
     if (winner !== null) game.fighters[winner].roundsWon++;
@@ -1294,6 +1374,8 @@
       game.events.push({ type: 'fight', round: game.round });
       game.fist = { next: nextFist(game), warn: null };
       game.bolts = [];
+      game.clouds = [];
+      game.water = null;
       game.paused = 0;
       game.usa = 0;
       game.theme = null;
@@ -1332,13 +1414,15 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
+      updateClouds(game);
+      updateWater(game);
       updateUsa(game);
       // Edward's secret pause: the clock stands still till it's over.
       if (game.paused > 0) {
         game.paused--;
         if (game.paused === 0) game.events.push({ type: 'unpause', attacker: game.pausedBy });
-      } else {
-        game.timer--;
+      } else if (!game.water) {
+        game.timer--; // (and the flood stops it too)
       }
       checkRoundOver(game);
     }
@@ -1356,6 +1440,83 @@
    * whoever fired it, and not anyone in the air or in a car) or fizzles out.
    * A guard facing it stops it; otherwise they're frozen solid.
    */
+  /** The nearest opponent still up. */
+  function nearestFoe(game, f) {
+    const others = game.fighters.filter((o) => o !== f && standing(o));
+    if (!others.length) return null;
+    return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+  }
+
+  /** Louise dancing: whoever she's pulling slides in towards her. */
+  function pullIn(game, f) {
+    const o = f.pulling !== null && f.pulling !== undefined ? game.fighters[f.pulling] : null;
+    if (!o || !standing(o) || untouchable(o)) return;
+    const dx = f.x - o.x;
+    const dy = game.mode === 'ring' ? f.y - o.y : 0;
+    const d = Math.hypot(dx, dy) || 1;
+    const step = Math.min(DANCE_PULL_SPEED, d - DANCE_PULL_TO);
+    if (step <= 0) return;
+    o.x += (dx / d) * step;
+    o.y += (dy / d) * step;
+  }
+
+  /** The fart: a cloud from behind you, drifting at whoever you're fighting. */
+  function launchCloud(game, f) {
+    const o = foeOf(game, f);
+    let dir = game.mode === 'ring' ? { x: Math.cos(f.angle), y: Math.sin(f.angle) } : { x: f.facing, y: 0 };
+    if (o) {
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      dir = { x: dx / d, y: dy / d };
+    }
+    game.clouds.push({ owner: game.fighters.indexOf(f), x: f.x, y: f.y, dx: dir.x, dy: dir.y, dist: 0 });
+  }
+
+  /** Fart clouds drift on; the first fighter they reach (not in the air) is poisoned. */
+  function updateClouds(game) {
+    const ring = game.mode === 'ring';
+    game.clouds = game.clouds.filter((c) => {
+      c.x += c.dx * CLOUD_SPEED;
+      c.y += c.dy * CLOUD_SPEED;
+      c.dist += CLOUD_SPEED;
+      const i = game.fighters.findIndex((o, j) => j !== c.owner && standing(o) && !untouchable(o) && !airborne(o)
+        && Math.hypot(o.x - c.x, ring ? o.y - c.y : 0) <= CLOUD_HIT_RADIUS);
+      if (i < 0) {
+        if (c.dist < CLOUD_RANGE) return true;
+        game.events.push({ type: 'cloudGone', x: c.x, y: c.y });
+        return false;
+      }
+      const o = game.fighters[i];
+      const already = o.poison;
+      if (!already) {
+        o.poison = true;
+        o.poisonT = POISON_EVERY;
+      }
+      game.events.push({ type: 'gassed', attacker: c.owner, target: i, already });
+      return false;
+    });
+  }
+
+  /** The flood: everyone without the boat has to keep swimming, till the water goes. */
+  function updateWater(game) {
+    const w = game.water;
+    if (!w) return;
+    game.fighters.forEach((f, i) => {
+      if (i === w.boat || !standing(f)) return;
+      if (--f.afloat > 0) return;
+      f.hp = 0;
+      setState(f, 'ko');
+      game.events.push({ type: 'sank', target: i });
+      game.events.push({ type: 'ko', target: i });
+    });
+    if (--w.t <= 0) {
+      game.water = null;
+      for (const f of game.fighters) f.afloat = 0;
+      game.events.push({ type: 'waterEnd' });
+    }
+  }
+
   function updateBolts(game) {
     const ring = game.mode === 'ring';
     game.bolts = game.bolts.filter((b) => {
@@ -1520,6 +1681,8 @@
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
       ...(game.usa > 0 ? { usa: game.usa, theme: game.theme } : {}),
       ...(game.hotdogs.some((h) => h.t >= 0) ? { hotdogs: game.hotdogs.filter((h) => h.t >= 0).map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), t: h.t, kind: h.kind })) } : {}),
+      ...(game.water ? { water: { t: game.water.t, boat: game.water.boat } } : {}),
+      ...(game.clouds.length ? { clouds: game.clouds.map((c) => ({ x: Math.round(c.x), y: Math.round(c.y), dx: c.dx, dy: c.dy, owner: c.owner })) } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
@@ -1530,6 +1693,9 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
+        ...(f.state === 'attack' && f.move === 'dance' && f.pulling !== null && f.pulling !== undefined ? { pulling: f.pulling } : {}),
+        ...(f.poison ? { poison: true } : {}),
+        ...(f.afloat > 0 ? { afloat: f.afloat } : {}),
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
@@ -1561,7 +1727,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

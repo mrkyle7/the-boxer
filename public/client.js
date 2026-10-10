@@ -382,6 +382,57 @@
       }
       return;
     }
+    if (e.type === 'fart') {
+      const p = targetPos(e.attacker, 'body');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 120), 'Pfffrrrt!', '#a4c639', 34);
+      sound.fart();
+      return;
+    }
+    if (e.type === 'gassed') {
+      const p = targetPos(e.target, 'head');
+      for (let k = 0; k < 18; k++) {
+        const a = Math.random() * Math.PI * 2;
+        effects.push({ x: p.x, y: p.y, vx: Math.cos(a) * 2, vy: Math.sin(a) * 2 - 1, life: 30, color: Math.random() < 0.5 ? '#a4c639' : '#6d8a1a' });
+      }
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), e.already ? 'Phew!' : 'Poisoned!', '#a4c639', 30);
+      sound.block();
+      return;
+    }
+    if (e.type === 'poison') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 30 : 50), `Poison -${e.damage}`, '#a4c639', 24);
+      sparks(p.x, p.y, '#a4c639', 10, 3);
+      return;
+    }
+    if (e.type === 'cloudGone') return;
+    if (e.type === 'water') {
+      announce('Flood!', 70, '#38b6ff', 'First to type BOAT gets the boat!');
+      sound.splash();
+      return;
+    }
+    if (e.type === 'boat') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Got the boat!', '#c8823c', 32);
+      if (e.target !== me && !(snap.water && snap.water.boat === me)) announce('Swim!', 50, '#5fd3ff', 'Keep typing SWIM to stay afloat');
+      sound.horn();
+      return;
+    }
+    if (e.type === 'swim') {
+      const p = targetPos(e.target, 'body');
+      for (let k = 0; k < 10; k++) effects.push({ x: p.x + (Math.random() - 0.5) * 50, y: waterLine(p.y), vx: (Math.random() - 0.5) * 3, vy: -3 - Math.random() * 2, life: 20, color: '#bfeaff' });
+      return;
+    }
+    if (e.type === 'sank') {
+      const p = targetPos(e.target, 'head');
+      for (let k = 0; k < 20; k++) effects.push({ x: p.x + (Math.random() - 0.5) * 30, y: p.y, vx: (Math.random() - 0.5), vy: -1.5 - Math.random() * 2, life: 40, color: '#e6fbff' });
+      floatText(p.x, p.y - 60, 'Glug glug!', '#38b6ff', 32);
+      sound.splash();
+      return;
+    }
+    if (e.type === 'waterEnd') {
+      announce('Drained!', 40, '#ffffff');
+      return;
+    }
     if (e.type === 'dance') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Dance off!', '#ff5fa2', 32);
@@ -590,7 +641,9 @@
     // The ring from above is smaller: labels float closer, and smaller.
     const up = mode === 'ring' ? 0.6 : 1;
     const p = targetPos(e.target, e.height);
-    const attacker = e.attacker !== undefined ? e.attacker : 1 - e.target;
+    let attacker = e.attacker !== undefined ? e.attacker : 1 - e.target;
+    // Knocked out by nobody (sank, poison) in the ring: no "other one" to point at.
+    if (!snap.fighters[attacker]) attacker = e.target;
     let hx = p.x;
     if (mode === 'ring') {
       // Sparks on the side the blow came from.
@@ -745,6 +798,17 @@
       tapeStart() {
         const a = ctxOk(); if (!a) return;
         tone(a, 60, 0.35, 0.15, 'sawtooth', 520);
+      },
+      // Fart: a low, wobbly raspberry. Water: a splash.
+      fart() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 110, 0.6, 0.35, 'sawtooth', 55);
+        tone(a, 85, 0.55, 0.25, 'square', 50);
+        noise(a, 0.5, 300, 0.4);
+      },
+      splash() {
+        const a = ctxOk(); if (!a) return;
+        noise(a, 0.6, 2500, 0.6);
       },
       // Louise: a little disco riff. Luna: a sparkly blink.
       disco() {
@@ -1095,6 +1159,14 @@
         const e = phase === 'startup' ? easeOut(p) : p;
         if (f.move === 'jump') {
           jumpPose(P, t);
+        } else if (f.move === 'fart') {
+          // Turned round, bent over, bottom out at them.
+          const e2 = phase === 'startup' ? clamp01(t / 10) : 1;
+          P.lean = 26 * e2;
+          P.crouch = 10 + 12 * e2;
+          P.headY = 6 * e2;
+          P.front = { x: 50, y: -150 };
+          P.back = { x: 40, y: -140 };
         } else if (f.move === 'dance') {
           dancePose(P, t, phase, clock);
         } else if (f.move === 'cartwheel') {
@@ -1312,7 +1384,8 @@
     ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.scale(f.facing, 1);
+    // Farting: turned round, back to them.
+    ctx.scale(f.state === 'attack' && f.move === 'fart' ? -f.facing : f.facing, 1);
     // Twirling (Louise): squashed side to side as they spin round.
     if (P.twirl !== undefined) ctx.scale(Math.sign(P.twirl || 1) * Math.max(0.12, Math.abs(P.twirl)), 1);
     if (P.stepX) ctx.translate(P.stepX, 0);
@@ -1877,7 +1950,7 @@
     if (f.state === 'guardbreak') wobble = Math.sin(t * 0.35) * 0.25;
     let recoil = 0;
     if (f.state === 'hitstun') recoil = -8 * (1 - clamp01(t / 16));
-    ctx.rotate(d.angle + wobble);
+    ctx.rotate(d.angle + wobble + (f.state === 'attack' && f.move === 'fart' ? Math.PI : 0));
     ctx.translate(recoil, 0);
 
     // Gloves and the kicking leg, in this fighter's frame (+x forward).
@@ -2062,6 +2135,12 @@
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
+    if (snap.water && snap.water.boat === i) out.push({ text: 'IN THE BOAT', short: 'BOAT', color: '#c8823c' });
+    else if (f.afloat) {
+      const sec = (f.afloat / G.TICK_RATE).toFixed(1);
+      out.push({ text: i === me ? `TYPE SWIM!  ${sec}s` : `SWIMMING  ${sec}s`, short: `SWIM ${sec}s`, color: f.afloat < 60 ? '#ff4a4f' : '#5fd3ff' });
+    }
+    if (f.poison) out.push({ text: 'POISONED', short: 'POISONED', color: '#a4c639' });
     if (f.turbo) out.push({ text: `GRANDPA SPEED  ${secs(f.turbo)}s`, short: `SPEED ${secs(f.turbo)}s`, color: '#c9a46a' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
     const secret = i === me ? secretPauseUntil - performance.now() : 0;
@@ -2307,6 +2386,10 @@
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
     grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
+    fart: { fill: ['#f2ffd0', '#a4c639', '#556b14'], spark: '#c9e36a' }, // whiffy green
+    water: { fill: ['#e6fbff', '#38b6ff', '#0b5394'], spark: '#bfeaff' }, // sea blue
+    boat: { fill: ['#fff3e0', '#c8823c', '#6b3d12'], spark: '#ffd59a' }, // wooden
+    swim: { fill: ['#e6fbff', '#5fd3ff', '#0b5394'], spark: '#bfeaff' }, // splashy
     jemini: { fill: ['#eafff5', '#6ff2b6', '#14a86c'], spark: '#a6ffd6' }, // twin-star green
     harrison: { fill: [], spark: '#ffffff', rainbow: true }, // who knows?
     spreadbury: { fill: [], spark: '#ffffff', bands: 'usa' }, // red, white and blue
@@ -2505,6 +2588,163 @@
    * Priya's freeze rays in flight: a glowing ice ball at chest height, a
    * frosty streak behind it, and snowflakes coming off.
    */
+  /** Fart clouds: lumpy green puffs drifting across, with a few flies. */
+  function drawClouds(clock) {
+    for (const c of snap.clouds || []) {
+      const ring = mode === 'ring';
+      const p = ring ? toScreen(c.x, c.y) : { x: c.x, y: FLOOR - 90 };
+      const r = ring ? 26 : 46;
+      ctx.save();
+      for (let k = 0; k < 6; k++) {
+        const a = k * 1.05 + clock * 1.5;
+        ctx.fillStyle = k % 2 ? 'rgba(164,198,57,0.55)' : 'rgba(109,138,26,0.5)';
+        ctx.beginPath();
+        ctx.arc(p.x + Math.cos(a) * r * 0.6, p.y + Math.sin(a) * r * 0.35, r * (0.55 + 0.1 * Math.sin(clock * 5 + k)), 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#1b1b1b';
+      for (let k = 0; k < 3; k++) {
+        const a = clock * 9 + k * 2.1;
+        ctx.beginPath();
+        ctx.arc(p.x + Math.cos(a) * r * 1.1, p.y - r * 0.4 + Math.sin(a * 1.3) * r * 0.5, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Poisoned fighters: green bubbles rising off them. */
+  function drawPoison() {
+    snap.fighters.forEach((f, i) => {
+      if (!f.poison || f.left || f.state === 'ko' || hiddenFrom(i, f) || Math.random() > 0.12) return;
+      const p = targetPos(i, 'head');
+      effects.push({ x: p.x + (Math.random() - 0.5) * 24, y: p.y, vx: (Math.random() - 0.5) * 0.4, vy: -2.6, life: 22, color: '#a4c639' });
+    });
+  }
+
+  /** Where the water's surface is, for something at screen height y (side view: half way up). */
+  function waterLine(y) {
+    return mode === 'ring' ? y : H * 0.5 + 20;
+  }
+
+  /** How full the flood is, 0..1: it rushes in, and drains at the end. */
+  function floodLevel() {
+    const w = snap.water;
+    if (!w) return 0;
+    const inT = (G.WATER_TICKS - w.t) / 40;
+    const outT = w.t / 40;
+    return clamp01(Math.min(inT, outT));
+  }
+
+  /** The flood: waves over the bottom half (side on), or the whole ring (from above). */
+  function drawWater(clock) {
+    const k = floodLevel();
+    if (!k) return;
+    ctx.save();
+    if (mode === 'ring') {
+      const a = toScreen(G.RING_MIN - 40, G.RING_MIN - 40);
+      const b = toScreen(G.RING_MAX + 40, G.RING_MAX + 40);
+      ctx.globalAlpha = 0.45 * k;
+      ctx.fillStyle = '#1f7fd1';
+      ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+      ctx.globalAlpha = 0.35 * k;
+      ctx.strokeStyle = '#bfeaff';
+      ctx.lineWidth = 2;
+      for (let y = a.y + 12; y < b.y; y += 26) {
+        ctx.beginPath();
+        for (let x = a.x; x <= b.x; x += 12) {
+          const yy = y + Math.sin(x / 18 + clock * 3 + y) * 4;
+          if (x === a.x) ctx.moveTo(x, yy); else ctx.lineTo(x, yy);
+        }
+        ctx.stroke();
+      }
+    } else {
+      const top = H - (H - waterLine(0)) * k;
+      const g = ctx.createLinearGradient(0, top, 0, H);
+      g.addColorStop(0, 'rgba(56,182,255,0.55)');
+      g.addColorStop(1, 'rgba(11,83,148,0.8)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(0, H);
+      for (let x = 0; x <= W; x += 10) ctx.lineTo(x, top + Math.sin(x / 40 + clock * 3) * 6 + Math.sin(x / 13 + clock * 5) * 2);
+      ctx.lineTo(W, H);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(230,251,255,0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      for (let x = 0; x <= W; x += 10) {
+        const y = top + Math.sin(x / 40 + clock * 3) * 6 + Math.sin(x / 13 + clock * 5) * 2;
+        if (x) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      }
+      ctx.stroke();
+    }
+    ctx.restore();
+    // The boat, and a swim-meter over everyone who has to keep swimming.
+    snap.fighters.forEach((f, i) => {
+      if (f.left || hiddenFrom(i, f)) return;
+      if (snap.water && snap.water.boat === i) drawBoat(i, clock);
+      else if (f.afloat && f.state !== 'ko') drawSwimMeter(i, f);
+    });
+  }
+
+  function drawBoat(i, clock) {
+    const p = feetOf(i);
+    ctx.save();
+    if (mode === 'ring') {
+      ctx.translate(p.x, p.y);
+      ctx.scale(fighterScale(), fighterScale());
+      ctx.fillStyle = '#8a5523';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 44, 26, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#5b3410';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+    } else {
+      const y = waterLine(0) + Math.sin(clock * 3) * 4;
+      ctx.translate(p.x, y);
+      ctx.fillStyle = '#8a5523';
+      ctx.beginPath();
+      ctx.moveTo(-110, -30);
+      ctx.lineTo(110, -30);
+      ctx.quadraticCurveTo(90, 30, 0, 32);
+      ctx.quadraticCurveTo(-90, 30, -110, -30);
+      ctx.fill();
+      ctx.fillStyle = '#c8823c';
+      ctx.fillRect(-110, -34, 220, 10);
+      ctx.fillStyle = '#5b3410';
+      for (const x of [-60, 0, 60]) ctx.fillRect(x - 2, -24, 4, 40);
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '700 16px Barlow, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('S.S. ' + (snap.fighters[i].name || '').toUpperCase().slice(0, 10), 0, 6);
+    }
+    ctx.restore();
+  }
+
+  function drawSwimMeter(i, f) {
+    const p = targetPos(i, 'head');
+    const w = mode === 'ring' ? 40 : 70;
+    const y = p.y - (mode === 'ring' ? 30 : 50);
+    const k = clamp01(f.afloat / G.SWIM_TICKS);
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(p.x - w / 2 - 2, y - 2, w + 4, 10);
+    ctx.fillStyle = k < 0.35 && Math.floor(performance.now() / 120) % 2 ? '#ff4a4f' : '#5fd3ff';
+    ctx.fillRect(p.x - w / 2, y, w * k, 6);
+    if (i === me) {
+      ctx.font = `${mode === 'ring' ? 16 : 22}px Bangers, Anton, Impact, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = '#0b2a4a';
+      ctx.strokeText('SWIM!', p.x, y - 8);
+      ctx.fillStyle = '#e6fbff';
+      ctx.fillText('SWIM!', p.x, y - 8);
+    }
+    ctx.restore();
+  }
+
   function drawBolts(clock) {
     for (const b of snap.bolts || []) {
       const owner = snap.fighters[b.owner];
@@ -2925,6 +3165,30 @@
     snap.fighters.forEach((f, i) => {
       if (f.state !== 'attack' || f.move !== 'dance' || hiddenFrom(i, f)) return;
       const p = targetPos(i, 'body');
+      // The pull: a wavy pink ribbon reeling them in.
+      if (f.pulling !== undefined && snap.fighters[f.pulling] && f.t < G.MOVES.dance.startup) {
+        const q = targetPos(f.pulling, 'body');
+        const dx = q.x - p.x;
+        const dy = q.y - p.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const nx = -dy / len;
+        const ny = dx / len;
+        ctx.save();
+        for (const [w, c3] of [[10, 'rgba(255,95,162,0.3)'], [4, '#ff5fa2'], [1.5, '#ffffff']]) {
+          ctx.strokeStyle = c3;
+          ctx.lineWidth = w;
+          ctx.beginPath();
+          for (let n = 0; n <= 24; n++) {
+            const k = n / 24;
+            const wob = Math.sin(k * 14 - clock * 12) * 10 * Math.sin(k * Math.PI);
+            const x = p.x + dx * k + nx * wob;
+            const y = p.y + dy * k + ny * wob;
+            if (n) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+          }
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
       const r = mode === 'ring' ? 46 : 120;
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
@@ -3578,6 +3842,9 @@
     drawSlashes();
     drawBats(clock);
     drawBolts(clock);
+    drawClouds(clock);
+    drawPoison();
+    drawWater(clock);
     drawTyping();
 
     for (let i = texts.length - 1; i >= 0; i--) {

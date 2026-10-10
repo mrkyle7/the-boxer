@@ -39,7 +39,7 @@ On a phone, tap the **⌨** button to bring up a letter pad for the cheat codes.
 
 Psst: type **zeffen** during a fight for the Zeffen flip, a front flip at your opponent (it reaches about as far as the Luna vault) that hits twice, 25 a time. It can't be blocked, but it's aimed where they were when you jumped, so they can still step out of the way. Nothing can touch you while you're in the air (not even the giant fist). Everyone can see the letters going in over your head, and getting hit wipes them, so hit them before they finish typing.
 
-Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent. **louise** busts out a dance (a shimmy, a twirl) ending in a hip-bump for 30 on whoever is close by; **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for three seconds.
+Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent and kicks them. **louise** busts out a dance (a shimmy, a twirl), reeling the nearest opponent in on a pink ribbon, and hip-bumps them for 30 (start too far away and they might not be reeled in close enough in time); **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for three seconds.
 
 Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself).
 
@@ -57,6 +57,10 @@ Or **jay**: a vampire for seven seconds. Your hits do half damage, but drain it,
 Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
 
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
+
+**fart** turns you round and lets one go: a green cloud drifts at whoever you're fighting, and if it reaches them they're poisoned for the rest of the match, 5 damage every 10 seconds. Jump over it to dodge it (or get out of its way in the ring).
+
+**water** floods the ring for ten seconds and stops the clock. The first to type **boat** gets the boat; everyone else has to keep typing **swim** to stay afloat (each one keeps you up for two and a half seconds), or they sink and are knocked out.
 
 And **harrison**? Type it and find out. It's different every time.
 
