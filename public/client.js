@@ -2727,7 +2727,7 @@
     const p = targetPos(i, 'head');
     const w = mode === 'ring' ? 40 : 70;
     const y = p.y - (mode === 'ring' ? 30 : 50);
-    const k = clamp01(f.afloat / G.SWIM_TICKS);
+    const k = clamp01(f.afloat / G.WATER_START_TICKS);
     ctx.save();
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(p.x - w / 2 - 2, y - 2, w + 4, 10);

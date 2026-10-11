@@ -60,7 +60,7 @@ Or **priya**: a freeze ray at the one you're fighting. If it reaches them they'r
 
 **fart** turns you round and lets one go: a green cloud drifts at whoever you're fighting, and if it reaches them they're poisoned for the rest of the match, 5 damage every 10 seconds. Jump over it to dodge it (or get out of its way in the ring).
 
-**water** floods the ring for ten seconds and stops the clock. The first to type **boat** gets the boat; everyone else has to keep typing **swim** to stay afloat (each one keeps you up for two and a half seconds), or they sink and are knocked out.
+**water** floods the ring for ten seconds and stops the clock. The first to type **boat** gets the boat; everyone gets five seconds to type **boat** or **swim**, then anyone without the boat has to keep typing **swim** to stay afloat (each one keeps you up for four seconds), or they sink and are knocked out.
 
 And **harrison**? Type it and find out. It's different every time.
 

@@ -129,11 +129,25 @@ test("water: swim before it's flooded, or boat after the boat's gone, does nothi
   assert.strictEqual(g.fighters[0].afloat, 0);
 });
 
-test("water: don't swim and you sink within a few seconds", () => {
+test("water: five seconds to get the boat or swim, then you sink", () => {
   const g = fight();
   type(g, 0, 'water');
   type(g, 0, 'boat');
-  const events = run(g, G.SWIM_TICKS + 2);
+  assert.ok(!run(g, G.WATER_START_TICKS - 2).some((e) => e.type === 'sank'), 'not straight away');
+  const events = run(g, 4);
   assert.ok(events.some((e) => e.type === 'sank' && e.target === 1));
   assert.ok(events.some((e) => e.type === 'roundEnd' && e.winner === 0));
+});
+
+test('water: each swim keeps you up for four seconds', () => {
+  const g = fight();
+  type(g, 0, 'water');
+  type(g, 0, 'boat');
+  run(g, G.WATER_START_TICKS - 10);
+  type(g, 1, 'swim');
+  assert.strictEqual(g.fighters[1].afloat, G.SWIM_TICKS);
+  assert.ok(!run(g, G.SWIM_TICKS - 2).some((e) => e.type === 'sank'));
+  assert.ok(run(g, 4).some((e) => e.type === 'sank'));
+  assert.strictEqual(G.SWIM_TICKS, 4 * G.TICK_RATE);
+  assert.strictEqual(G.WATER_START_TICKS, 5 * G.TICK_RATE);
 });
