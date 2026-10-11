@@ -406,14 +406,14 @@
     }
     if (e.type === 'cloudGone') return;
     if (e.type === 'water') {
-      announce('Flood!', 70, '#38b6ff', 'First to type BOAT gets the boat!');
       sound.splash();
+      // On a phone: the letter pad comes up by itself, ready to type.
+      if (touchScreen.matches && snap.fighters[me] && snap.fighters[me].state !== 'ko') showKeyboard(true);
       return;
     }
     if (e.type === 'boat') {
       const p = targetPos(e.target, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Got the boat!', '#c8823c', 32);
-      if (e.target !== me && !(snap.water && snap.water.boat === me)) announce('Swim!', 50, '#5fd3ff', 'Keep typing SWIM to stay afloat');
       sound.horn();
       return;
     }
@@ -2631,8 +2631,8 @@
   function floodLevel() {
     const w = snap.water;
     if (!w) return 0;
-    const inT = (G.WATER_TICKS - w.t) / 40;
-    const outT = w.t / 40;
+    const inT = w.age / 40;
+    const outT = w.t === null ? 1 : w.t / 40;
     return clamp01(Math.min(inT, outT));
   }
 
@@ -2720,6 +2720,65 @@
       ctx.textAlign = 'center';
       ctx.fillText('S.S. ' + (snap.fighters[i].name || '').toUpperCase().slice(0, 10), 0, 6);
     }
+    ctx.restore();
+  }
+
+  /**
+   * In the water without the boat: a big, unmissable "TYPE SWIM" (or "BOAT"
+   * or "SWIM" while the boat's still up for grabs), the letters lighting up as
+   * you type them, and how long till you sink.
+   */
+  function drawWaterPrompt() {
+    const w = snap.water;
+    const f = snap.fighters[me];
+    if (!w || !f || f.state === 'ko' || f.left || w.boat === me || !f.afloat) return;
+    const now = performance.now();
+    const secs = f.afloat / G.TICK_RATE;
+    const urgent = secs < 2.5;
+    const typing = (f.typing || '').toLowerCase();
+    const words = w.boat === null ? ['boat', 'swim'] : ['swim'];
+    const cx = W / 2;
+    const cy = mode === 'ring' && layout !== 'tall' ? H * 0.3 : H * 0.28;
+    const size = Math.round(Math.min(W, H) * (urgent ? 0.16 : 0.13) * (1 + 0.05 * Math.sin(now / (urgent ? 70 : 160))));
+    ctx.save();
+    // Dim band behind so it reads over anything.
+    ctx.fillStyle = urgent && Math.floor(now / 160) % 2 ? 'rgba(120,0,10,0.55)' : 'rgba(5,30,60,0.6)';
+    ctx.fillRect(0, cy - size * 1.25, W, size * 2.15);
+    ctx.textAlign = 'center';
+    ctx.font = `700 ${Math.round(size * 0.28)}px Barlow, sans-serif`;
+    ctx.fillStyle = '#e6fbff';
+    ctx.fillText(words.length > 1 ? 'QUICK! TYPE' : 'KEEP TYPING', cx, cy - size * 0.85);
+    // The word(s), letter by letter: typed letters lit up.
+    ctx.font = `${size}px Bangers, Anton, Impact, sans-serif`;
+    const gap = size * 0.6;
+    const parts = [];
+    words.forEach((word, k) => {
+      if (k) parts.push({ text: 'or', small: true });
+      const done = word.startsWith(typing) ? typing.length : 0;
+      for (let n = 0; n < word.length; n++) parts.push({ text: word[n].toUpperCase(), lit: n < done });
+    });
+    const widths = parts.map((p2) => (p2.small ? size * 0.9 : gap));
+    let x = cx - widths.reduce((a, b) => a + b, 0) / 2;
+    parts.forEach((p2, n) => {
+      const px = x + widths[n] / 2;
+      x += widths[n];
+      if (p2.small) {
+        ctx.font = `700 ${Math.round(size * 0.32)}px Barlow, sans-serif`;
+        ctx.fillStyle = '#bfeaff';
+        ctx.fillText(p2.text, px, cy);
+        ctx.font = `${size}px Bangers, Anton, Impact, sans-serif`;
+        return;
+      }
+      ctx.lineWidth = size * 0.14;
+      ctx.strokeStyle = '#06233f';
+      ctx.strokeText(p2.text, px, cy + size * 0.32);
+      ctx.fillStyle = p2.lit ? '#ffd23f' : '#5fd3ff';
+      ctx.fillText(p2.text, px, cy + size * 0.32);
+    });
+    // Time left before you go under.
+    ctx.font = `700 ${Math.round(size * 0.3)}px Barlow, sans-serif`;
+    ctx.fillStyle = urgent ? '#ff6b6b' : '#e6fbff';
+    ctx.fillText(`${secs.toFixed(1)}s till you sink`, cx, cy + size * 0.75);
     ctx.restore();
   }
 
@@ -3866,6 +3925,7 @@
     if (ring) drawRingHud(snap);
     else drawHud(snap);
     drawBanner();
+    drawWaterPrompt();
 
     if (flash > 0) {
       ctx.fillStyle = `rgba(255,255,255,${flash * 0.6})`;
