@@ -208,7 +208,9 @@
   // type "boat" gets a boat; everyone else has to keep typing "swim" to stay
   // afloat, or they sink (knocked out).
   const WATER_TICKS = 10 * TICK_RATE;
-  const SWIM_TICKS = Math.round(2.5 * TICK_RATE); // how long one "swim" keeps you up
+  const WATER_START_TICKS = 10 * TICK_RATE; // when the flood comes in: time to type boat or swim
+  // (the flood itself then lasts WATER_TICKS from the first boat or swim)
+  const SWIM_TICKS = 4 * TICK_RATE; // how much longer each "swim" keeps you up
   // Grandpa: super fast.
   const GRANDPA_TICKS = 3 * TICK_RATE;
   const GRANDPA_SPEED = 2.6;
@@ -497,21 +499,25 @@
     }
     if (which === 'water') {
       if (game.water) return;
-      game.water = { t: WATER_TICKS, boat: null };
-      for (const o of game.fighters) if (standing(o)) o.afloat = SWIM_TICKS;
+      // t: the flood's ten seconds, which start with the first boat or swim.
+      game.water = { t: null, age: 0, boat: null };
+      for (const o of game.fighters) if (standing(o)) o.afloat = WATER_START_TICKS;
       game.events.push({ type: 'water', attacker: index });
       return;
     }
     if (which === 'boat') {
       if (!game.water || game.water.boat !== null) return;
       game.water.boat = index;
+      if (game.water.t === null) game.water.t = WATER_TICKS;
       f.afloat = 0;
       game.events.push({ type: 'boat', target: index });
       return;
     }
     if (which === 'swim') {
       if (!game.water || game.water.boat === index) return;
-      f.afloat = SWIM_TICKS;
+      // Each stroke adds four seconds to what you've got (up to ten).
+      f.afloat = Math.min(WATER_START_TICKS, f.afloat + SWIM_TICKS);
+      if (game.water.t === null) game.water.t = WATER_TICKS;
       game.events.push({ type: 'swim', target: index });
       return;
     }
@@ -1502,6 +1508,7 @@
   function updateWater(game) {
     const w = game.water;
     if (!w) return;
+    w.age++;
     game.fighters.forEach((f, i) => {
       if (i === w.boat || !standing(f)) return;
       if (--f.afloat > 0) return;
@@ -1510,7 +1517,7 @@
       game.events.push({ type: 'sank', target: i });
       game.events.push({ type: 'ko', target: i });
     });
-    if (--w.t <= 0) {
+    if (w.t !== null && --w.t <= 0) {
       game.water = null;
       for (const f of game.fighters) f.afloat = 0;
       game.events.push({ type: 'waterEnd' });
@@ -1681,7 +1688,7 @@
       ...(game.fist.warn ? { fist: { x: game.fist.warn.x, y: Math.round(game.fist.warn.y), t: game.fist.warn.t } } : {}),
       ...(game.usa > 0 ? { usa: game.usa, theme: game.theme } : {}),
       ...(game.hotdogs.some((h) => h.t >= 0) ? { hotdogs: game.hotdogs.filter((h) => h.t >= 0).map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), t: h.t, kind: h.kind })) } : {}),
-      ...(game.water ? { water: { t: game.water.t, boat: game.water.boat } } : {}),
+      ...(game.water ? { water: { t: game.water.t, age: game.water.age, boat: game.water.boat } } : {}),
       ...(game.clouds.length ? { clouds: game.clouds.map((c) => ({ x: Math.round(c.x), y: Math.round(c.y), dx: c.dx, dy: c.dy, owner: c.owner })) } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
@@ -1727,7 +1734,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

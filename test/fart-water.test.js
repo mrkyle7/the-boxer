@@ -102,13 +102,15 @@ test('water: the clock stops, the first to type boat gets it, the rest must swim
   const timer = g.timer;
   type(g, 0, 'water');
   assert.ok(G.snapshot(g).water);
-  type(g, 1, 'boat');
+  run(g, 60);
+  type(g, 1, 'boat'); // the flood's ten seconds start now
   type(g, 2, 'boat'); // too late
   assert.strictEqual(g.water.boat, 1);
-  // A keeps swimming; C doesn't.
-  let events = [];
+  assert.strictEqual(g.water.t, G.WATER_TICKS);
+  // A keeps swimming; C never does.
+  const events = [];
   for (let i = 0; i < G.WATER_TICKS; i++) {
-    if (i % 90 === 0) type(g, 0, 'swim');
+    if (i % 120 === 0) type(g, 0, 'swim');
     events.push(...run(g, 1));
   }
   assert.ok(timer - g.timer <= 1, 'the clock stood still');
@@ -121,6 +123,15 @@ test('water: the clock stops, the first to type boat gets it, the rest must swim
   assert.ok(g.timer < timer, 'the clock runs again');
 });
 
+test("water: the flood waits for the first boat or swim, then lasts ten seconds", () => {
+  const g = fight(['A', 'B', 'C']);
+  type(g, 0, 'water');
+  run(g, 300);
+  assert.strictEqual(g.water.t, null, "nobody's typed yet: not counting down");
+  type(g, 1, 'swim');
+  assert.strictEqual(g.water.t, G.WATER_TICKS);
+});
+
 test("water: swim before it's flooded, or boat after the boat's gone, does nothing", () => {
   const g = fight();
   type(g, 0, 'swim');
@@ -129,11 +140,31 @@ test("water: swim before it's flooded, or boat after the boat's gone, does nothi
   assert.strictEqual(g.fighters[0].afloat, 0);
 });
 
-test("water: don't swim and you sink within a few seconds", () => {
+test("water: ten seconds to type boat or swim, then you sink", () => {
   const g = fight();
   type(g, 0, 'water');
+  run(g, 30);
   type(g, 0, 'boat');
-  const events = run(g, G.SWIM_TICKS + 2);
+  assert.ok(!run(g, G.WATER_START_TICKS - 32).some((e) => e.type === 'sank'), 'not straight away');
+  const events = run(g, 4);
   assert.ok(events.some((e) => e.type === 'sank' && e.target === 1));
   assert.ok(events.some((e) => e.type === 'roundEnd' && e.winner === 0));
+  assert.strictEqual(G.WATER_START_TICKS, 10 * G.TICK_RATE);
+});
+
+test('water: each swim adds four seconds (up to ten)', () => {
+  const g = fight();
+  type(g, 0, 'water');
+  run(g, G.WATER_START_TICKS - 10);
+  type(g, 0, 'boat'); // the flood's ten seconds start now
+  type(g, 1, 'swim');
+  assert.strictEqual(g.fighters[1].afloat, 10 + G.SWIM_TICKS);
+  assert.ok(!run(g, 10 + G.SWIM_TICKS - 2).some((e) => e.type === 'sank'));
+  assert.ok(run(g, 4).some((e) => e.type === 'sank'));
+  // Swimming lots doesn't stack past ten seconds.
+  const h = fight();
+  type(h, 0, 'water');
+  for (let k = 0; k < 5; k++) type(h, 1, 'swim');
+  assert.strictEqual(h.fighters[1].afloat, G.WATER_START_TICKS);
+  assert.strictEqual(G.SWIM_TICKS, 4 * G.TICK_RATE);
 });
