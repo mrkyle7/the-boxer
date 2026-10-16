@@ -12,6 +12,8 @@ const fakeAuth = {
     return m ? { id: `id-${m[1]}`, name: decodeURIComponent(m[1]) } : null;
   },
   loginUrl: () => 'https://cheetahmoongames.com/login',
+  guestsSeen: [],
+  guestSeen(name) { this.guestsSeen.push(name); },
 };
 
 function client(port, cookie) {
@@ -284,5 +286,23 @@ test('before the fight, the next player becomes host if the host leaves', async 
     const [s1, s2] = await Promise.all([players[1].next((m) => m.t === 'start'), players[2].next((m) => m.t === 'start')]);
     assert.strictEqual(s1.mode, 'side', 'two left: the side view');
     assert.deepStrictEqual([s1.you, s2.you], [0, 1]);
+  });
+});
+
+test('a guest who starts playing is reported to the owner once; signed-in players are not', async () => {
+  fakeAuth.guestsSeen.length = 0;
+  await withServer(async (port, connect) => {
+    const guest = await connect();
+    const member = await connect('userjwt=Ann');
+    guest.send({ t: 'hello', name: 'Bob' });
+    member.send({ t: 'hello', name: 'ignored' });
+    guest.send({ t: 'create' });
+    const room = await guest.next((m) => m.t === 'room');
+    member.send({ t: 'join', code: room.code });
+    await member.next((m) => m.t === 'room');
+    guest.send({ t: 'leave' });
+    guest.send({ t: 'create' });
+    await guest.next((m) => m.t === 'room');
+    assert.deepStrictEqual(fakeAuth.guestsSeen, ['Bob']);
   });
 });

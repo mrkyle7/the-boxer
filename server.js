@@ -296,7 +296,15 @@ function createServer({ auth = createAuth() } = {}) {
       try { msg = JSON.parse(data); } catch { return; }
       if (!msg || typeof msg !== 'object') return;
       const handler = Object.prototype.hasOwnProperty.call(handlers, msg.t) && handlers[msg.t];
-      if (handler) ready.then(() => handler(ws, msg));
+      if (handler) ready.then(() => {
+        handler(ws, msg);
+        // A guest starting to play: tell the owner (auth.js keeps it to
+        // one report per name every few minutes).
+        if (!ws.account && !ws.guestReported && ['quick', 'create', 'join'].includes(msg.t)) {
+          ws.guestReported = true;
+          auth.guestSeen(ws.name);
+        }
+      });
     });
     ws.on('close', () => ready.then(() => leaveRoom(ws)));
   });
