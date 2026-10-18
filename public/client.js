@@ -128,6 +128,7 @@
         bolts.length = 0;
         rays.length = 0;
         slashes.length = 0;
+        swooshes.length = 0;
         warps.length = 0;
         bats.length = 0;
         hearts.length = 0;
@@ -478,6 +479,14 @@
       floatText(to.x, to.y - (mode === 'ring' ? 40 : 70), `+${e.heal}`, '#ff4a5a', 26);
       return;
     }
+    if (e.type === 'ludo') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#e6f0ff', 26, 6);
+      sparks(p.x, p.y, '#e6b422', 12, 5);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'En garde!', '#cfd8e3', 34);
+      sound.clang();
+      return;
+    }
     if (e.type === 'leo') {
       const p = targetPos(e.target, 'head');
       sparks(p.x, p.y, '#ffb13b', 30, 7);
@@ -684,6 +693,16 @@
       sound.slam();
       return;
     }
+    if (e.type === 'hit' && e.move === 'punch' && snap.fighters[attacker] && snap.fighters[attacker].sword) {
+      // A bright arc where the blade went through.
+      swooshes.push({ x: hx, y: p.y, r: mode === 'ring' ? 30 : 70, life: 16, dir: hx < targetPos(attacker, 'head').x ? -1 : 1 });
+      sparks(hx, p.y, '#e6f0ff', 16, 6);
+      shake = Math.max(shake, 8);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 26);
+      floatText(p.x, p.y - 72 * up, 'Slash!', '#cfd8e3', 24);
+      sound.clang();
+      return;
+    }
     if (e.type === 'hit' && snap.fighters[attacker] && snap.fighters[attacker].lion) {
       slashes.push({ x: hx, y: p.y, len: mode === 'ring' ? 40 : 70, life: 22 });
       sparks(hx, p.y, '#ffb13b', 14, 5);
@@ -819,6 +838,13 @@
         const a = ctxOk(); if (!a) return;
         tone(a, 1800, 0.25, 0.1, 'sine', 300);
         setTimeout(() => tone(a, 300, 0.2, 0.1, 'sine', 1800), 120);
+      },
+      // Ludo: a ringing metal 'shiiing'.
+      clang() {
+        const a = ctxOk(); if (!a) return;
+        tone(a, 1900, 0.5, 0.09, 'triangle', 2400);
+        tone(a, 2850, 0.4, 0.05, 'sine');
+        noise(a, 0.08, 6000, 0.25);
       },
       // Jay: a spooky organ chord. Leo: a roar.
       organ() {
@@ -1553,6 +1579,11 @@
     // Front arm
     drawArm(frontSh, gF, skin, c.glove);
     if (f.lion) { claws(gB, 1); claws(gF, 1); }
+    if (f.sword) {
+      // Held up and forward on guard; straight out at them when slashing.
+      const slashing = f.state === 'attack' && f.move === 'punch';
+      sword(gF.x, gF.y, slashing ? -0.12 : -0.85, 125, f.sword < 40);
+    }
 
     ctx.restore();
   }
@@ -1970,7 +2001,7 @@
         front = { x: 10, y: 10 };
         back = { x: 10, y: -10 };
       } else if (f.move === 'punch') {
-        const reach = ((G.MOVES.punch.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale();
+        const reach = ((G.MOVES.punch.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale() * (f.sword ? 0.8 : 1);
         front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
       } else {
         const reach = ((G.MOVES.kick.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale();
@@ -2019,6 +2050,7 @@
       ctx.arc(g.x + 2, g.y - 2, 3, 0, Math.PI * 2);
       ctx.fill();
       if (f.lion) claws(g, 0.45);
+      if (f.sword && g === front) sword(g.x, g.y, f.state === 'attack' && f.move === 'punch' ? 0 : -0.5, 60, f.sword < 40, 0.75);
     };
     const arm = (g, color) => {
       ctx.strokeStyle = color;
@@ -2146,6 +2178,7 @@
     const secret = i === me ? secretPauseUntil - performance.now() : 0;
     if (secret > 0) out.push({ text: `SECRET PAUSE  ${Math.ceil(secret / 1000)}s`, short: `SHH ${Math.ceil(secret / 1000)}s`, color: '#c9c9d6' });
     if (f.vampire) out.push({ text: `VAMPIRE  ${secs(f.vampire)}s`, short: `VAMPIRE ${secs(f.vampire)}s`, color: '#ff4a5a' });
+    if (f.sword) out.push({ text: `SWORD  ${secs(f.sword)}s · PUNCH TO SLASH`, short: `SWORD ${secs(f.sword)}s`, color: '#cfd8e3' });
     if (f.lion) out.push({ text: `LION  ${secs(f.lion)}s · NO KICK, NO BLOCK`, short: `LION ${secs(f.lion)}s`, color: '#f2b33d' });
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
@@ -2401,6 +2434,7 @@
     daniel: { fill: ['#f2f7e6', '#b6e24a', '#4f7d12'], spark: '#d9ff7a' }, // cactus green
     jay: { fill: ['#ff9aa5', '#c2102a', '#3a0510'], spark: '#ff4a5a' }, // blood red
     leo: { fill: ['#fff1c2', '#f2b33d', '#a8601a'], spark: '#ffd27a' }, // lion gold
+    ludo: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#e6f0ff' }, // steel
     edward: { fill: ['#ffffff', '#c9c9d6', '#6b6b80'], spark: '#ffffff' }, // VHS grey
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
   };
@@ -2904,6 +2938,40 @@
   }
 
   /** Three white claws sticking out of the front of a glove (+x is forward). */
+  /**
+   * Ludo's sword: a steel blade with a gold cross-guard, from a glove at
+   * (x, y) at angle a (0 is straight forward). Flickers as it wears off.
+   */
+  function sword(x, y, a, len, fading, k = 1) {
+    ctx.save();
+    if (fading && Math.floor(performance.now() / 90) % 2) ctx.globalAlpha *= 0.4;
+    ctx.translate(x, y);
+    ctx.rotate(a);
+    // Hilt and cross-guard.
+    ctx.fillStyle = '#5b3410';
+    ctx.fillRect(-14 * k, -3 * k, 14 * k, 6 * k);
+    ctx.fillStyle = '#e6b422';
+    ctx.fillRect(4 * k, -12 * k, 6 * k, 24 * k);
+    // Blade, with a bright edge and a point.
+    const g2 = ctx.createLinearGradient(0, -5 * k, 0, 5 * k);
+    g2.addColorStop(0, '#ffffff');
+    g2.addColorStop(0.5, '#cfd8e3');
+    g2.addColorStop(1, '#7d8a9c');
+    ctx.fillStyle = g2;
+    ctx.beginPath();
+    ctx.moveTo(10 * k, -5 * k);
+    ctx.lineTo(len - 14 * k, -5 * k);
+    ctx.lineTo(len, 0);
+    ctx.lineTo(len - 14 * k, 5 * k);
+    ctx.lineTo(10 * k, 5 * k);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,40,55,0.7)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.restore();
+  }
+
   function claws(g, k) {
     ctx.save();
     ctx.fillStyle = '#fbf7ea';
@@ -2940,6 +3008,26 @@
   }
 
   const slashes = []; // Leo's claw marks, for a moment
+  const swooshes = []; // Ludo's sword arcs
+
+  function drawSwooshes() {
+    for (let k = swooshes.length - 1; k >= 0; k--) {
+      const w = swooshes[k];
+      ctx.save();
+      ctx.globalAlpha = w.life / 16;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineCap = 'round';
+      for (const [lw, c3] of [[10, 'rgba(160,200,255,0.4)'], [3, '#ffffff']]) {
+        ctx.strokeStyle = c3;
+        ctx.lineWidth = lw;
+        ctx.beginPath();
+        ctx.arc(w.x - w.dir * w.r * 0.4, w.y, w.r, -1.2, 1.2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      if (--w.life <= 0) swooshes.splice(k, 1);
+    }
+  }
   const bats = []; // flapping off a new vampire
 
   function drawBats(clock) {
@@ -3899,6 +3987,7 @@
     drawHotdogs(clock);
     drawRays();
     drawSlashes();
+    drawSwooshes();
     drawBats(clock);
     drawBolts(clock);
     drawClouds(clock);

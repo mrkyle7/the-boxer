@@ -52,6 +52,8 @@ Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (
 
 Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
+Or **ludo**: a sword for seven seconds. Punches become sword slashes with 50% more damage and 25% more reach; no kicks while you hold it.
+
 Or **jay**: a vampire for seven seconds. Your hits do half damage, but drain it, healing you by as much as they take. Or **leo**: a lion for seven seconds. Punches become claw swipes for 1.5x damage, but no kicks and no blocking.
 
 Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
