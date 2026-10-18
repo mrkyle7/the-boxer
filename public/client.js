@@ -487,6 +487,28 @@
       sound.clang();
       return;
     }
+    if (e.type === 'tony') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#f4ead2', 24, 6);
+      sparks(p.x, p.y, '#2a2a2a', 14, 5);
+      shake = Math.max(shake, 6);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), `${CHESS_NAMES[e.piece]}!`, '#f4ead2', 34);
+      sound.slam();
+      return;
+    }
+    if (e.type === 'promote') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#f4c542', 30, 7);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Promoted to Queen!', '#f4c542', 30);
+      sound.fanfare();
+      return;
+    }
+    if (e.type === 'bless') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#fff6c9', 10, 4);
+      floatText(p.x, p.y - (mode === 'ring' ? 40 : 70), `+${e.heal}`, '#fff6c9', 24);
+      return;
+    }
     if (e.type === 'leo') {
       const p = targetPos(e.target, 'head');
       sparks(p.x, p.y, '#ffb13b', 30, 7);
@@ -701,6 +723,20 @@
       floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 26);
       floatText(p.x, p.y - 72 * up, 'Slash!', '#cfd8e3', 24);
       sound.clang();
+      return;
+    }
+    if (e.type === 'hit' && snap.fighters[attacker] && snap.fighters[attacker].piece === 'knight' && e.wrongGuard) {
+      sparks(hx, p.y, '#f4ead2', 14, 5);
+      shake = Math.max(shake, 6);
+      floatText(p.x, p.y - 40 * up, `-${e.damage}`, '#ffffff', 24);
+      floatText(p.x, p.y - 72 * up, 'Over the guard!', '#f4ead2', 22);
+      sound.hit(0.7);
+      return;
+    }
+    if (e.type === 'hit' && snap.fighters[e.target] && snap.fighters[e.target].piece === 'king' && e.damage === 0) {
+      sparks(hx, p.y, '#f4c542', 10, 4);
+      floatText(p.x, p.y - 60 * up, 'Can\'t take the king!', '#f4c542', 22);
+      sound.block();
       return;
     }
     if (e.type === 'hit' && snap.fighters[attacker] && snap.fighters[attacker].lion) {
@@ -1439,6 +1475,19 @@
     const skin = hurt ? mix(pale(c.skin), '#ffffff', 0.45) : pale(c.skin);
     const skinDark = hurt ? mix(pale(c.skinDark), '#ffffff', 0.35) : pale(c.skinDark);
 
+    if (f.piece) {
+      // Tony's chess piece: the arms still come out of it to punch.
+      const h = f.piece === 'pawn' ? 170 : f.piece === 'king' || f.piece === 'queen' ? 245 : 225;
+      // Arms from the sides, below the eyes.
+      drawArm({ x: h * 0.05, y: -h * 0.45 }, gB, skinDark, c.gloveDark, P.backArc);
+      if (P.kick) drawLeg({ x: hipX + 10, y: hipY }, P.kick, skin, true);
+      chessPiece(f.piece, h, c, hurt, f.chess < 40 && Math.sin(clock * 30) > 0);
+      drawArm({ x: h * 0.11, y: -h * 0.42 }, gF, skin, c.glove);
+      if (f.sword) sword(gF.x, gF.y, f.state === 'attack' && f.move === 'punch' ? -0.12 : -0.85, 125, f.sword < 40);
+      ctx.restore();
+      return;
+    }
+
     // Jay's vampire: a cape, high-collared, billowing behind.
     if (f.vampire) {
       const flap = Math.sin(clock * 5) * 10;
@@ -1981,7 +2030,8 @@
     if (f.state === 'guardbreak') wobble = Math.sin(t * 0.35) * 0.25;
     let recoil = 0;
     if (f.state === 'hitstun') recoil = -8 * (1 - clamp01(t / 16));
-    ctx.rotate(d.angle + wobble + (f.state === 'attack' && f.move === 'fart' ? Math.PI : 0));
+    const turn = d.angle + wobble + (f.state === 'attack' && f.move === 'fart' ? Math.PI : 0);
+    ctx.rotate(turn);
     ctx.translate(recoil, 0);
 
     // Gloves and the kicking leg, in this fighter's frame (+x forward).
@@ -2140,6 +2190,30 @@
       drawStar(-1, 0, 4, '#ffffff');
     }
 
+    if (f.piece) {
+      // Tony's chess piece, from above: a round base with the piece on it.
+      ctx.save();
+      ctx.rotate(-turn);
+      ctx.fillStyle = c.gloveDark;
+      ctx.beginPath();
+      ctx.arc(0, 0, 25, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = hurt ? '#ffffff' : c.trunks;
+      ctx.beginPath();
+      ctx.arc(0, 0, 21, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.font = '34px "Segoe UI Symbol", "Noto Sans Symbols 2", "DejaVu Sans", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#f8f1de';
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 3;
+      const glyph = CHESS_GLYPHS[f.piece];
+      ctx.strokeText(glyph, 0, 2);
+      ctx.fillText(glyph, 0, 2);
+      ctx.textBaseline = 'alphabetic';
+      ctx.restore();
+    }
     if (!gloveLow) {
       arm(back, c.skinDark); glove(back, c.gloveDark);
       arm(front, skin); glove(front, c.glove);
@@ -2179,6 +2253,7 @@
     if (secret > 0) out.push({ text: `SECRET PAUSE  ${Math.ceil(secret / 1000)}s`, short: `SHH ${Math.ceil(secret / 1000)}s`, color: '#c9c9d6' });
     if (f.vampire) out.push({ text: `VAMPIRE  ${secs(f.vampire)}s`, short: `VAMPIRE ${secs(f.vampire)}s`, color: '#ff4a5a' });
     if (f.sword) out.push({ text: `SWORD  ${secs(f.sword)}s · PUNCH TO SLASH`, short: `SWORD ${secs(f.sword)}s`, color: '#cfd8e3' });
+    if (f.piece) out.push({ text: `${CHESS_NAMES[f.piece].toUpperCase()}  ${secs(f.chess)}s · ${CHESS_TIPS[f.piece]}`, short: `${CHESS_NAMES[f.piece].toUpperCase()} ${secs(f.chess)}s`, color: '#f4ead2' });
     if (f.lion) out.push({ text: `LION  ${secs(f.lion)}s · NO KICK, NO BLOCK`, short: `LION ${secs(f.lion)}s`, color: '#f2b33d' });
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
@@ -2434,6 +2509,7 @@
     daniel: { fill: ['#f2f7e6', '#b6e24a', '#4f7d12'], spark: '#d9ff7a' }, // cactus green
     jay: { fill: ['#ff9aa5', '#c2102a', '#3a0510'], spark: '#ff4a5a' }, // blood red
     leo: { fill: ['#fff1c2', '#f2b33d', '#a8601a'], spark: '#ffd27a' }, // lion gold
+    tony: { fill: ['#ffffff', '#f4ead2', '#2a2a2a'], spark: '#f4ead2' }, // ivory and ebony
     ludo: { fill: ['#ffffff', '#cfd8e3', '#5d6b7e'], spark: '#e6f0ff' }, // steel
     edward: { fill: ['#ffffff', '#c9c9d6', '#6b6b80'], spark: '#ffffff' }, // VHS grey
     kyle: { fill: ['#ffffff', '#b5ecff', '#3aa0d8'], spark: '#d6f4ff', flicker: true }, // ghostly
@@ -2985,6 +3061,137 @@
       ctx.closePath();
       ctx.fill();
       ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  const CHESS_NAMES = { pawn: 'Pawn', knight: 'Knight', bishop: 'Bishop', rook: 'Rook', queen: 'Queen', king: 'King' };
+  const CHESS_GLYPHS = { pawn: '♟', knight: '♞', bishop: '♝', rook: '♜', queen: '♛', king: '♚' };
+  const CHESS_TIPS = {
+    pawn: '3 HITS TO PROMOTE', knight: 'LEAPS OVER GUARDS', bishop: 'HITS HEAL YOU',
+    rook: "CAN'T BE MOVED", queen: 'ALL-POWERFUL', king: "CAN'T BE TAKEN",
+  };
+
+  /**
+   * Tony's chess piece, side on, standing on the floor at (0, 0) and `h`
+   * tall, facing +x: in the fighter's colours, with a pair of eyes.
+   */
+  function chessPiece(piece, h, c, hurt, fading) {
+    const u = h / 10;
+    const fill = hurt ? '#ffffff' : c.trunks;
+    ctx.save();
+    if (fading) ctx.globalAlpha *= 0.55;
+    ctx.fillStyle = fill;
+    ctx.strokeStyle = c.gloveDark;
+    ctx.lineWidth = 4;
+    ctx.lineJoin = 'round';
+    const shape = (draw) => { ctx.beginPath(); draw(); ctx.fill(); ctx.stroke(); };
+    // Every piece stands on the same round base.
+    shape(() => {
+      ctx.moveTo(-2.7 * u, 0);
+      ctx.lineTo(2.7 * u, 0);
+      ctx.quadraticCurveTo(2.9 * u, -0.9 * u, 2.1 * u, -1.1 * u);
+      ctx.lineTo(-2.1 * u, -1.1 * u);
+      ctx.quadraticCurveTo(-2.9 * u, -0.9 * u, -2.7 * u, 0);
+    });
+    // A body tapering up to a neck at `top`, `w` wide there.
+    const body = (top, w) => shape(() => {
+      ctx.moveTo(-1.9 * u, -1.1 * u);
+      ctx.quadraticCurveTo(-w * u, -top * 0.55 * u, -w * u, -top * u);
+      ctx.lineTo(w * u, -top * u);
+      ctx.quadraticCurveTo(w * u, -top * 0.55 * u, 1.9 * u, -1.1 * u);
+    });
+    const collar = (y, w) => shape(() => ctx.ellipse(0, -y * u, w * u, 0.45 * u, 0, 0, Math.PI * 2));
+    let eyeY = -6.6;
+    if (piece === 'pawn') {
+      body(5.6, 0.9);
+      collar(5.7, 1.7);
+      shape(() => ctx.arc(0, -7.7 * u, 1.9 * u, 0, Math.PI * 2));
+      eyeY = -7.8;
+    } else if (piece === 'rook') {
+      shape(() => ctx.rect(-1.7 * u, -7.6 * u, 3.4 * u, 6.5 * u));
+      shape(() => {
+        // The battlements: three teeth along the top.
+        ctx.moveTo(-2.3 * u, -7.4 * u);
+        ctx.lineTo(-2.3 * u, -10 * u);
+        for (const [x, y] of [[-1.4, -10], [-1.4, -9.2], [-0.45, -9.2], [-0.45, -10], [0.45, -10], [0.45, -9.2], [1.4, -9.2], [1.4, -10], [2.3, -10]]) ctx.lineTo(x * u, y * u);
+        ctx.lineTo(2.3 * u, -7.4 * u);
+        ctx.closePath();
+      });
+      eyeY = -6.4;
+    } else if (piece === 'bishop') {
+      body(6.2, 0.8);
+      collar(6.3, 1.6);
+      shape(() => ctx.ellipse(0, -8.1 * u, 1.45 * u, 1.9 * u, 0, 0, Math.PI * 2));
+      shape(() => ctx.arc(0, -10.2 * u, 0.45 * u, 0, Math.PI * 2));
+      ctx.beginPath(); // the mitre's slit
+      ctx.moveTo(0.2 * u, -9.2 * u);
+      ctx.lineTo(1.2 * u, -8 * u);
+      ctx.stroke();
+      eyeY = -7.6;
+    } else if (piece === 'knight') {
+      shape(() => {
+        // A horse's head and neck, looking forward.
+        ctx.moveTo(-1.9 * u, -1.1 * u);
+        ctx.quadraticCurveTo(-2.4 * u, -5 * u, -1.2 * u, -8.6 * u);
+        ctx.lineTo(-0.6 * u, -9.9 * u); // the ear
+        ctx.lineTo(0.1 * u, -8.9 * u);
+        ctx.quadraticCurveTo(1.9 * u, -8.4 * u, 2.9 * u, -6.3 * u); // down the nose
+        ctx.quadraticCurveTo(3.1 * u, -5.3 * u, 2.3 * u, -5.1 * u); // the muzzle
+        ctx.quadraticCurveTo(1 * u, -5.6 * u, 0.4 * u, -5.2 * u);
+        ctx.quadraticCurveTo(1.8 * u, -3 * u, 1.9 * u, -1.1 * u);
+        ctx.closePath();
+      });
+      ctx.strokeStyle = c.gloveDark; // the mane
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(-1.3 * u, -8.3 * u);
+      ctx.quadraticCurveTo(-2.1 * u, -5 * u, -1.7 * u, -1.6 * u);
+      ctx.stroke();
+      eyeY = -7.4;
+    } else {
+      body(6.6, 0.9);
+      collar(6.7, 1.8);
+      collar(7.3, 1.3);
+      // A crown: the queen's points with pearls, the king's band and cross.
+      ctx.fillStyle = '#f4c542';
+      ctx.strokeStyle = '#a8801a';
+      if (piece === 'queen') {
+        shape(() => {
+          ctx.moveTo(-1.4 * u, -7.6 * u);
+          for (const [x, y] of [[-2, -9.8], [-0.9, -8.6], [0, -10.2], [0.9, -8.6], [2, -9.8], [1.4, -7.6]]) ctx.lineTo(x * u, y * u);
+          ctx.closePath();
+        });
+        for (const x of [-2, 0, 2]) shape(() => ctx.arc(x * u, (x ? -9.9 : -10.3) * u, 0.35 * u, 0, Math.PI * 2));
+      } else {
+        shape(() => {
+          ctx.moveTo(-1.5 * u, -7.6 * u);
+          ctx.lineTo(-1.8 * u, -9.3 * u);
+          ctx.quadraticCurveTo(0, -8.7 * u, 1.8 * u, -9.3 * u);
+          ctx.lineTo(1.5 * u, -7.6 * u);
+          ctx.closePath();
+        });
+        shape(() => {
+          ctx.rect(-0.25 * u, -10.9 * u, 0.5 * u, 1.8 * u);
+          ctx.rect(-0.75 * u, -10.4 * u, 1.5 * u, 0.5 * u);
+        });
+      }
+      eyeY = -6.1;
+    }
+    // A highlight down one side, and the eyes looking forward.
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(-1.2 * u, -5.5 * u, 0.5 * u, 4 * u);
+    ctx.fillStyle = '#ffffff';
+    for (const x of [0.4, 1.3]) {
+      ctx.beginPath();
+      ctx.arc((piece === 'knight' ? x + 0.4 : x - 0.8) * u, eyeY * u, 0.32 * u, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#111';
+    for (const x of [0.5, 1.4]) {
+      ctx.beginPath();
+      ctx.arc((piece === 'knight' ? x + 0.4 : x - 0.8) * u, eyeY * u, 0.16 * u, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }

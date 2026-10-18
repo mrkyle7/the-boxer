@@ -52,6 +52,8 @@ Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (
 
 Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
+Or **tony**: you turn into a chess piece for seven seconds, picked at random, each with its own trick. A **pawn** hits for 75%, but three hits and it promotes to a queen. A **knight** leaps over guards (no blocking it) and reaches 50% further. A **bishop** heals 5 with every hit. A **rook** hits for 125%, takes half damage and can't be knocked back, but moves slowly. A **queen** hits for 150%, reaches 25% further and moves 50% faster. A **king** can't be taken (no damage at all, not even from the giant fist), but hits for half and moves at half speed.
+
 Or **ludo**: a sword for seven seconds. Punches become sword slashes with 50% more damage and 25% more reach; no kicks while you hold it.
 
 Or **jay**: a vampire for seven seconds. Your hits do half damage, but drain it, healing you by as much as they take. Or **leo**: a lion for seven seconds. Punches become claw swipes for 1.5x damage, but no kicks and no blocking.

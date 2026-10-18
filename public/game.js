@@ -54,6 +54,12 @@
 // the same and everyone keeps fighting, but no hit does any damage and the
 // clock doesn't move. Stamina still goes down (and back up) as normal.
 //
+// "tony" turns you into a chess piece for seven seconds, picked at random,
+// each with its own trick (see CHESS): a pawn that promotes to a queen
+// after three hits, a knight that leaps over guards, a bishop that heals
+// with every hit, a rook that can't be budged, the all-powerful queen, and a
+// king that nothing can hurt (but who goes one slow step at a time).
+//
 // "ludo" gives you a sword for seven seconds: punches only, slashing for
 // 1.5x damage with 1.25x reach.
 //
@@ -226,9 +232,26 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony'];
+
+  // Tony: a chess piece for seven seconds. Each piece's trick: damage (what
+  // your hits do), reach, speed, taken (how much of a hit gets through to
+  // you), and more.
+  const CHESS_TICKS = 7 * TICK_RATE;
+  const CHESS = {
+    pawn: { damage: 0.75 }, // small, but three hits and it's a queen
+    knight: { reach: 1.5, overGuard: true }, // jumps over your guard
+    bishop: { heal: 5 }, // blessed: every hit heals you 5
+    rook: { damage: 1.25, taken: 0.5, speed: 0.6, planted: true }, // a tower: no knockback
+    queen: { damage: 1.5, reach: 1.25, speed: 1.5 },
+    king: { damage: 0.5, taken: 0, speed: 0.5 }, // can't be taken
+  };
+  const PIECES = Object.keys(CHESS);
+  const PAWN_PROMOTES = 3;
+  const NO_PIECE = {};
+  const piece = (f) => (f.chess > 0 ? CHESS[f.piece] : NO_PIECE);
 
   // Ludo: a sword for seven seconds. Punches become sword slashes: 50% more
   // damage, 25% more reach. No kicks while you hold it.
@@ -326,6 +349,9 @@
       vampire: 0, // ticks of Jay's vampire left
       lion: 0, // ticks of Leo's lion left
       sword: 0, // ticks of Ludo's sword left
+      chess: 0, // ticks of Tony's chess piece left
+      piece: null, // ...and which piece
+      pawnHits: 0, // a pawn's hits so far, towards promotion
       tiny: 0, // ticks of being shrunk by Shaan left
       shree: null, // steering the giant fist: { x, y, t, drop }
       car: null, // driving: { dx, dy, t, hit }
@@ -547,6 +573,13 @@
       const input = game.inputs[index];
       if (input.buffered === 'kick') input.buffered = null;
       game.events.push({ type: 'ludo', target: index });
+      return;
+    }
+    if (which === 'tony') {
+      f.chess = CHESS_TICKS;
+      f.piece = PIECES[Math.min(PIECES.length - 1, Math.floor(game.random() * PIECES.length))];
+      f.pawnHits = 0;
+      game.events.push({ type: 'tony', target: index, piece: f.piece });
       return;
     }
     if (which === 'leo') {
@@ -792,6 +825,7 @@
     const i = game.fighters.indexOf(def);
     const hitter = attIndex !== undefined ? game.fighters[attIndex] : att;
     if (hitter && hitter.vampire > 0) damage = Math.round(damage * VAMPIRE_DAMAGE);
+    damage = Math.round(damage * (piece(def).taken ?? 1)); // a rook takes half, a king none
     damage = spikes(game, def, hitter, damage);
     def.hp = Math.max(0, def.hp - damage);
     drain(game, hitter, damage);
@@ -800,8 +834,8 @@
     const dx = def.x - att.x;
     const dy = game.mode === 'ring' ? def.y - att.y : 0;
     const d = Math.hypot(dx, dy) || 1;
-    def.vx += (dx / d) * knockback;
-    def.vy += (dy / d) * knockback;
+    def.vx += (dx / d) * knockback * (piece(def).planted ? 0 : 1);
+    def.vy += (dy / d) * knockback * (piece(def).planted ? 0 : 1);
     setState(def, 'hitstun');
     def.stun = stun;
     def.hitHeight = 'head';
@@ -977,7 +1011,7 @@
   /** How far this fighter's attack reaches. */
   function reach(f, m) {
     const sword = f.sword > 0 && m === MOVES.punch ? SWORD_REACH : 1;
-    return (f.luna ? m.range * LUNA_REACH : m.range) * sword;
+    return (f.luna ? m.range * LUNA_REACH : m.range) * sword * (piece(f).reach || 1);
   }
 
   /** The opponent this fighter is fighting: the other one, or their target in the ring. */
@@ -1048,6 +1082,7 @@
       if (f.vampire > 0) f.vampire--;
       if (f.lion > 0) f.lion--;
       if (f.sword > 0) f.sword--;
+      if (f.chess > 0 && --f.chess === 0) f.piece = null;
     }
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
@@ -1093,7 +1128,7 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1);
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1) * (piece(f).speed || 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
       let mx = dir * norm;
@@ -1292,16 +1327,18 @@
       const m = MOVES[hit.move];
       const push = direction(att, def);
       const guarding = hit.defState === 'block' || hit.defState === 'blockstun';
-      const blocking = guarding && hit.defAim === hit.height && hit.faced && !m.unblockable;
+      const blocking = guarding && hit.defAim === hit.height && hit.faced && !m.unblockable && !piece(att).overGuard;
+      const taken = piece(def).taken ?? 1;
+      const planted = piece(def).planted ? 0 : 1;
       const ev = { target: hit.defender, attacker: hit.attacker, move: hit.move, height: hit.height };
 
       if (blocking) {
-        def.hp = Math.max(0, def.hp - (game.paused > 0 ? 0 : m.blockDamage));
+        def.hp = Math.max(0, def.hp - (game.paused > 0 ? 0 : Math.round(m.blockDamage * taken)));
         def.stamina -= m.blockStamina;
         att.stats.blocked++;
         att.stats.damage += m.blockDamage;
-        def.vx += push.x * m.blockKnockback;
-        def.vy += push.y * m.blockKnockback;
+        def.vx += push.x * m.blockKnockback * planted;
+        def.vy += push.y * m.blockKnockback * planted;
         if (def.stamina <= 0) {
           def.stamina = 0;
           setState(def, 'guardbreak');
@@ -1317,26 +1354,41 @@
           || hit.defState === 'guardbreak');
         const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1)
           * (att.lion > 0 ? LION_DAMAGE : 1) * (att.vampire > 0 ? VAMPIRE_DAMAGE : 1)
-          * (att.sword > 0 && hit.move === 'punch' ? SWORD_DAMAGE : 1));
+          * (att.sword > 0 && hit.move === 'punch' ? SWORD_DAMAGE : 1) * (piece(att).damage || 1) * taken);
         const damage = spikes(game, def, att, full);
         def.hp = Math.max(0, def.hp - damage);
         drain(game, att, damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
         att.stats.damage += damage;
-        def.vx += push.x * h.knockback;
-        def.vy += push.y * h.knockback;
+        def.vx += push.x * h.knockback * planted;
+        def.vy += push.y * h.knockback * planted;
         setState(def, 'hitstun');
         def.stun = h.hitstun;
         def.hitHeight = hit.height;
         knocked(game, def);
         // Guarding the wrong height (or the wrong way) is worth telling the defender about.
         game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding, ...(hit.second ? { second: true } : {}) });
+        chessHit(game, att, hit.attacker);
       }
       if (def.hp <= 0) {
         setState(def, 'ko');
         game.events.push({ type: 'ko', target: hit.defender });
       }
+    }
+  }
+
+  /** A chess piece's trick when it lands a hit: the bishop's blessing, the pawn's promotion. */
+  function chessHit(game, att, index) {
+    if (att.chess <= 0 || att.hp <= 0) return;
+    const heal = Math.min(piece(att).heal || 0, MAX_HP - att.hp);
+    if (heal > 0) {
+      att.hp += heal;
+      game.events.push({ type: 'bless', target: index, heal });
+    }
+    if (att.piece === 'pawn' && ++att.pawnHits >= PAWN_PROMOTES) {
+      att.piece = 'queen';
+      game.events.push({ type: 'promote', target: index });
     }
   }
 
@@ -1651,7 +1703,7 @@
       const d = Math.hypot(dx, dy);
       if (d > FIST_RADIUS) return;
       hit.push(i);
-      f.hp = Math.max(0, f.hp - (game.paused > 0 ? 0 : FIST_DAMAGE));
+      f.hp = Math.max(0, f.hp - (game.paused > 0 ? 0 : Math.round(FIST_DAMAGE * (piece(f).taken ?? 1))));
       // Knocked out from under it (any way at all if it landed right on them).
       const ax = d > 1 ? dx / d : i % 2 ? 1 : -1;
       const ay = d > 1 ? dy / d : 0;
@@ -1730,6 +1782,7 @@
         ...(f.vampire > 0 ? { vampire: f.vampire } : {}),
         ...(f.lion > 0 ? { lion: f.lion } : {}),
         ...(f.sword > 0 ? { sword: f.sword } : {}),
+        ...(f.chess > 0 ? { chess: f.chess, piece: f.piece } : {}),
         ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
         ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
@@ -1756,7 +1809,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
