@@ -1,6 +1,6 @@
 'use strict';
 
-// "mummy": love all round for seven seconds. Anyone too close is caught in a
+// "mummy": love all round for ten seconds. Anyone too close is caught in a
 // cuddle, and she steals 10 health from them.
 
 const test = require('node:test');
@@ -67,7 +67,7 @@ test('typing it again is a fresh cuddle for everyone', () => {
   assert.strictEqual(b.hp, G.MAX_HP - 2 * G.CUDDLE_STEAL);
 });
 
-test('the love wears off after seven seconds', () => {
+test('the love wears off after ten seconds', () => {
   const g = fight();
   const [m, b] = g.fighters;
   m.x = 200; b.x = 800;
@@ -76,7 +76,7 @@ test('the love wears off after seven seconds', () => {
   assert.ok(!('love' in G.snapshot(g).fighters[0]));
   b.x = 300;
   assert.ok(!run(g, 10).some((e) => e.type === 'cuddle'));
-  assert.strictEqual(G.MUMMY_TICKS, 7 * G.TICK_RATE);
+  assert.strictEqual(G.MUMMY_TICKS, 10 * G.TICK_RATE);
 });
 
 test('in the ring, everyone close enough gets a cuddle', () => {
@@ -91,4 +91,21 @@ test('in the ring, everyone close enough gets a cuddle', () => {
   const caught = events.filter((e) => e.type === 'cuddle').map((e) => e.target).sort();
   assert.deepStrictEqual(caught, [1, 2]);
   assert.strictEqual(d.hp, G.MAX_HP);
+});
+
+test('once everyone has had a cuddle, the love is spent', () => {
+  const g = fight(['Mum', 'B', 'C']);
+  const [m, b, c] = g.fighters;
+  m.x = 500; m.y = 500;
+  b.x = 600; b.y = 500;
+  c.x = 850; c.y = 850;
+  G.cheat(g, 0, 'mummy');
+  run(g, 3);
+  assert.ok(m.love > 0, 'C still to come');
+  c.x = 500; c.y = 620;
+  const events = run(g, 3);
+  assert.ok(events.some((e) => e.type === 'cuddle' && e.target === 2));
+  assert.ok(events.some((e) => e.type === 'loveSpent' && e.target === 0));
+  assert.strictEqual(m.love, 0);
+  assert.ok(!('love' in G.snapshot(g).fighters[0]));
 });

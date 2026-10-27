@@ -49,7 +49,7 @@ test('jay: a vampire hits for half, and heals by as much', () => {
   assert.ok(events.some((e) => e.type === 'drain' && e.heal === dealt));
 });
 
-test('jay: never heals above full, and wears off after seven seconds', () => {
+test('jay: never heals above full, and wears off after ten seconds', () => {
   const g = fight();
   type(g, 0, 'jay');
   attack(g, 'kick');

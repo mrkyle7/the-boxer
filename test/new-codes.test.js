@@ -151,7 +151,7 @@ test('luna in the ring: next to the nearest, facing them', () => {
   assert.ok(Math.abs(a.angle - Math.atan2(c.y - a.y, c.x - a.x)) < 0.01);
 });
 
-test('grandpa: super fast for three seconds', () => {
+test('grandpa: super fast for ten seconds', () => {
   const g = fight();
   const [a, b] = g.fighters;
   const stride = () => {

@@ -44,7 +44,7 @@ function punch(g, from, to, gap, held = {}) {
 
 const NORMAL = G.MOVES.punch.head.damage;
 
-test('tony turns you into a chess piece, at random, for seven seconds', () => {
+test('tony turns you into a chess piece, at random, for ten seconds', () => {
   const seen = new Set();
   for (const p of G.PIECES) {
     const g = fight(p);
@@ -58,7 +58,7 @@ test('tony turns you into a chess piece, at random, for seven seconds', () => {
     assert.ok(!('piece' in G.snapshot(g).fighters[0]), 'back to normal');
   }
   assert.strictEqual(seen.size, 6);
-  assert.strictEqual(G.CHESS_TICKS, 7 * G.TICK_RATE);
+  assert.strictEqual(G.CHESS_TICKS, 10 * G.TICK_RATE);
 });
 
 test('a pawn hits softly, but three hits and it promotes to a queen', () => {

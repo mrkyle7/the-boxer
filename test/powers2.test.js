@@ -102,7 +102,7 @@ test('shaan: shrinks who you are fighting, and they hit 10% softer', () => {
   const hit = run(g, 30).find((e) => e.type === 'hit');
   assert.strictEqual(hit.damage, Math.round(G.MOVES.kick.head.damage * G.SHAAN_DAMAGE));
   run(g, G.SHAAN_TICKS);
-  assert.strictEqual(b.tiny, 0, 'back to size after seven seconds');
+  assert.strictEqual(b.tiny, 0, 'back to size after ten seconds');
 });
 
 test('shaan on a Jemini giant: back to normal size, not tiny', () => {

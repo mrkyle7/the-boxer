@@ -1,6 +1,6 @@
 'use strict';
 
-// "kyle": invisible for five seconds. You walk through people, nobody turns
+// "kyle": invisible for ten seconds. You walk through people, nobody turns
 // to face you, and ending it inside someone throws you out for 10 damage.
 
 const test = require('node:test');

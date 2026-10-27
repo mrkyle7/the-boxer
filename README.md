@@ -29,7 +29,7 @@ To play with someone on another machine, deploy it anywhere that runs Node and a
 
 Phones and tablets get on-screen buttons.
 
-A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches and kicks reach 20% further, she steps in when an attack is just out of reach, and in the ring her walking bends towards the opponent she's heading for. And once she's two letters into a cheat code, nothing can touch her (no hits, no giant fist, no poison) until she finishes the word, gets a letter wrong or stops typing for a second and a half; she can't attack while she's spelling, though. A violet bubble shows it.
+A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches and kicks reach 20% further, she steps in when an attack is just out of reach, and in the ring her walking bends towards the opponent she's heading for. And once she's two letters into a cheat code, nothing can touch her (no hits, no giant fist, no poison) until she finishes the word, gets a letter wrong or stops typing for five seconds; she can't attack while she's spelling, though. A violet bubble shows it.
 
 Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` while pressing `A`, for a tummy punch. A block only covers the height you're aiming at: guard the head and a tummy kick goes straight in. Head shots do more damage; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with no stamina left breaks, and hitting someone mid-attack is a counter worth 40% more.
 
@@ -39,30 +39,30 @@ On a phone, tap the **⌨** button to bring up a letter pad for the cheat codes.
 
 Psst: type **zeffen** during a fight for the Zeffen flip, a front flip at your opponent (it reaches about as far as the Luna vault) that hits twice, 25 a time. It can't be blocked, but it's aimed where they were when you jumped, so they can still step out of the way. Nothing can touch you while you're in the air (not even the giant fist). Everyone can see the letters going in over your head, and getting hit wipes them, so hit them before they finish typing.
 
-Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent and kicks them. **louise** busts out a dance (a shimmy, a twirl), reeling the nearest opponent in on a pink ribbon, and hip-bumps them for 30 (start too far away and they might not be reeled in close enough in time); **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for three seconds.
+Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent and kicks them. **louise** busts out a dance (a shimmy, a twirl), reeling the nearest opponent in on a pink ribbon, and hip-bumps them for 30 (start too far away and they might not be reeled in close enough in time); **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for ten seconds.
 
-Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself). While invisible you walk straight through people and nobody turns to face you, so you can get behind them. But if it wears off while you are standing inside someone, you are thrown out of them and take 10 damage.
+Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 10 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 10 seconds (you still see a faint shimmer of yourself). While invisible you walk straight through people and nobody turns to face you, so you can get behind them. But if it wears off while you are standing inside someone, you are thrown out of them and take 10 damage.
 
 And three more:
-- **shree**: you take control of the giant fist. Move its shadow with left and right (and up and down in the ring), then punch to drop it on someone for 30. You stand still while you steer it, and getting hit makes you let go. If you don't punch, it drops by itself after six seconds.
-- **shaan**: a shrink ray at the one you're fighting. They go small for seven seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
+- **shree**: you take control of the giant fist. Move its shadow with left and right (and up and down in the ring), then punch to drop it on someone for 30. You stand still while you steer it, and getting hit makes you let go. If you don't punch, it drops by itself after ten seconds.
+- **shaan**: a shrink ray at the one you're fighting. They go small for ten seconds and their hits do 10% less. Zap a Jemini giant and they just go back to normal size.
 - **parimal**: beep beep! You jump in a car, which revs for a moment and then drives straight at the nearest fighter, for 30. In the ring, step aside. One on one, jump over it with **space** (or the Jump button on a phone). Jumping is too early if you do it the moment you hear the horn, and just right when it sets off. A jump only gets you over the car: you can still be punched in the air.
 
 Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (Uncle Sam hats for everyone, fireworks), and two hotdogs come floating down at random moments, with a shadow where each will land. Get under one and grab it on the way down (once it's about head height; jump to reach it sooner, one on one) for half your health back. If nobody catches it, it splats on the floor. **mamtora** does the same with India: the tricolour, marigold garlands and petals, and dosas instead of hotdogs.
 
-Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
+Or **edward**: a secret pause. For ten seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
-Or **mummy**: love all round for seven seconds (a pink ring of hearts on the floor). Anyone who comes too close is caught in a loving cuddle, held for a second, and Mummy steals 10 health from them. Only one cuddle each, though, so nobody can be trapped in a corner.
+Or **mummy**: love all round for ten seconds (a pink ring of hearts on the floor). Anyone who comes too close is caught in a loving cuddle, held for a second, and Mummy steals 10 health from them. Only one cuddle each, though, so nobody can be trapped in a corner, and once everyone has had theirs the love is spent.
 
-Or **daddy**: a pair of fast shoes (red trainers with lightning bolts and little wings) for seven seconds, and you run at 1.8x speed.
+Or **daddy**: a pair of fast shoes (red trainers with lightning bolts and little wings) for ten seconds, and you run at 1.8x speed.
 
-Or **tony**: you turn into a chess piece for seven seconds, picked at random, each with its own trick. A **pawn** hits for 75%, but three hits and it promotes to a queen. A **knight** leaps over guards (no blocking it) and reaches 50% further. A **bishop** heals 5 with every hit. A **rook** hits for 125%, takes half damage and can't be knocked back, but moves slowly. A **queen** hits for 150%, reaches 25% further and moves 50% faster. A **king** can't be taken (no damage at all, not even from the giant fist), but hits for half and moves at half speed.
+Or **tony**: you turn into a chess piece for ten seconds, picked at random, each with its own trick. A **pawn** hits for 75%, but three hits and it promotes to a queen. A **knight** leaps over guards (no blocking it) and reaches 50% further. A **bishop** heals 5 with every hit. A **rook** hits for 125%, takes half damage and can't be knocked back, but moves slowly. A **queen** hits for 150%, reaches 25% further and moves 50% faster. A **king** can't be taken (no damage at all, not even from the giant fist), but hits for half and moves at half speed.
 
-Or **ludo**: a sword for seven seconds. Punches become sword slashes with 50% more damage and 25% more reach; no kicks while you hold it.
+Or **ludo**: a sword for ten seconds. Punches become sword slashes with 50% more damage and 25% more reach; no kicks while you hold it.
 
-Or **jay**: a vampire for seven seconds. Your hits do half damage, but drain it, healing you by as much as they take. Or **leo**: a lion for seven seconds. Punches become claw swipes for 1.5x damage, but no kicks and no blocking.
+Or **jay**: a vampire for ten seconds. Your hits do half damage, but drain it, healing you by as much as they take. Or **leo**: a lion for ten seconds. Punches become claw swipes for 1.5x damage, but no kicks and no blocking.
 
-Or **daniel**: you go spiky for five seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
+Or **daniel**: you go spiky for ten seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
 
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
 

@@ -81,7 +81,7 @@ test('freeze: everyone else stuck in ice for three seconds, still hittable', () 
   assert.ok(b.x < x, 'moving again once it melts');
 });
 
-test('zoom: you run nearly twice as fast for six seconds', () => {
+test('zoom: you run nearly twice as fast for ten seconds', () => {
   const g = fight('zoom');
   harrison(g);
   const [a, b] = g.fighters;
