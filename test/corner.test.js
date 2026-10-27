@@ -1,6 +1,6 @@
 'use strict';
 
-// Getting out of a corner, one on one: the leapfrog and the referee's break.
+// Getting out of a corner, one on one: the leapfrog.
 // And the clinch break, anywhere: block three quick hits to shove them off.
 
 const test = require('node:test');
@@ -101,25 +101,4 @@ test('blocks spread out slowly earn nothing', () => {
   const events = blockPunches(g, 3, G.CLINCH_WINDOW / 2 + 5);
   assert.strictEqual(events.filter((e) => e.type === 'block').length, 3);
   assert.ok(!events.some((e) => e.type === 'clinchBreak'));
-});
-
-test('ref break: locked up in the corner for three seconds, back to the middle', () => {
-  const g = cornered();
-  const [a, b] = g.fighters;
-  let events = run(g, G.REF_BREAK_TICKS - 5);
-  assert.ok(!events.some((e) => e.type === 'refBreak'));
-  events = run(g, 10);
-  assert.ok(events.some((e) => e.type === 'refBreak'));
-  assert.strictEqual(a.x, G.REF_BREAK_AT[0]);
-  assert.strictEqual(b.x, G.REF_BREAK_AT[1]);
-});
-
-test('no referee in the ring', () => {
-  const g = G.createGame(['A', 'B', 'C']);
-  while (g.phase !== 'fight') G.step(g);
-  const [a, b] = g.fighters;
-  a.x = 70; a.y = 500; b.x = 170; b.y = 500;
-  G.setHeld(g, 0, { left: true });
-  const events = run(g, G.REF_BREAK_TICKS + 10);
-  assert.ok(!events.some((e) => e.type === 'refBreak'));
 });

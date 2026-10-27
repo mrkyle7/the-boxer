@@ -33,7 +33,7 @@ A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches
 
 Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` while pressing `A`, for a tummy punch. A block only covers the height you're aiming at: guard the head and a tummy kick goes straight in. Head shots do more damage; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with no stamina left breaks, and hitting someone mid-attack is a counter worth 40% more.
 
-Stuck in a corner, one on one? **Jump** to leapfrog right over your opponent's head and land behind them (nothing can touch you on the way over). And if the two of you stay locked up in the corner for three seconds, the **referee** steps in and sends you both back to the middle (not in the 3–4 player ring).
+Stuck in a corner, one on one? **Jump** to leapfrog right over your opponent's head and land behind them (nothing can touch you on the way over).
 
 Anywhere, any time: **block three hits in quick succession** (within a second and a half) and you shove whoever's hitting you off you, no damage. You can only break free once every two seconds.
 

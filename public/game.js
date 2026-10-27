@@ -352,10 +352,8 @@
   const AIRBORNE_MOVES = ['flip', 'vault', 'jump'];
 
   // Getting out of a corner, one on one. You're cornered with the ropes
-  // right behind you and your opponent close in front. Then:
-  //  - jump to leapfrog right over them and land behind them;
-  //  - and if the two of you stay locked up in the corner for three
-  //    seconds, the referee steps in and sends you both back to the middle.
+  // right behind you and your opponent close in front: jump, and you
+  // leapfrog right over them and land behind them.
   // And anywhere, any time (the ring too): block three hits in quick
   // succession and you shove whoever's hitting you off you.
   const CORNER_ZONE = 50; // this close to the ropes behind you...
@@ -366,8 +364,6 @@
   const CLINCH_PUSH = 35;
   const ESCAPE_STUN = 20; // knocked back on their heels
   const ESCAPE_COOLDOWN = 2 * TICK_RATE; // between a fighter's escapes
-  const REF_BREAK_TICKS = 3 * TICK_RATE;
-  const REF_BREAK_AT = [350, 650]; // where the referee puts you
 
   // Jumping (one on one only): up and down again, over a car (or anything).
   const JUMP_CROUCH = 2; // off the ground quick
@@ -1569,7 +1565,6 @@
       game.clouds = [];
       game.water = null;
       game.paused = 0;
-      game.clinchT = 0;
       game.usa = 0;
       game.theme = null;
       game.hotdogs = [];
@@ -1608,7 +1603,6 @@
       if (game.fists) updateFist(game);
       updateBolts(game);
       updateLove(game);
-      refBreak(game);
       updateClouds(game);
       updateWater(game);
       updateUsa(game);
@@ -1676,29 +1670,6 @@
       o.stun = ESCAPE_STUN;
     }
     game.events.push({ type, attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o) });
-  }
-
-  /** Locked up in a corner too long: the referee sends them back to the middle. */
-  function refBreak(game) {
-    if (game.mode === 'ring') return;
-    if (!game.fighters.some((f) => cornered(game, f))) {
-      game.clinchT = 0;
-      return;
-    }
-    if (++game.clinchT < REF_BREAK_TICKS) return;
-    game.clinchT = 0;
-    const [a, b] = game.fighters;
-    const order = a.x <= b.x ? [a, b] : [b, a];
-    order.forEach((f, k) => {
-      f.x = REF_BREAK_AT[k];
-      f.vx = 0;
-      f.blockedAt = [];
-      if (f.state !== 'ko') setState(f, 'idle');
-      game.inputs[game.fighters.indexOf(f)].buffered = null;
-    });
-    order[0].facing = 1;
-    order[1].facing = -1;
-    game.events.push({ type: 'refBreak' });
   }
 
   /** Mummy's love: anyone too close is cuddled, and she takes 10 health from them. */
@@ -2028,7 +1999,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, REF_BREAK_TICKS, REF_BREAK_AT, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
