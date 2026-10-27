@@ -687,12 +687,6 @@
       sound.slam();
       return;
     }
-    if (e.type === 'refBreak') {
-      // The referee steps in: a big BREAK! in the middle of the ring.
-      floatText(W / 2, FLOOR - 300, 'Ref: BREAK!', '#ffffff', 44);
-      sound.bell();
-      return;
-    }
     if (e.type === 'stuck') {
       // Kyle came back inside someone, and got thrown out of them.
       const p = targetPos(e.target, 'body');
@@ -2344,7 +2338,7 @@
   function powerLabels(i, f) {
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
-    if (f.cornered && i === me) out.push({ text: 'CORNERED · JUMP OVER THEM, OR BLOCK 3 QUICK', short: 'CORNERED', color: '#7fe0ff' });
+    if (f.cornered && i === me) out.push({ text: 'CORNERED', short: 'CORNERED', color: '#7fe0ff' });
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (snap.water && snap.water.boat === i) out.push({ text: 'IN THE BOAT', short: 'BOAT', color: '#c8823c' });
     else if (f.afloat) {
