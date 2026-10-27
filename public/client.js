@@ -679,11 +679,11 @@
       sound.whoosh();
       return;
     }
-    if (e.type === 'ropeBounce' || e.type === 'clinchBreak') {
+    if (e.type === 'clinchBreak') {
       const p = targetPos(e.target, 'body');
       sparks(p.x, p.y, '#ffffff', 18, 6);
       shake = Math.max(shake, 10);
-      floatText(p.x, p.y - 150, e.type === 'ropeBounce' ? 'Off the ropes!' : 'Break free!', '#ffd23f', 30);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Break free!', '#ffd23f', 30);
       sound.slam();
       return;
     }
@@ -2344,7 +2344,7 @@
   function powerLabels(i, f) {
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
-    if (f.cornered && i === me) out.push({ text: 'CORNERED · JUMP OVER, PUSH BACK OR BLOCK 3', short: 'CORNERED', color: '#7fe0ff' });
+    if (f.cornered && i === me) out.push({ text: 'CORNERED · JUMP OVER THEM, OR BLOCK 3 QUICK', short: 'CORNERED', color: '#7fe0ff' });
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (snap.water && snap.water.boat === i) out.push({ text: 'IN THE BOAT', short: 'BOAT', color: '#c8823c' });
     else if (f.afloat) {
