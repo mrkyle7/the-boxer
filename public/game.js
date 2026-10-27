@@ -34,7 +34,9 @@
 //
 // Two more go on you, not on them: "jemini" makes you a giant for seven
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
-// others for five (that's only in how they're drawn: the fight's the same).
+// others for five: you walk right through people, and nobody turns to face
+// you. But end it standing inside someone and you're thrown out of them, for
+// 10 damage.
 //
 // Three more: "shree" puts you in charge of the giant fist (left and right
 // to move it, punch to drop it; a hit on you while you steer cancels it);
@@ -228,6 +230,8 @@
   const JEMINI_TICKS = 7 * TICK_RATE;
   const JEMINI_DAMAGE = 1.1;
   const KYLE_TICKS = 5 * TICK_RATE;
+  const KYLE_STUCK_DAMAGE = 10; // ending it inside someone
+  const KYLE_STUCK_KNOCKBACK = 16;
 
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
@@ -1063,7 +1067,7 @@
 
     if (fighting) {
       if (f.giant > 0) f.giant--;
-      if (f.invisible > 0) f.invisible--;
+      if (f.invisible > 0 && --f.invisible === 0) reappear(game, f);
       if (f.fast > 0) f.fast--;
       if (f.turbo > 0) f.turbo--;
       if (f.poison && standing(f) && --f.poisonT <= 0) {
@@ -1187,12 +1191,13 @@
       let best = null;
       let bestD = Infinity;
       game.fighters.forEach((o, j) => {
-        if (j === i || !standing(o)) return;
+        if (j === i || !standing(o) || o.invisible > 0) return; // nobody turns to Kyle
         const d = distance(f, o);
         if (d < bestD) { best = j; bestD = d; }
       });
       if (best === null) { f.target = null; return; }
       const current = f.target !== null && game.fighters[f.target] && standing(game.fighters[f.target])
+        && !(game.fighters[f.target].invisible > 0)
         ? f.target : null;
       if (current === null || distance(f, game.fighters[current]) - bestD > RETARGET_MARGIN) f.target = best;
       // An attack goes where it was aimed when it started.
@@ -1219,6 +1224,7 @@
           const a = inRing[i];
           const b = inRing[j];
           if (!standing(a) || !standing(b) || untouchable(a) || untouchable(b)) continue;
+          if (a.invisible > 0 || b.invisible > 0) continue; // Kyle walks straight through
           let dx = b.x - a.x;
           let dy = b.y - a.y;
           let d = Math.hypot(dx, dy);
@@ -1284,7 +1290,7 @@
     const right = left === a ? b : a;
     const gap = right.x - left.x;
     // Someone in the air goes over the other, not into them.
-    const over = untouchable(a) || untouchable(b);
+    const over = untouchable(a) || untouchable(b) || a.invisible > 0 || b.invisible > 0;
     if (gap < MIN_SEPARATION && !over) {
       const push = (MIN_SEPARATION - gap) / 2;
       left.x -= push;
@@ -1295,8 +1301,21 @@
       if (left.x <= RING_LEFT) right.x = left.x + MIN_SEPARATION;
       else left.x = right.x - MIN_SEPARATION;
     }
-    left.facing = 1;
-    right.facing = -1;
+    // Kyle turns to face them; they don't turn to face Kyle.
+    if (!(right.invisible > 0)) left.facing = 1;
+    if (!(left.invisible > 0)) right.facing = -1;
+  }
+
+  /** Kyle coming back: ending up inside someone throws you out of them. */
+  function reappear(game, f) {
+    if (!standing(f)) return;
+    const ring = game.mode === 'ring';
+    const o = game.fighters.find((p) => p !== f && standing(p)
+      && (ring ? distance(f, p) : Math.abs(f.x - p.x)) < MIN_SEPARATION);
+    if (!o) return;
+    if (f.x === o.x && (!ring || f.y === o.y)) f.x += f.x > (ring ? (RING_MIN + RING_MAX) / 2 : (RING_LEFT + RING_RIGHT) / 2) ? -1 : 1;
+    game.events.push({ type: 'stuck', target: game.fighters.indexOf(f), attacker: game.fighters.indexOf(o) });
+    hurt(game, o, f, KYLE_STUCK_DAMAGE, FIST_HITSTUN, KYLE_STUCK_KNOCKBACK);
   }
 
   function resolveHits(game) {
@@ -1306,6 +1325,8 @@
       const def = game.fighters[1 - i];
       const m = MOVES[att.move];
       if (Math.abs(def.x - att.x) > reach(att, m)) return;
+      // Nobody turns to face Kyle: once he's walked through you, you swing the wrong way.
+      if (def.invisible > 0 && def.x !== att.x && Math.sign(def.x - att.x) !== att.facing) return;
       if (def.state === 'ko' || untouchable(def)) return;
       att.hitLanded = true;
       pending.push({
@@ -1809,7 +1830,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

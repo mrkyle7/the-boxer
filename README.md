@@ -41,7 +41,7 @@ Psst: type **zeffen** during a fight for the Zeffen flip, a front flip at your o
 
 Or type **kalya** for the vault: a flip right over your opponent, landing behind them, and a kick in the back for 30. Their guard only covers the front, so it can't be blocked. **luna** teleports you right next to the nearest opponent and kicks them. **louise** busts out a dance (a shimmy, a twirl), reeling the nearest opponent in on a pink ribbon, and hip-bumps them for 30 (start too far away and they might not be reeled in close enough in time); **tamzin** cartwheels across at them for 30; and **grandpa** makes you super fast for three seconds.
 
-Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself).
+Two more go on you: **jemini** makes you a glowing giant (with a ghostly twin) for 7 seconds, and your hits do 10% more; **kyle** makes you vanish in a puff of smoke, invisible to everyone else for 5 seconds (you still see a faint shimmer of yourself). While invisible you walk straight through people and nobody turns to face you, so you can get behind them. But if it wears off while you are standing inside someone, you are thrown out of them and take 10 damage.
 
 And three more:
 - **shree**: you take control of the giant fist. Move its shadow with left and right (and up and down in the ring), then punch to drop it on someone for 30. You stand still while you steer it, and getting hit makes you let go. If you don't punch, it drops by itself after six seconds.

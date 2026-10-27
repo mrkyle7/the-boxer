@@ -638,6 +638,15 @@
       sound.poof();
       return;
     }
+    if (e.type === 'stuck') {
+      // Kyle came back inside someone, and got thrown out of them.
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#b5ecff', 22, 6);
+      shake = Math.max(shake, 8);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Stuck inside!', '#b5ecff', 30);
+      sound.slam();
+      return;
+    }
     if (e.type === 'vault') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 70), 'Luna vault!', PALETTE[e.attacker].name, 30);
