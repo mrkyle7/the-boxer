@@ -1,7 +1,7 @@
 'use strict';
 
-// Getting out of a corner, one on one: leapfrog, rope bounce, clinch break,
-// and the referee's break.
+// Getting out of a corner, one on one: the leapfrog and the referee's break.
+// And the clinch break, anywhere: block three quick hits to shove them off.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -52,40 +52,55 @@ test('out in the open a jump is still straight up and down', () => {
   assert.ok(Math.abs(a.x - 400) < 2);
 });
 
-test('rope bounce: keep pushing into the ropes and you barge them back, no damage', () => {
-  const g = cornered();
-  const [a, b] = g.fighters;
-  G.setHeld(g, 0, { left: true });
-  const events = run(g, G.ROPE_WIND + 2);
-  assert.ok(events.some((e) => e.type === 'ropeBounce' && e.attacker === 0));
-  G.setHeld(g, 0, {});
-  run(g, 30);
-  assert.ok(b.x - a.x > 200, `pushed well back (${Math.round(b.x - a.x)})`);
-  assert.strictEqual(b.hp, G.MAX_HP);
-});
-
-test('just leaning on the ropes for a moment does nothing', () => {
-  const g = cornered();
-  G.setHeld(g, 0, { left: true });
-  assert.ok(!run(g, G.ROPE_WIND - 3).some((e) => e.type === 'ropeBounce'));
-});
-
-test('clinch break: block three in a row in the corner and you shove them off', () => {
-  const g = cornered();
+/** B punches A (blocking, head) `n` times, `gap` ticks apart. */
+function blockPunches(g, n, gap) {
   const [a, b] = g.fighters;
   G.setHeld(g, 0, { block: true, aim: 'head' });
   G.setHeld(g, 1, { aim: 'head' });
   run(g, 2);
   const events = [];
-  for (let k = 0; k < 3; k++) {
+  for (let k = 0; k < n; k++) {
     b.x = a.x + 100; // stay on them
+    if (g.mode === 'ring') b.y = a.y;
     G.pressAction(g, 1, 'punch');
-    events.push(...run(g, 22));
+    events.push(...run(g, gap));
   }
+  return events;
+}
+
+test('clinch break: block three quick punches in the corner and you shove them off', () => {
+  const g = cornered();
+  const [a, b] = g.fighters;
+  const events = blockPunches(g, 3, 22);
   assert.strictEqual(events.filter((e) => e.type === 'block').length, 3);
   assert.ok(events.some((e) => e.type === 'clinchBreak' && e.attacker === 0));
   run(g, 30);
   assert.ok(b.x - a.x > 180, `shoved off (${Math.round(b.x - a.x)})`);
+  assert.strictEqual(b.hp, G.MAX_HP);
+});
+
+test('clinch break works out in the open too', () => {
+  const g = cornered();
+  g.fighters[0].x = 400;
+  const events = blockPunches(g, 3, 22);
+  assert.ok(events.some((e) => e.type === 'clinchBreak' && e.attacker === 0));
+});
+
+test('...and in the ring', () => {
+  const g = G.createGame(['A', 'B', 'C']);
+  while (g.phase !== 'fight') G.step(g);
+  const [a, b, c] = g.fighters;
+  a.x = 400; a.y = 500; b.x = 500; b.y = 500; c.x = 850; c.y = 880;
+  const events = blockPunches(g, 3, 22);
+  assert.ok(events.some((e) => e.type === 'clinchBreak' && e.attacker === 0));
+});
+
+test('blocks spread out slowly earn nothing', () => {
+  const g = cornered();
+  g.fighters[0].x = 400;
+  const events = blockPunches(g, 3, G.CLINCH_WINDOW / 2 + 5);
+  assert.strictEqual(events.filter((e) => e.type === 'block').length, 3);
+  assert.ok(!events.some((e) => e.type === 'clinchBreak'));
 });
 
 test('ref break: locked up in the corner for three seconds, back to the middle', () => {
@@ -99,12 +114,12 @@ test('ref break: locked up in the corner for three seconds, back to the middle',
   assert.strictEqual(b.x, G.REF_BREAK_AT[1]);
 });
 
-test('no corner tricks in the ring', () => {
+test('no referee in the ring', () => {
   const g = G.createGame(['A', 'B', 'C']);
   while (g.phase !== 'fight') G.step(g);
   const [a, b] = g.fighters;
   a.x = 70; a.y = 500; b.x = 170; b.y = 500;
   G.setHeld(g, 0, { left: true });
   const events = run(g, G.REF_BREAK_TICKS + 10);
-  assert.ok(!events.some((e) => ['ropeBounce', 'refBreak', 'leapfrog', 'clinchBreak'].includes(e.type)));
+  assert.ok(!events.some((e) => e.type === 'refBreak'));
 });

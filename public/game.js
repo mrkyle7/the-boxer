@@ -354,17 +354,15 @@
   // Getting out of a corner, one on one. You're cornered with the ropes
   // right behind you and your opponent close in front. Then:
   //  - jump to leapfrog right over them and land behind them;
-  //  - keep pushing back into the ropes and you bounce off them, barging
-  //    them back across the ring (no damage);
-  //  - block three hits in a row and you shove them off you;
   //  - and if the two of you stay locked up in the corner for three
   //    seconds, the referee steps in and sends you both back to the middle.
+  // And anywhere, any time (the ring too): block three hits in quick
+  // succession and you shove whoever's hitting you off you.
   const CORNER_ZONE = 50; // this close to the ropes behind you...
   const CORNER_CLOSE = 160; // ...with them this close in front
   const LEAPFROG_LAND = MIN_SEPARATION + 10; // where you land, past them
-  const ROPE_WIND = 15; // ticks of pushing into the ropes before you spring
-  const ROPE_PUSH = 45; // the barge: about a quarter of the ring
-  const CLINCH_BLOCKS = 3; // blocks in a row that earn a shove
+  const CLINCH_BLOCKS = 3; // blocks this quick earn a shove...
+  const CLINCH_WINDOW = Math.round(1.5 * TICK_RATE); // ...all within this
   const CLINCH_PUSH = 35;
   const ESCAPE_STUN = 20; // knocked back on their heels
   const ESCAPE_COOLDOWN = 2 * TICK_RATE; // between a fighter's escapes
@@ -409,8 +407,7 @@
       hug: 0, // ticks left in one of Mummy's cuddles
       cuddled: [], // who Mummy has cuddled this time (once each)
       leapfrog: false, // this jump goes over them, out of the corner
-      ropeHold: 0, // ticks pushing back into the ropes
-      cornerBlocks: 0, // blocks in a row in the corner
+      blockedAt: [], // when the last few blocks were, for the clinch break
       escapeCool: 0, // ticks before the next escape
       poison: false, // gassed by a fart: poisoned for the rest of the match
       poisonT: 0, // ticks till the poison bites again
@@ -1220,7 +1217,6 @@
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       // Up and down only mean anything in the ring.
       const dirY = game.mode === 'ring' ? (input.down ? 1 : 0) - (input.up ? 1 : 0) : 0;
-      ropeBounce(game, f, dir);
       const wantBlock = input.block && !(f.lion > 0); // lions don't block
       const next = wantBlock ? 'block' : dir !== 0 || dirY !== 0 ? 'walk' : 'idle';
       if (next !== f.state) {
@@ -1463,7 +1459,7 @@
           setState(def, 'blockstun');
           def.stun = m.blockstun;
           game.events.push({ type: 'block', ...ev });
-          if (cornered(game, def) && ++def.cornerBlocks >= CLINCH_BLOCKS) escape(game, def, att, CLINCH_PUSH, 'clinchBreak');
+          clinch(game, def, att);
         }
       } else {
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
@@ -1656,30 +1652,25 @@
     return o.x >= f.x ? f.x - RING_LEFT <= CORNER_ZONE : RING_RIGHT - f.x <= CORNER_ZONE;
   }
 
-  /** Pushing back into the ropes while cornered: hold it, and spring off them. */
-  function ropeBounce(game, f, dir) {
-    if (!cornered(game, f)) {
-      f.ropeHold = 0;
-      f.cornerBlocks = 0;
-      return;
-    }
-    const o = opponentOf(game, f);
-    const side = Math.sign(o.x - f.x) || 1;
-    if (dir !== -side || f.escapeCool > 0) {
-      f.ropeHold = 0;
-      return;
-    }
-    if (++f.ropeHold < ROPE_WIND) return;
-    f.vx += side * 8; // off the ropes behind the barge
-    escape(game, f, o, ROPE_PUSH, 'ropeBounce');
+  /** Blocking hits in quick succession: three, and you shove them off you. */
+  function clinch(game, def, att) {
+    def.blockedAt = def.blockedAt.filter((t) => game.tick - t < CLINCH_WINDOW);
+    def.blockedAt.push(game.tick);
+    if (def.blockedAt.length < CLINCH_BLOCKS || def.escapeCool > 0) return;
+    escape(game, def, att, CLINCH_PUSH, 'clinchBreak');
   }
 
-  /** Out of the corner: they're knocked back across the ring, no damage. */
+  /** Breaking free: they're knocked back away from you, no damage. */
   function escape(game, f, o, push, type) {
-    f.ropeHold = 0;
-    f.cornerBlocks = 0;
+    f.blockedAt = [];
     f.escapeCool = ESCAPE_COOLDOWN;
-    if (!shielded(o) && !piece(o).planted) o.vx += Math.sign(o.x - f.x || 1) * push;
+    if (!shielded(o) && !piece(o).planted) {
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy);
+      o.vx += (d ? dx / d : 1) * push;
+      o.vy += (d ? dy / d : 0) * push;
+    }
     if (!shielded(o)) {
       setState(o, 'hitstun');
       o.stun = ESCAPE_STUN;
@@ -1701,8 +1692,7 @@
     order.forEach((f, k) => {
       f.x = REF_BREAK_AT[k];
       f.vx = 0;
-      f.ropeHold = 0;
-      f.cornerBlocks = 0;
+      f.blockedAt = [];
       if (f.state !== 'ko') setState(f, 'idle');
       game.inputs[game.fighters.indexOf(f)].buffered = null;
     });
@@ -2038,7 +2028,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, ROPE_WIND, CLINCH_BLOCKS, ESCAPE_COOLDOWN, REF_BREAK_TICKS, REF_BREAK_AT, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, REF_BREAK_TICKS, REF_BREAK_AT, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
