@@ -479,6 +479,29 @@
       sound.organ();
       return;
     }
+    if (e.type === 'mummy') {
+      const p = targetPos(e.target, 'body');
+      for (let k = 0; k < 10; k++) hearts.push({ x: p.x + (Math.random() - 0.5) * 80, y: p.y, vy: -1 - Math.random() * 1.5, life: 60 + k * 4, s: 0.8 + Math.random() * 0.6 });
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 150), 'Mummy loves you!', '#ff6fb1', 32);
+      sound.tinkle();
+      return;
+    }
+    if (e.type === 'cuddle') {
+      const p = targetPos(e.target, 'body');
+      for (let k = 0; k < 12; k++) {
+        const a = (k / 12) * Math.PI * 2;
+        hearts.push({ x: p.x + Math.cos(a) * 30, y: p.y + Math.sin(a) * 30, vy: -1.2, life: 50, s: 0.9 });
+      }
+      const top = targetPos(e.target, 'head');
+      floatText(top.x, top.y - (mode === 'ring' ? 60 : 95), 'Cuddle!', '#ff6fb1', 32);
+      sound.organ();
+      return;
+    }
+    if (e.type === 'cuddleHeal') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 40 : 70), `+${e.heal}`, '#ff6fb1', 26);
+      return;
+    }
     if (e.type === 'drain') {
       const to = targetPos(e.target, 'head');
       const victim = snap.fighters.findIndex((f, i) => i !== e.target && f.state === 'hitstun');
@@ -1450,6 +1473,8 @@
     const size = d.size || 1;
     if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
     if (f.spelling && !echo) spellBubble(0, -125 * size, 150 * size, clock);
+    if (f.love && !echo) loveAura(G.MUMMY_RADIUS, 22, -120, clock, f.love < 40);
+    if (f.hug && !echo) hugHearts(0, -150, 70, clock);
     ctx.scale(size, size);
     if (f.invisible > 0) {
       // My own Kyle: a faint shimmer, so I know where I am.
@@ -1996,6 +2021,11 @@
     const size = d.size || 1;
     if (size > 1.01) giantAura(0, 0, 56 * size, clock, false);
     if (f.spelling) spellBubble(0, 0, 44 * size, clock);
+    if (f.love) {
+      const r = (G.MUMMY_RADIUS * VK) / fighterScale();
+      loveAura(r, r, 0, clock, f.love < 40);
+    }
+    if (f.hug) hugHearts(0, 0, 32, clock);
     ctx.scale(size, size);
     if (f.invisible > 0) {
       // My own Kyle: a faint shimmer in a dashed ice-blue ring.
@@ -2296,6 +2326,7 @@
       out.push({ text: i === me ? `TYPE SWIM!  ${sec}s` : `SWIMMING  ${sec}s`, short: `SWIM ${sec}s`, color: f.afloat < 60 ? '#ff4a4f' : '#5fd3ff' });
     }
     if (f.poison) out.push({ text: 'POISONED', short: 'POISONED', color: '#a4c639' });
+    if (f.love) out.push({ text: `LOVE  ${secs(f.love)}s · COME HERE FOR A CUDDLE`, short: `LOVE ${secs(f.love)}s`, color: '#ff6fb1' });
     if (f.shoes) out.push({ text: `FAST SHOES  ${secs(f.shoes)}s`, short: `SHOES ${secs(f.shoes)}s`, color: '#ff5a36' });
     if (f.turbo) out.push({ text: `GRANDPA SPEED  ${secs(f.turbo)}s`, short: `SPEED ${secs(f.turbo)}s`, color: '#c9a46a' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
@@ -2543,6 +2574,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
     daddy: { fill: ['#fff3d6', '#ff5a36', '#a81e10'], spark: '#ffd23f' }, // trainer red
     grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
     fart: { fill: ['#f2ffd0', '#a4c639', '#556b14'], spark: '#c9e36a' }, // whiffy green
@@ -2670,6 +2702,51 @@
   }
 
   /** The giant's glow: a pulsing green aura, with glitter drifting off it. */
+  /**
+   * Mummy's love: a soft pink ring as far as her cuddles reach (rx by ry,
+   * on the floor), with hearts drifting up out of it to `top`.
+   */
+  function loveAura(rx, ry, top, clock, fading) {
+    ctx.save();
+    if (fading) ctx.globalAlpha *= 0.5 + 0.5 * Math.sin(clock * 30);
+    ctx.fillStyle = 'rgba(255,111,177,0.16)';
+    ctx.strokeStyle = 'rgba(255,150,200,0.7)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 8]);
+    ctx.lineDashOffset = -clock * 30;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (let k = 0; k < 6; k++) {
+      const q = (clock * 0.6 + k / 6) % 1;
+      const a = k * 2.1;
+      const x = Math.cos(a) * rx * 0.85;
+      const y = Math.sin(a) * ry * 0.85 + top * q;
+      ctx.globalAlpha = (fading ? 0.5 : 1) * (1 - q);
+      heart(x, y, top ? 9 : 5, '#ff6fb1');
+    }
+    ctx.restore();
+  }
+
+  /** Caught in one of Mummy's cuddles: hearts going round. */
+  function hugHearts(cx, cy, r, clock) {
+    for (let k = 0; k < 5; k++) {
+      const a = clock * 3 + (k / 5) * Math.PI * 2;
+      heart(cx + Math.cos(a) * r, cy + Math.sin(a) * r * 0.5, r > 40 ? 10 : 6, '#ff3d8f');
+    }
+  }
+
+  function heart(x, y, s, color) {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(x, y + s * 0.9);
+    ctx.bezierCurveTo(x - s * 1.4, y - s * 0.1, x - s * 0.6, y - s * 1.1, x, y - s * 0.4);
+    ctx.bezierCurveTo(x + s * 0.6, y - s * 1.1, x + s * 1.4, y - s * 0.1, x, y + s * 0.9);
+    ctx.fill();
+  }
+
   /** Luna spelling a code: a shimmering violet bubble nothing gets through. */
   function spellBubble(cx, cy, r, clock) {
     ctx.save();
