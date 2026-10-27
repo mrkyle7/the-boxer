@@ -62,6 +62,9 @@
 // with every hit, a rook that can't be budged, the all-powerful queen, and a
 // king that nothing can hurt (but who goes one slow step at a time).
 //
+// "daddy" puts you in a pair of fast shoes for seven seconds: you run at
+// nearly twice the speed.
+//
 // "ludo" gives you a sword for seven seconds: punches only, slashing for
 // 1.5x damage with 1.25x reach.
 //
@@ -238,9 +241,13 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy'];
+
+  // Daddy: fast shoes.
+  const DADDY_TICKS = 7 * TICK_RATE;
+  const DADDY_SPEED = 1.8;
 
   // Tony: a chess piece for seven seconds. Each piece's trick: damage (what
   // your hits do), reach, speed, taken (how much of a hit gets through to
@@ -364,6 +371,7 @@
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
       turbo: 0, // ticks of Grandpa's super speed left
+      shoes: 0, // ticks of Daddy's fast shoes left
       poison: false, // gassed by a fart: poisoned for the rest of the match
       poisonT: 0, // ticks till the poison bites again
       afloat: 0, // in the water: ticks till you sink unless you swim
@@ -569,6 +577,11 @@
     if (which === 'grandpa') {
       f.turbo = GRANDPA_TICKS;
       game.events.push({ type: 'grandpa', target: index });
+      return;
+    }
+    if (which === 'daddy') {
+      f.shoes = DADDY_TICKS;
+      game.events.push({ type: 'daddy', target: index });
       return;
     }
     if (which === 'jay') {
@@ -1089,6 +1102,7 @@
       if (f.invisible > 0 && --f.invisible === 0) reappear(game, f);
       if (f.fast > 0) f.fast--;
       if (f.turbo > 0) f.turbo--;
+      if (f.shoes > 0) f.shoes--;
       f.typedAgo++;
       if (f.poison && standing(f) && !spelling(f) && --f.poisonT <= 0) {
         f.poisonT = POISON_EVERY;
@@ -1152,7 +1166,7 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1) * (piece(f).speed || 1);
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1) * (f.shoes > 0 ? DADDY_SPEED : 1) * (piece(f).speed || 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
       let mx = dir * norm;
@@ -1815,6 +1829,7 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
+        ...(f.shoes > 0 ? { shoes: f.shoes } : {}),
         ...(f.state === 'attack' && f.move === 'dance' && f.pulling !== null && f.pulling !== undefined ? { pulling: f.pulling } : {}),
         ...(f.poison ? { poison: true } : {}),
         ...(f.afloat > 0 ? { afloat: f.afloat } : {}),
@@ -1851,7 +1866,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
