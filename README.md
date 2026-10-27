@@ -52,7 +52,7 @@ Or **spreadbury**: USA! USA! For ten seconds everything goes stars and stripes (
 
 Or **edward**: a secret pause. For three seconds nothing does any damage and the clock stands still, but nobody else is told (unless they spot the letters going in): the fight carries on looking just the same, and stamina still goes up and down as normal.
 
-Or **mummy**: love all round for seven seconds (a pink ring of hearts on the floor). Anyone who comes too close is caught in a loving cuddle, held for a second, and Mummy steals 10 health from them; they get two seconds to wriggle away before she can cuddle them again.
+Or **mummy**: love all round for seven seconds (a pink ring of hearts on the floor). Anyone who comes too close is caught in a loving cuddle, held for a second, and Mummy steals 10 health from them. Only one cuddle each, though, so nobody can be trapped in a corner.
 
 Or **daddy**: a pair of fast shoes (red trainers with lightning bolts and little wings) for seven seconds, and you run at 1.8x speed.
 

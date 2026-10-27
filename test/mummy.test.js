@@ -46,14 +46,24 @@ test('mummy: whoever comes too close is cuddled, and she takes 10 health', () =>
   assert.strictEqual(G.CUDDLE_STEAL, 10);
 });
 
-test('a second to be held, two more to get away before the next cuddle', () => {
+test('only one cuddle each: staying close (stuck in a corner) is safe after that', () => {
   const g = fight();
   const [m, b] = g.fighters;
   m.x = 300; b.x = 400;
   G.cheat(g, 0, 'mummy');
-  const events = run(g, G.CUDDLE_TICKS + G.CUDDLE_EVERY + 2);
-  const cuddles = events.filter((e) => e.type === 'cuddle');
-  assert.strictEqual(cuddles.length, 2, 'stayed close: caught again');
+  const events = run(g, G.MUMMY_TICKS);
+  assert.strictEqual(events.filter((e) => e.type === 'cuddle').length, 1);
+  assert.strictEqual(b.hp, G.MAX_HP - G.CUDDLE_STEAL);
+});
+
+test('typing it again is a fresh cuddle for everyone', () => {
+  const g = fight();
+  const [m, b] = g.fighters;
+  m.x = 300; b.x = 400;
+  G.cheat(g, 0, 'mummy');
+  run(g, G.CUDDLE_TICKS + 5);
+  G.cheat(g, 0, 'mummy');
+  assert.ok(run(g, 5).some((e) => e.type === 'cuddle'));
   assert.strictEqual(b.hp, G.MAX_HP - 2 * G.CUDDLE_STEAL);
 });
 
