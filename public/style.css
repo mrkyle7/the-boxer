@@ -288,3 +288,16 @@ body.ring .side-only { display: none !important; }
   /* In the ring there are two more buttons: two columns each side. */
   body.ring #fight .pad { display: grid; grid-template-columns: repeat(2, auto); }
 }
+
+/* Buy me a coffee: the same badge on every game (see ADDING_A_GAME.md in mrkyle7/cheetahmoongames). */
+.bmc {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  background: #ffdd00; color: #0d0c22;
+  font: 600 14px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  text-decoration: none; white-space: nowrap;
+}
+.bmc:hover { background: #ffe74d; }
+.bmc:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.bmc svg { width: 18px; height: 18px; flex: none; }
+.bmc-row { margin: 24px 0 0; text-align: center; }
