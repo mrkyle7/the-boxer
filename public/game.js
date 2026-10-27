@@ -104,6 +104,8 @@
   // Luna's helping hand.
   const LUNA_SPEED = 1.2; // walks 20% faster
   const LUNA_REACH = 1.2; // punches and kicks reach 20% further
+  // Luna spelling a code is untouchable, while she keeps the letters coming.
+  const LUNA_SPELL_GAP = Math.round(1.5 * TICK_RATE);
   const LUNA_LUNGE = 70; // steps in to land an attack up to this far out of reach
   const ASSIST_CONE = 0.5; // cos 60°: ring walking bends towards an opponent roughly ahead
   const ASSIST_PULL = 0.45; // ...by this much
@@ -369,6 +371,7 @@
       invisible: 0, // ticks of Kyle left
       typed: '', // the last few letters typed in the fight
       typing: '', // as much of a cheat code as they make, for everyone to see
+      typedAgo: Infinity, // ticks since the last letter
       kyle: isKyle(name),
       x: ring ? start[0] : index === 0 ? 350 : 650,
       y: ring ? start[1] : 0,
@@ -466,6 +469,7 @@
     if (action === 'kick' && game.fighters[index] && game.fighters[index].lion > 0) return; // lions swipe, they don't kick
     if (action === 'kick' && game.fighters[index] && game.fighters[index].sword > 0) return; // sword in hand: slash, don't kick
     const input = game.inputs[index];
+    if (game.fighters[index] && spelling(game.fighters[index])) return; // Luna's busy spelling
     // A cheat move that's just gone in isn't replaced by the key that finished it.
     if (['flip', 'vault', 'dance', 'cartwheel', 'fart'].includes(input.buffered)) return;
     input.buffered = action;
@@ -665,7 +669,7 @@
     const index = game.fighters.indexOf(f);
     const hits = [];
     game.fighters.forEach((o, i) => {
-      if (o === f || !standing(o) || untouchable(o)) return;
+      if (o === f || !standing(o) || shielded(o)) return;
       const d = Math.hypot(o.x - s.x, ring ? o.y - s.y : 0);
       if (d > FIST_RADIUS) return;
       hits.push(i);
@@ -691,7 +695,7 @@
     if (ring) f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y + c.dy * CAR_SPEED));
     const index = game.fighters.indexOf(f);
     game.fighters.forEach((o, i) => {
-      if (o === f || c.hit.includes(i) || !standing(o) || untouchable(o) || airborne(o)) return; // jumped over it
+      if (o === f || c.hit.includes(i) || !standing(o) || shielded(o) || airborne(o)) return; // jumped over it
       if (Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) > CAR_HIT_RADIUS) return;
       c.hit.push(i);
       game.events.push({ type: 'carHit', attacker: index, target: i });
@@ -825,7 +829,7 @@
 
   /** Damage that isn't a punch or kick: no guard stops it. */
   function hurt(game, att, def, damage, stun, knockback, attIndex) {
-    if (!def || !standing(def)) return;
+    if (!def || !standing(def) || spelling(def)) return;
     const i = game.fighters.indexOf(def);
     const hitter = attIndex !== undefined ? game.fighters[attIndex] : att;
     if (hitter && hitter.vampire > 0) damage = Math.round(damage * VAMPIRE_DAMAGE);
@@ -862,6 +866,7 @@
     const k = String(key || '').toLowerCase();
     if (!/^[a-z]$/.test(k)) return;
     f.typed = (f.typed + k).slice(-CODE_MAX);
+    f.typedAgo = 0;
     const done = Object.keys(CODES).find((c) => f.typed.endsWith(c));
     if (done) {
       f.typed = '';
@@ -889,6 +894,20 @@
     const crouch = f.move === 'jump' ? JUMP_CROUCH : FLIP_CROUCH;
     return f.state === 'attack' && AIRBORNE_MOVES.includes(f.move)
       && f.t >= crouch && f.t < MOVES[f.move].startup;
+  }
+
+  /**
+   * The player called Luna, spelling out a code: two letters in (that start
+   * one), nothing can touch her until she finishes it, gets a letter wrong,
+   * or stops typing for a moment. She can't attack while she spells.
+   */
+  function spelling(f) {
+    return !!f.luna && f.typing.length >= 2 && f.typedAgo < LUNA_SPELL_GAP;
+  }
+
+  /** Out of reach of any harm: up in the air, in a car, or Luna spelling. */
+  function shielded(f) {
+    return untouchable(f) || spelling(f);
   }
 
   /**
@@ -1070,7 +1089,8 @@
       if (f.invisible > 0 && --f.invisible === 0) reappear(game, f);
       if (f.fast > 0) f.fast--;
       if (f.turbo > 0) f.turbo--;
-      if (f.poison && standing(f) && --f.poisonT <= 0) {
+      f.typedAgo++;
+      if (f.poison && standing(f) && !spelling(f) && --f.poisonT <= 0) {
         f.poisonT = POISON_EVERY;
         f.hp = Math.max(0, f.hp - POISON_DAMAGE);
         game.events.push({ type: 'poison', target: index, damage: POISON_DAMAGE });
@@ -1253,7 +1273,7 @@
       let def = null;
       let bestD = Infinity;
       game.fighters.forEach((o, j) => {
-        if (j === i || !standing(o) || untouchable(o)) return;
+        if (j === i || !standing(o) || shielded(o)) return;
         const d = distance(att, o);
         if (d > reach(att, m) || d >= bestD) return;
         // The flip lands on whoever is nearest, whichever way they are.
@@ -1327,7 +1347,7 @@
       if (Math.abs(def.x - att.x) > reach(att, m)) return;
       // Nobody turns to face Kyle: once he's walked through you, you swing the wrong way.
       if (def.invisible > 0 && def.x !== att.x && Math.sign(def.x - att.x) !== att.facing) return;
-      if (def.state === 'ko' || untouchable(def)) return;
+      if (def.state === 'ko' || shielded(def)) return;
       att.hitLanded = true;
       pending.push({
         attacker: i, defender: 1 - i, move: att.move, height: att.aim, second: flipHit(att),
@@ -1550,7 +1570,7 @@
   /** Louise dancing: whoever she's pulling slides in towards her. */
   function pullIn(game, f) {
     const o = f.pulling !== null && f.pulling !== undefined ? game.fighters[f.pulling] : null;
-    if (!o || !standing(o) || untouchable(o)) return;
+    if (!o || !standing(o) || shielded(o)) return;
     const dx = f.x - o.x;
     const dy = game.mode === 'ring' ? f.y - o.y : 0;
     const d = Math.hypot(dx, dy) || 1;
@@ -1580,7 +1600,7 @@
       c.x += c.dx * CLOUD_SPEED;
       c.y += c.dy * CLOUD_SPEED;
       c.dist += CLOUD_SPEED;
-      const i = game.fighters.findIndex((o, j) => j !== c.owner && standing(o) && !untouchable(o) && !airborne(o)
+      const i = game.fighters.findIndex((o, j) => j !== c.owner && standing(o) && !shielded(o) && !airborne(o)
         && Math.hypot(o.x - c.x, ring ? o.y - c.y : 0) <= CLOUD_HIT_RADIUS);
       if (i < 0) {
         if (c.dist < CLOUD_RANGE) return true;
@@ -1624,7 +1644,7 @@
       b.x += b.dx * RAY_SPEED;
       b.y += b.dy * RAY_SPEED;
       b.dist += RAY_SPEED;
-      const i = game.fighters.findIndex((o, j) => j !== b.owner && standing(o) && !untouchable(o)
+      const i = game.fighters.findIndex((o, j) => j !== b.owner && standing(o) && !shielded(o)
         && Math.hypot(o.x - b.x, ring ? o.y - b.y : 0) <= RAY_HIT_RADIUS);
       if (i < 0) {
         const out = ring ? b.x < RING_MIN - 60 || b.x > RING_MAX + 60 || b.y < RING_MIN - 60 || b.y > RING_MAX + 60
@@ -1718,7 +1738,7 @@
     const ring = game.mode === 'ring';
     const hit = [];
     game.fighters.forEach((f, i) => {
-      if (!standing(f) || untouchable(f)) return; // flipped clean over it (or drove out from under it)
+      if (!standing(f) || shielded(f)) return; // flipped clean over it (or drove out from under it)
       const dx = f.x - x;
       const dy = ring ? f.y - y : 0;
       const d = Math.hypot(dx, dy);
@@ -1788,6 +1808,7 @@
       fighters: game.fighters.map((f) => ({
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
+        ...(spelling(f) ? { spelling: true } : {}),
         ...(f.typing ? { typing: f.typing } : {}),
         ...(f.giant > 0 ? { giant: f.giant } : {}),
         ...(f.invisible > 0 ? { invisible: f.invisible } : {}),
@@ -1830,7 +1851,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
