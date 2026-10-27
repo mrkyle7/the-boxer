@@ -65,12 +65,12 @@ test('ludo: no kicks while you hold the sword', () => {
   assert.ok(!events.some((e) => e.type === 'hit'));
 });
 
-test('ludo: gone after seven seconds', () => {
+test('ludo: gone after ten seconds', () => {
   const g = fight();
   type(g, 0, 'ludo');
   run(g, G.SWORD_TICKS);
   assert.strictEqual(g.fighters[0].sword, 0);
   const hit = punchFrom(g, 140);
   assert.strictEqual(hit.damage, G.MOVES.punch.head.damage);
-  assert.strictEqual(G.SWORD_TICKS, 7 * G.TICK_RATE);
+  assert.strictEqual(G.SWORD_TICKS, 10 * G.TICK_RATE);
 });

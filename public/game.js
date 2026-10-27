@@ -27,14 +27,14 @@
 // to land behind them and kick them in the back for 30, unblockable.
 // "luna" teleports you to just beside the nearest opponent; "louise" dances,
 // reeling the nearest opponent in, and hip-bumps them for 30; "tamzin" cartwheels across at them for 30;
-// "grandpa" makes you super fast for three seconds. (Luna's teleport ends in a
+// "grandpa" makes you super fast for ten seconds. (Luna's teleport ends in a
 // kick.) "fart" turns you round and gasses them: poisoned for the match, 5
 // every 10 seconds, unless they jump it. "water" floods the ring for ten
 // seconds: first to type "boat" gets the boat, the rest keep typing "swim".
 //
-// Two more go on you, not on them: "jemini" makes you a giant for seven
+// Two more go on you, not on them: "jemini" makes you a giant for ten
 // seconds (your hits do 10% more), and "kyle" makes you invisible to the
-// others for five: you walk right through people, and nobody turns to face
+// others for ten: you walk right through people, and nobody turns to face
 // you. But end it standing inside someone and you're thrown out of them, for
 // 10 damage.
 //
@@ -52,32 +52,33 @@
 // floor (reaching up for it as it comes down) gets half their health back. "mamtora" is the same, but India,
 // and dosas.
 //
-// "edward" secretly pauses the fight for three seconds: everything looks
+// "edward" secretly pauses the fight for ten seconds: everything looks
 // the same and everyone keeps fighting, but no hit does any damage and the
 // clock doesn't move. Stamina still goes down (and back up) as normal.
 //
-// "tony" turns you into a chess piece for seven seconds, picked at random,
+// "tony" turns you into a chess piece for ten seconds, picked at random,
 // each with its own trick (see CHESS): a pawn that promotes to a queen
 // after three hits, a knight that leaps over guards, a bishop that heals
 // with every hit, a rook that can't be budged, the all-powerful queen, and a
 // king that nothing can hurt (but who goes one slow step at a time).
 //
-// "daddy" puts you in a pair of fast shoes for seven seconds: you run at
+// "daddy" puts you in a pair of fast shoes for ten seconds: you run at
 // nearly twice the speed.
 //
-// "mummy" surrounds you with love for seven seconds: anyone who comes too
+// "mummy" surrounds you with love for ten seconds: anyone who comes too
 // close is caught in a loving cuddle (held for a second), and you steal 10
-// health from them. Only once each, though: then she lets them go.
+// health from them. Only once each, though, and once she's cuddled
+// everyone the love is spent.
 //
-// "ludo" gives you a sword for seven seconds: punches only, slashing for
+// "ludo" gives you a sword for ten seconds: punches only, slashing for
 // 1.5x damage with 1.25x reach.
 //
-// "jay" makes you a vampire for seven seconds: your hits do half damage, and
+// "jay" makes you a vampire for ten seconds: your hits do half damage, and
 // drain it, healing you by as much as they take. "leo" makes you a lion for
-// seven: punches only (a swipe of the claws) for 1.5x damage, no kicks, and
+// ten: punches only (a swipe of the claws) for 1.5x damage, no kicks, and
 // no blocking.
 //
-// "daniel" makes you spiky for five seconds: anyone who hits you takes 70%
+// "daniel" makes you spiky for ten seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
 // "priya" fires a freeze ray at whoever you're fighting: three seconds in a
@@ -99,6 +100,8 @@
   const STAMINA_REGEN = 0.32;
   const STAMINA_REGEN_BLOCKING = 0.12;
   const ROUND_TICKS = 60 * TICK_RATE;
+  // How long a power lasts, unless it says otherwise.
+  const POWER_TICKS = 10 * TICK_RATE;
   const COUNTDOWN_TICKS = 90;
   const ROUND_END_TICKS = 180;
   const ROUNDS_TO_WIN = 2;
@@ -112,7 +115,7 @@
   const LUNA_SPEED = 1.2; // walks 20% faster
   const LUNA_REACH = 1.2; // punches and kicks reach 20% further
   // Luna spelling a code is untouchable, while she keeps the letters coming.
-  const LUNA_SPELL_GAP = Math.round(1.5 * TICK_RATE);
+  const LUNA_SPELL_GAP = 5 * TICK_RATE;
   const LUNA_LUNGE = 70; // steps in to land an attack up to this far out of reach
   const ASSIST_CONE = 0.5; // cos 60°: ring walking bends towards an opponent roughly ahead
   const ASSIST_PULL = 0.45; // ...by this much
@@ -232,13 +235,13 @@
   // (the flood itself then lasts WATER_TICKS from the first boat or swim)
   const SWIM_TICKS = 4 * TICK_RATE; // how much longer each "swim" keeps you up
   // Grandpa: super fast.
-  const GRANDPA_TICKS = 3 * TICK_RATE;
+  const GRANDPA_TICKS = POWER_TICKS;
   const GRANDPA_SPEED = 2.6;
 
   // The power-ups: how long each lasts, and what Jemini adds to your hits.
-  const JEMINI_TICKS = 7 * TICK_RATE;
+  const JEMINI_TICKS = POWER_TICKS;
   const JEMINI_DAMAGE = 1.1;
-  const KYLE_TICKS = 5 * TICK_RATE;
+  const KYLE_TICKS = POWER_TICKS;
   const KYLE_STUCK_DAMAGE = 10; // ending it inside someone
   const KYLE_STUCK_KNOCKBACK = 16;
 
@@ -250,19 +253,19 @@
   const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy'];
 
   // Mummy: love all round, and a cuddle for anyone who comes too close.
-  const MUMMY_TICKS = 7 * TICK_RATE;
+  const MUMMY_TICKS = POWER_TICKS;
   const MUMMY_RADIUS = 140;
   const CUDDLE_STEAL = 10;
   const CUDDLE_TICKS = TICK_RATE; // held in the cuddle
 
   // Daddy: fast shoes.
-  const DADDY_TICKS = 7 * TICK_RATE;
+  const DADDY_TICKS = POWER_TICKS;
   const DADDY_SPEED = 1.8;
 
-  // Tony: a chess piece for seven seconds. Each piece's trick: damage (what
+  // Tony: a chess piece for ten seconds. Each piece's trick: damage (what
   // your hits do), reach, speed, taken (how much of a hit gets through to
   // you), and more.
-  const CHESS_TICKS = 7 * TICK_RATE;
+  const CHESS_TICKS = POWER_TICKS;
   const CHESS = {
     pawn: { damage: 0.75 }, // small, but three hits and it's a queen
     knight: { reach: 1.5, overGuard: true }, // jumps over your guard
@@ -276,16 +279,16 @@
   const NO_PIECE = {};
   const piece = (f) => (f.chess > 0 ? CHESS[f.piece] : NO_PIECE);
 
-  // Ludo: a sword for seven seconds. Punches become sword slashes: 50% more
+  // Ludo: a sword for ten seconds. Punches become sword slashes: 50% more
   // damage, 25% more reach. No kicks while you hold it.
-  const SWORD_TICKS = 7 * TICK_RATE;
+  const SWORD_TICKS = POWER_TICKS;
   const SWORD_DAMAGE = 1.5;
   const SWORD_REACH = 1.25;
 
   // Jay: a vampire. Leo: a lion.
-  const VAMPIRE_TICKS = 7 * TICK_RATE;
+  const VAMPIRE_TICKS = POWER_TICKS;
   const VAMPIRE_DAMAGE = 0.5; // hits do half...
-  const LION_TICKS = 7 * TICK_RATE;
+  const LION_TICKS = POWER_TICKS;
   const LION_DAMAGE = 1.5;
 
   // Spreadbury: USA! USA! and two hotdogs from the sky. Mamtora: India, and dosas.
@@ -303,10 +306,10 @@
   const HOTDOG_JUMP_REACH_AT = 0.3;
 
   // Edward: the secret pause button.
-  const PAUSE_TICKS = 3 * TICK_RATE;
+  const PAUSE_TICKS = POWER_TICKS;
 
   // Daniel: spiky. Hits on you split 30:70, you:them.
-  const SPIKY_TICKS = 5 * TICK_RATE;
+  const SPIKY_TICKS = POWER_TICKS;
   const SPIKY_KEEP = 0.3;
 
   // Priya: a freeze ray. An icy bolt that flies at whoever you're fighting
@@ -317,11 +320,11 @@
   const RAY_FREEZE_TICKS = 3 * TICK_RATE;
 
   // Shree: steering the giant fist.
-  const SHREE_TICKS = 6 * TICK_RATE; // drops by itself if you haven't punched by then
+  const SHREE_TICKS = POWER_TICKS; // drops by itself if you haven't punched by then
   const SHREE_SPEED = 9; // how fast its shadow moves
   const SHREE_DROP_TICKS = 16; // from the punch to the slam
   // Shaan: shrunk.
-  const SHAAN_TICKS = 7 * TICK_RATE;
+  const SHAAN_TICKS = POWER_TICKS;
   const SHAAN_DAMAGE = 0.9;
   // Parimal: the car.
   const CAR_REV_TICKS = 30; // revs on the spot for half a second first: time to get out of the way
@@ -335,14 +338,14 @@
   //  zap: lightning strikes whoever you're fighting, for 25 (no guard stops it)
   //  banana: they slip on a banana skin, 15, and are down for a second and a bit
   //  freeze: everyone else is frozen in a block of ice for three seconds
-  //  zoom: you run nearly twice as fast for six seconds
+  //  zoom: you run nearly twice as fast for ten seconds
   //  snack: a quick snack puts 30 health and all your stamina back
   const SURPRISES = ['zap', 'banana', 'freeze', 'zoom', 'snack'];
   const ZAP_DAMAGE = 25;
   const BANANA_DAMAGE = 15;
   const BANANA_TICKS = 80;
   const FREEZE_TICKS = 3 * TICK_RATE;
-  const ZOOM_TICKS = 6 * TICK_RATE;
+  const ZOOM_TICKS = POWER_TICKS;
   const ZOOM_SPEED = 1.8;
   const SNACK_HEAL = 30;
   const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
@@ -1634,6 +1637,11 @@
           if (heal > 0) game.events.push({ type: 'cuddleHeal', target: index, heal });
         }
       });
+      // Everyone still up has had their cuddle: the love is spent.
+      if (f.cuddled.length && game.fighters.every((o, i) => o === f || !standing(o) || f.cuddled.includes(i))) {
+        f.love = 0;
+        game.events.push({ type: 'loveSpent', target: index });
+      }
     });
   }
 
@@ -1917,7 +1925,7 @@
   }
 
   const api = {
-    TICK_RATE, RING_LEFT, RING_RIGHT, MIN_SEPARATION, MAX_HP, MAX_STAMINA,
+    TICK_RATE, POWER_TICKS, RING_LEFT, RING_RIGHT, MIN_SEPARATION, MAX_HP, MAX_STAMINA,
     ROUND_TICKS, COUNTDOWN_TICKS, ROUND_END_TICKS, ROUNDS_TO_WIN, MAX_ROUNDS,
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,

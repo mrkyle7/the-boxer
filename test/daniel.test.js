@@ -1,6 +1,6 @@
 'use strict';
 
-// "daniel": spiky for five seconds. Hits on you split 30:70, you:them.
+// "daniel": spiky for ten seconds. Hits on you split 30:70, you:them.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -47,7 +47,7 @@ test('daniel: a kick on a spiky fighter splits 30:70', () => {
   assert.ok(events.some((e) => e.type === 'spiked' && e.target === 0 && e.damage === full - keep));
 });
 
-test('daniel: the spikes go after five seconds', () => {
+test('daniel: the spikes go after ten seconds', () => {
   const g = fight();
   type(g, 1, 'daniel');
   run(g, G.SPIKY_TICKS);

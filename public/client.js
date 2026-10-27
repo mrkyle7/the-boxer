@@ -497,6 +497,11 @@
       sound.organ();
       return;
     }
+    if (e.type === 'loveSpent') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 140), 'All cuddled out!', '#ff6fb1', 26);
+      return;
+    }
     if (e.type === 'cuddleHeal') {
       const p = targetPos(e.target, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 40 : 70), `+${e.heal}`, '#ff6fb1', 26);

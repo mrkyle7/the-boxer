@@ -1,6 +1,6 @@
 'use strict';
 
-// "edward": a secret pause for three seconds. The fight carries on, but no
+// "edward": a secret pause for ten seconds. The fight carries on, but no
 // hit does any damage and the clock stands still. Stamina still counts.
 
 const test = require('node:test');
@@ -54,7 +54,7 @@ test('edward: everyone still moves, and nobody is told', () => {
   assert.ok(a.x < x);
 });
 
-test('edward: after three seconds hits hurt again and the clock runs', () => {
+test('edward: after ten seconds hits hurt again and the clock runs', () => {
   const g = fight();
   const [a, b] = g.fighters;
   type(g, 1, 'edward');

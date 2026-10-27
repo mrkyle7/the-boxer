@@ -1,6 +1,6 @@
 'use strict';
 
-// "daddy": fast shoes for seven seconds.
+// "daddy": fast shoes for ten seconds.
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -36,7 +36,7 @@ function walk(g) {
   return 600 - a.x;
 }
 
-test('daddy: fast shoes, nearly twice the speed, for seven seconds', () => {
+test('daddy: fast shoes, nearly twice the speed, for ten seconds', () => {
   const g = fight();
   const normal = walk(g);
   type(g, 0, 'daddy');
@@ -47,5 +47,5 @@ test('daddy: fast shoes, nearly twice the speed, for seven seconds', () => {
   run(g, G.DADDY_TICKS);
   assert.ok(!('shoes' in G.snapshot(g).fighters[0]), 'shoes off');
   assert.ok(Math.abs(walk(g) - normal) < 0.5, 'back to normal');
-  assert.strictEqual(G.DADDY_TICKS, 7 * G.TICK_RATE);
+  assert.strictEqual(G.DADDY_TICKS, 10 * G.TICK_RATE);
 });

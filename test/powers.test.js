@@ -35,7 +35,7 @@ function kickDamage(g) {
   return run(g, 30).find((e) => e.type === 'hit').damage;
 }
 
-test('jemini: a giant for seven seconds, hitting 10% harder', () => {
+test('jemini: a giant for ten seconds, hitting 10% harder', () => {
   const g = fight();
   type(g, 0, 'jemini');
   assert.strictEqual(g.fighters[0].giant, G.JEMINI_TICKS);
@@ -46,7 +46,7 @@ test('jemini: a giant for seven seconds, hitting 10% harder', () => {
   assert.strictEqual(kickDamage(g), Math.round(plain * 1.1));
 
   run(g, G.JEMINI_TICKS);
-  assert.strictEqual(g.fighters[0].giant, 0, 'worn off after seven seconds');
+  assert.strictEqual(g.fighters[0].giant, 0, 'worn off after ten seconds');
   assert.ok(!('giant' in G.snapshot(g).fighters[0]));
   run(g, 30);
   assert.strictEqual(kickDamage(g), plain);
@@ -61,16 +61,16 @@ test('jemini works straight away, even mid-attack, and needs no stamina', () => 
   assert.ok(g.fighters[0].giant > 0);
 });
 
-test('kyle: invisible for five seconds (only how the others draw you)', () => {
+test('kyle: invisible for ten seconds (only how the others draw you)', () => {
   const g = fight();
   type(g, 0, 'kyle');
   const events = run(g, 1);
   assert.ok(events.some((e) => e.type === 'kyle' && e.target === 0));
   assert.ok(G.snapshot(g).fighters[0].invisible > 0);
   run(g, G.KYLE_TICKS);
-  assert.ok(!('invisible' in G.snapshot(g).fighters[0]), 'back after five seconds');
-  assert.strictEqual(G.KYLE_TICKS, 5 * G.TICK_RATE);
-  assert.strictEqual(G.JEMINI_TICKS, 7 * G.TICK_RATE);
+  assert.ok(!('invisible' in G.snapshot(g).fighters[0]), 'back after ten seconds');
+  assert.strictEqual(G.KYLE_TICKS, 10 * G.TICK_RATE);
+  assert.strictEqual(G.JEMINI_TICKS, 10 * G.TICK_RATE);
 });
 
 test('all four codes are there; the E in kyle and jemini is fine', () => {
