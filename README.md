@@ -29,7 +29,7 @@ To play with someone on another machine, deploy it anywhere that runs Node and a
 
 Phones and tablets get on-screen buttons.
 
-A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches and kicks reach 20% further, she steps in when an attack is just out of reach, and in the ring her walking bends towards the opponent she's heading for.
+A fighter called **Luna** gets a helping hand: she walks 20% faster, her punches and kicks reach 20% further, she steps in when an attack is just out of reach, and in the ring her walking bends towards the opponent she's heading for. And once she's two letters into a cheat code, nothing can touch her (no hits, no giant fist, no poison) until she finishes the word, gets a letter wrong or stops typing for a second and a half; she can't attack while she's spelling, though. A violet bubble shows it.
 
 Your aim stays where you last set it, so you can tap `E` then `A`, or hold `E` while pressing `A`, for a tummy punch. A block only covers the height you're aiming at: guard the head and a tummy kick goes straight in. Head shots do more damage; tummy shots knock the wind out and drain stamina. Every attack costs stamina, a guard with no stamina left breaks, and hitting someone mid-attack is a counter worth 40% more.
 

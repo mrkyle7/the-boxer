@@ -1442,6 +1442,7 @@
     ctx.translate(x, FLOOR);
     const size = d.size || 1;
     if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
+    if (f.spelling && !echo) spellBubble(0, -125 * size, 150 * size, clock);
     ctx.scale(size, size);
     if (f.invisible > 0) {
       // My own Kyle: a faint shimmer, so I know where I am.
@@ -1956,6 +1957,7 @@
     ctx.scale(fighterScale(), fighterScale());
     const size = d.size || 1;
     if (size > 1.01) giantAura(0, 0, 56 * size, clock, false);
+    if (f.spelling) spellBubble(0, 0, 44 * size, clock);
     ctx.scale(size, size);
     if (f.invisible > 0) {
       // My own Kyle: a faint shimmer in a dashed ice-blue ring.
@@ -2628,6 +2630,30 @@
   }
 
   /** The giant's glow: a pulsing green aura, with glitter drifting off it. */
+  /** Luna spelling a code: a shimmering violet bubble nothing gets through. */
+  function spellBubble(cx, cy, r, clock) {
+    ctx.save();
+    const g = ctx.createRadialGradient(cx, cy, r * 0.6, cx, cy, r);
+    g.addColorStop(0, 'rgba(179,136,255,0)');
+    g.addColorStop(1, 'rgba(179,136,255,0.35)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(215,196,255,${0.6 + 0.3 * Math.sin(clock * 9)})`;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    // A few sparkles going round it.
+    ctx.fillStyle = '#ffffff';
+    for (let k = 0; k < 5; k++) {
+      const a = clock * 2 + (k / 5) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
   function giantAura(cx, cy, r, clock, side) {
     const pulse = 0.75 + 0.25 * Math.sin(clock * 6);
     const g = ctx.createRadialGradient(cx, cy, r * 0.15, cx, cy, r);
