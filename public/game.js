@@ -351,6 +351,26 @@
   const CODE_MAX = Math.max(...Object.keys(CODES).map((c) => c.length));
   const AIRBORNE_MOVES = ['flip', 'vault', 'jump'];
 
+  // Getting out of a corner, one on one. You're cornered with the ropes
+  // right behind you and your opponent close in front. Then:
+  //  - jump to leapfrog right over them and land behind them;
+  //  - keep pushing back into the ropes and you bounce off them, barging
+  //    them back across the ring (no damage);
+  //  - block three hits in a row and you shove them off you;
+  //  - and if the two of you stay locked up in the corner for three
+  //    seconds, the referee steps in and sends you both back to the middle.
+  const CORNER_ZONE = 50; // this close to the ropes behind you...
+  const CORNER_CLOSE = 160; // ...with them this close in front
+  const LEAPFROG_LAND = MIN_SEPARATION + 10; // where you land, past them
+  const ROPE_WIND = 15; // ticks of pushing into the ropes before you spring
+  const ROPE_PUSH = 45; // the barge: about a quarter of the ring
+  const CLINCH_BLOCKS = 3; // blocks in a row that earn a shove
+  const CLINCH_PUSH = 35;
+  const ESCAPE_STUN = 20; // knocked back on their heels
+  const ESCAPE_COOLDOWN = 2 * TICK_RATE; // between a fighter's escapes
+  const REF_BREAK_TICKS = 3 * TICK_RATE;
+  const REF_BREAK_AT = [350, 650]; // where the referee puts you
+
   // Jumping (one on one only): up and down again, over a car (or anything).
   const JUMP_CROUCH = 2; // off the ground quick
   MOVES.jump = {
@@ -388,6 +408,10 @@
       love: 0, // ticks of Mummy's love left
       hug: 0, // ticks left in one of Mummy's cuddles
       cuddled: [], // who Mummy has cuddled this time (once each)
+      leapfrog: false, // this jump goes over them, out of the corner
+      ropeHold: 0, // ticks pushing back into the ropes
+      cornerBlocks: 0, // blocks in a row in the corner
+      escapeCool: 0, // ticks before the next escape
       poison: false, // gassed by a fart: poisoned for the rest of the match
       poisonT: 0, // ticks till the poison bites again
       afloat: 0, // in the water: ticks till you sink unless you swim
@@ -950,7 +974,7 @@
    * you over a car: anything else can still hit you on the way up.)
    */
   function untouchable(f) {
-    return (airborne(f) && f.move !== 'jump') || !!f.car;
+    return (airborne(f) && (f.move !== 'jump' || f.leapfrog)) || !!f.car;
   }
 
   /**
@@ -1062,7 +1086,18 @@
       aimFlip(game, f, 'cartwheel');
       game.events.push({ type: 'cartwheel', attacker: game.fighters.indexOf(f) });
     } else if (action === 'jump') {
-      f.flipStep = null; // straight up and down
+      f.flipStep = null; // straight up and down...
+      f.leapfrog = false;
+      // ...unless you're cornered: then it's over their head and out.
+      if (cornered(game, f) && !(f.escapeCool > 0)) {
+        const o = opponentOf(game, f);
+        const side = Math.sign(o.x - f.x) || 1;
+        const land = Math.max(RING_LEFT, Math.min(RING_RIGHT, o.x + side * LEAPFROG_LAND));
+        f.flipStep = { x: (land - f.x) / (m.startup - JUMP_CROUCH), y: 0 };
+        f.leapfrog = true;
+        f.escapeCool = ESCAPE_COOLDOWN;
+        game.events.push({ type: 'leapfrog', attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o) });
+      }
     } else if (f.luna) lunge(game, f, m);
   }
 
@@ -1126,6 +1161,7 @@
       if (f.turbo > 0) f.turbo--;
       if (f.shoes > 0) f.shoes--;
       if (f.love > 0) f.love--;
+      if (f.escapeCool > 0) f.escapeCool--;
       if (f.hug > 0) f.hug--;
       f.typedAgo++;
       if (f.poison && standing(f) && !spelling(f) && --f.poisonT <= 0) {
@@ -1184,6 +1220,7 @@
       const dir = (input.right ? 1 : 0) - (input.left ? 1 : 0);
       // Up and down only mean anything in the ring.
       const dirY = game.mode === 'ring' ? (input.down ? 1 : 0) - (input.up ? 1 : 0) : 0;
+      ropeBounce(game, f, dir);
       const wantBlock = input.block && !(f.lion > 0); // lions don't block
       const next = wantBlock ? 'block' : dir !== 0 || dirY !== 0 ? 'walk' : 'idle';
       if (next !== f.state) {
@@ -1426,6 +1463,7 @@
           setState(def, 'blockstun');
           def.stun = m.blockstun;
           game.events.push({ type: 'block', ...ev });
+          if (cornered(game, def) && ++def.cornerBlocks >= CLINCH_BLOCKS) escape(game, def, att, CLINCH_PUSH, 'clinchBreak');
         }
       } else {
         const h = hit.move === 'flip' && !hit.second ? m.first : m[hit.height];
@@ -1535,6 +1573,7 @@
       game.clouds = [];
       game.water = null;
       game.paused = 0;
+      game.clinchT = 0;
       game.usa = 0;
       game.theme = null;
       game.hotdogs = [];
@@ -1573,6 +1612,7 @@
       if (game.fists) updateFist(game);
       updateBolts(game);
       updateLove(game);
+      refBreak(game);
       updateClouds(game);
       updateWater(game);
       updateUsa(game);
@@ -1604,6 +1644,71 @@
     const others = game.fighters.filter((o) => o !== f && standing(o));
     if (!others.length) return null;
     return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+  }
+
+  /** Backed onto the ropes with the opponent close in front (one on one). */
+  function cornered(game, f) {
+    if (game.mode === 'ring' || !standing(f)) return false;
+    const o = opponentOf(game, f);
+    if (!o || !standing(o)) return false;
+    const gap = Math.abs(o.x - f.x);
+    if (gap > CORNER_CLOSE) return false;
+    return o.x >= f.x ? f.x - RING_LEFT <= CORNER_ZONE : RING_RIGHT - f.x <= CORNER_ZONE;
+  }
+
+  /** Pushing back into the ropes while cornered: hold it, and spring off them. */
+  function ropeBounce(game, f, dir) {
+    if (!cornered(game, f)) {
+      f.ropeHold = 0;
+      f.cornerBlocks = 0;
+      return;
+    }
+    const o = opponentOf(game, f);
+    const side = Math.sign(o.x - f.x) || 1;
+    if (dir !== -side || f.escapeCool > 0) {
+      f.ropeHold = 0;
+      return;
+    }
+    if (++f.ropeHold < ROPE_WIND) return;
+    f.vx += side * 8; // off the ropes behind the barge
+    escape(game, f, o, ROPE_PUSH, 'ropeBounce');
+  }
+
+  /** Out of the corner: they're knocked back across the ring, no damage. */
+  function escape(game, f, o, push, type) {
+    f.ropeHold = 0;
+    f.cornerBlocks = 0;
+    f.escapeCool = ESCAPE_COOLDOWN;
+    if (!shielded(o) && !piece(o).planted) o.vx += Math.sign(o.x - f.x || 1) * push;
+    if (!shielded(o)) {
+      setState(o, 'hitstun');
+      o.stun = ESCAPE_STUN;
+    }
+    game.events.push({ type, attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o) });
+  }
+
+  /** Locked up in a corner too long: the referee sends them back to the middle. */
+  function refBreak(game) {
+    if (game.mode === 'ring') return;
+    if (!game.fighters.some((f) => cornered(game, f))) {
+      game.clinchT = 0;
+      return;
+    }
+    if (++game.clinchT < REF_BREAK_TICKS) return;
+    game.clinchT = 0;
+    const [a, b] = game.fighters;
+    const order = a.x <= b.x ? [a, b] : [b, a];
+    order.forEach((f, k) => {
+      f.x = REF_BREAK_AT[k];
+      f.vx = 0;
+      f.ropeHold = 0;
+      f.cornerBlocks = 0;
+      if (f.state !== 'ko') setState(f, 'idle');
+      game.inputs[game.fighters.indexOf(f)].buffered = null;
+    });
+    order[0].facing = 1;
+    order[1].facing = -1;
+    game.events.push({ type: 'refBreak' });
   }
 
   /** Mummy's love: anyone too close is cuddled, and she takes 10 health from them. */
@@ -1887,6 +1992,7 @@
         name: f.name,
         ...(f.luna ? { luna: true } : {}),
         ...(spelling(f) ? { spelling: true } : {}),
+        ...(cornered(game, f) ? { cornered: true } : {}),
         ...(f.typing ? { typing: f.typing } : {}),
         ...(f.giant > 0 ? { giant: f.giant } : {}),
         ...(f.invisible > 0 ? { invisible: f.invisible } : {}),
@@ -1932,7 +2038,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, ROPE_WIND, CLINCH_BLOCKS, ESCAPE_COOLDOWN, REF_BREAK_TICKS, REF_BREAK_AT, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
