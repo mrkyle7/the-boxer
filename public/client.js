@@ -673,6 +673,26 @@
       sound.poof();
       return;
     }
+    if (e.type === 'leapfrog') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - 120, 'Leapfrog!', '#7fe0ff', 30);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'ropeBounce' || e.type === 'clinchBreak') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#ffffff', 18, 6);
+      shake = Math.max(shake, 10);
+      floatText(p.x, p.y - 150, e.type === 'ropeBounce' ? 'Off the ropes!' : 'Break free!', '#ffd23f', 30);
+      sound.slam();
+      return;
+    }
+    if (e.type === 'refBreak') {
+      // The referee steps in: a big BREAK! in the middle of the ring.
+      floatText(W / 2, FLOOR - 300, 'Ref: BREAK!', '#ffffff', 44);
+      sound.bell();
+      return;
+    }
     if (e.type === 'stuck') {
       // Kyle came back inside someone, and got thrown out of them.
       const p = targetPos(e.target, 'body');
@@ -2324,6 +2344,7 @@
   function powerLabels(i, f) {
     const out = [];
     const secs = (ticks) => Math.ceil(ticks / G.TICK_RATE);
+    if (f.cornered && i === me) out.push({ text: 'CORNERED · JUMP OVER, PUSH BACK OR BLOCK 3', short: 'CORNERED', color: '#7fe0ff' });
     if (f.giant) out.push({ text: `JEMINI GIANT  ${secs(f.giant)}s`, short: `GIANT ${secs(f.giant)}s`, color: '#6ff2b6' });
     if (snap.water && snap.water.boat === i) out.push({ text: 'IN THE BOAT', short: 'BOAT', color: '#c8823c' });
     else if (f.afloat) {
