@@ -459,6 +459,13 @@
       if (display && display[e.attacker]) { display[e.attacker].x = e.to.x; display[e.attacker].y = e.to.y; }
       return;
     }
+    if (e.type === 'daddy') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y + (mode === 'ring' ? 0 : 90), '#ffd23f', 24, 6);
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 110), 'Fast shoes!', '#ff5a36', 32);
+      sound.whoosh();
+      return;
+    }
     if (e.type === 'grandpa') {
       const p = targetPos(e.target, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Grandpa speed!', '#c9a46a', 30);
@@ -1490,6 +1497,7 @@
       const h = f.piece === 'pawn' ? 170 : f.piece === 'king' || f.piece === 'queen' ? 245 : 225;
       // Arms from the sides, below the eyes.
       drawArm({ x: h * 0.05, y: -h * 0.45 }, gB, skinDark, c.gloveDark, P.backArc);
+      legShoes = !!f.shoes;
       if (P.kick) drawLeg({ x: hipX + 10, y: hipY }, P.kick, skin, true);
       chessPiece(f.piece, h, c, hurt, f.chess < 40 && Math.sin(clock * 30) > 0);
       drawArm({ x: h * 0.11, y: -h * 0.42 }, gF, skin, c.glove);
@@ -1524,6 +1532,7 @@
     // Legs
     const feetBack = { x: -24 - P.stride, y: 0 };
     const feetFront = P.kick || { x: 26 + P.stride, y: 0 };
+    legShoes = !!f.shoes;
     drawLeg({ x: hipX - 10, y: hipY }, feetBack, skinDark);
     // A kicking leg is drawn over the torso below so it stays visible up close.
     if (!P.kick) drawLeg({ x: hipX + 10, y: hipY }, feetFront, skin);
@@ -1667,12 +1676,41 @@
     ctx.lineTo(knee.x, knee.y);
     ctx.lineTo(foot.x, foot.y - 8);
     ctx.stroke();
+    if (legShoes) {
+      fastShoe(foot.x, foot.y);
+      return;
+    }
     ctx.fillStyle = '#1a1a1a';
     ctx.beginPath();
     ctx.roundRect(foot.x - 12, foot.y - 16, 30, 16, 5);
     ctx.fill();
     ctx.fillStyle = '#f2f2f2';
     ctx.fillRect(foot.x - 12, foot.y - 16, 30, 4);
+  }
+  let legShoes = false; // drawing Daddy's fast shoes on these legs
+
+  /** Daddy's fast shoes: chunky red trainers with a lightning bolt and little wings. */
+  function fastShoe(x, y) {
+    ctx.fillStyle = '#ff3b2f';
+    ctx.beginPath();
+    ctx.roundRect(x - 14, y - 20, 36, 20, 8);
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(x - 14, y - 5, 36, 5); // the sole
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath(); // the bolt
+    ctx.moveTo(x + 6, y - 19); ctx.lineTo(x - 2, y - 10); ctx.lineTo(x + 4, y - 10);
+    ctx.lineTo(x - 1, y - 3); ctx.lineTo(x + 11, y - 13); ctx.lineTo(x + 5, y - 13); ctx.lineTo(x + 10, y - 19);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.beginPath(); // a wing at the heel
+    ctx.moveTo(x - 13, y - 14);
+    ctx.quadraticCurveTo(x - 30, y - 30, x - 34, y - 18);
+    ctx.quadraticCurveTo(x - 26, y - 18, x - 30, y - 10);
+    ctx.quadraticCurveTo(x - 20, y - 12, x - 13, y - 8);
+    ctx.closePath();
+    ctx.fill();
   }
 
   function drawArm(sh, glove, skin, gloveColor, arc) {
@@ -2092,7 +2130,7 @@
       ctx.moveTo(0, kick.y);
       ctx.lineTo(kick.x, kick.y);
       ctx.stroke();
-      ctx.fillStyle = '#1a1a1a';
+      ctx.fillStyle = f.shoes ? '#ff3b2f' : '#1a1a1a';
       ctx.beginPath();
       ctx.ellipse(kick.x + 4, kick.y, 9, 6, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -2258,6 +2296,7 @@
       out.push({ text: i === me ? `TYPE SWIM!  ${sec}s` : `SWIMMING  ${sec}s`, short: `SWIM ${sec}s`, color: f.afloat < 60 ? '#ff4a4f' : '#5fd3ff' });
     }
     if (f.poison) out.push({ text: 'POISONED', short: 'POISONED', color: '#a4c639' });
+    if (f.shoes) out.push({ text: `FAST SHOES  ${secs(f.shoes)}s`, short: `SHOES ${secs(f.shoes)}s`, color: '#ff5a36' });
     if (f.turbo) out.push({ text: `GRANDPA SPEED  ${secs(f.turbo)}s`, short: `SPEED ${secs(f.turbo)}s`, color: '#c9a46a' });
     if (f.fast) out.push({ text: `ZOOM  ${secs(f.fast)}s`, short: `ZOOM ${secs(f.fast)}s`, color: '#ffb13b' });
     const secret = i === me ? secretPauseUntil - performance.now() : 0;
@@ -2504,6 +2543,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    daddy: { fill: ['#fff3d6', '#ff5a36', '#a81e10'], spark: '#ffd23f' }, // trainer red
     grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
     fart: { fill: ['#f2ffd0', '#a4c639', '#556b14'], spark: '#c9e36a' }, // whiffy green
     water: { fill: ['#e6fbff', '#38b6ff', '#0b5394'], spark: '#bfeaff' }, // sea blue
@@ -3479,7 +3519,7 @@
       // Zoom: a streak behind them from where they've just been.
       d.trail = d.trail || [];
       const here = feetOf(i);
-      const speedy = f.fast || f.turbo;
+      const speedy = f.fast || f.turbo || f.shoes;
       if (speedy) d.trail.push({ x: here.x, y: here.y });
       if (!speedy || d.trail.length > (f.turbo ? 14 : 9)) d.trail.shift();
       if (speedy && d.trail.length > 1) {
