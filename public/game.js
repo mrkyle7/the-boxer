@@ -65,6 +65,10 @@
 // "daddy" puts you in a pair of fast shoes for seven seconds: you run at
 // nearly twice the speed.
 //
+// "mummy" surrounds you with love for seven seconds: anyone who comes too
+// close is caught in a loving cuddle (held for a second), and you steal 10
+// health from them. They get two seconds to wriggle away before the next.
+//
 // "ludo" gives you a sword for seven seconds: punches only, slashing for
 // 1.5x damage with 1.25x reach.
 //
@@ -241,9 +245,16 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy'];
+
+  // Mummy: love all round, and a cuddle for anyone who comes too close.
+  const MUMMY_TICKS = 7 * TICK_RATE;
+  const MUMMY_RADIUS = 140;
+  const CUDDLE_STEAL = 10;
+  const CUDDLE_TICKS = TICK_RATE; // held in the cuddle
+  const CUDDLE_EVERY = 2 * TICK_RATE; // before the same one can be caught again
 
   // Daddy: fast shoes.
   const DADDY_TICKS = 7 * TICK_RATE;
@@ -372,6 +383,9 @@
       fast: 0, // ticks of zooming left
       turbo: 0, // ticks of Grandpa's super speed left
       shoes: 0, // ticks of Daddy's fast shoes left
+      love: 0, // ticks of Mummy's love left
+      hug: 0, // ticks left in one of Mummy's cuddles
+      hugCool: 0, // ticks before Mummy can cuddle you again
       poison: false, // gassed by a fart: poisoned for the rest of the match
       poisonT: 0, // ticks till the poison bites again
       afloat: 0, // in the water: ticks till you sink unless you swim
@@ -577,6 +591,11 @@
     if (which === 'grandpa') {
       f.turbo = GRANDPA_TICKS;
       game.events.push({ type: 'grandpa', target: index });
+      return;
+    }
+    if (which === 'mummy') {
+      f.love = MUMMY_TICKS;
+      game.events.push({ type: 'mummy', target: index });
       return;
     }
     if (which === 'daddy') {
@@ -1103,6 +1122,9 @@
       if (f.fast > 0) f.fast--;
       if (f.turbo > 0) f.turbo--;
       if (f.shoes > 0) f.shoes--;
+      if (f.love > 0) f.love--;
+      if (f.hug > 0) f.hug--;
+      if (f.hugCool > 0) f.hugCool--;
       f.typedAgo++;
       if (f.poison && standing(f) && !spelling(f) && --f.poisonT <= 0) {
         f.poisonT = POISON_EVERY;
@@ -1548,6 +1570,7 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
+      updateLove(game);
       updateClouds(game);
       updateWater(game);
       updateUsa(game);
@@ -1579,6 +1602,40 @@
     const others = game.fighters.filter((o) => o !== f && standing(o));
     if (!others.length) return null;
     return others.reduce((a, b) => (distance(f, a) <= distance(f, b) ? a : b));
+  }
+
+  /** Mummy's love: anyone too close is cuddled, and she takes 10 health from them. */
+  function updateLove(game) {
+    const ring = game.mode === 'ring';
+    game.fighters.forEach((f, index) => {
+      if (!(f.love > 0) || !standing(f)) return;
+      game.fighters.forEach((o, i) => {
+        if (o === f || !standing(o) || shielded(o) || o.hugCool > 0 || o.invisible > 0) return;
+        const dx = o.x - f.x;
+        const dy = ring ? o.y - f.y : 0;
+        const d = Math.hypot(dx, dy);
+        if (d > MUMMY_RADIUS) return;
+        // Pulled in close for the cuddle.
+        const k = d > 0 ? MIN_SEPARATION / d : 0;
+        if (k) {
+          o.x = f.x + dx * k;
+          if (ring) o.y = f.y + dy * k;
+        }
+        o.vx = 0;
+        o.vy = 0;
+        const before = o.hp;
+        game.events.push({ type: 'cuddle', attacker: index, target: i });
+        hurt(game, f, o, CUDDLE_STEAL, CUDDLE_TICKS, 0, index);
+        const taken = before - o.hp;
+        o.hug = CUDDLE_TICKS;
+        o.hugCool = CUDDLE_TICKS + CUDDLE_EVERY;
+        if (taken > 0 && standing(f)) {
+          const heal = Math.min(taken, MAX_HP - f.hp);
+          f.hp += heal;
+          if (heal > 0) game.events.push({ type: 'cuddleHeal', target: index, heal });
+        }
+      });
+    });
   }
 
   /** Louise dancing: whoever she's pulling slides in towards her. */
@@ -1830,6 +1887,8 @@
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
         ...(f.shoes > 0 ? { shoes: f.shoes } : {}),
+        ...(f.love > 0 ? { love: f.love } : {}),
+        ...(f.hug > 0 ? { hug: f.hug } : {}),
         ...(f.state === 'attack' && f.move === 'dance' && f.pulling !== null && f.pulling !== undefined ? { pulling: f.pulling } : {}),
         ...(f.poison ? { poison: true } : {}),
         ...(f.afloat > 0 ? { afloat: f.afloat } : {}),
@@ -1866,7 +1925,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CUDDLE_EVERY, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
