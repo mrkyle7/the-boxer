@@ -48,6 +48,7 @@ test('two letters of a code in, nothing lands, and she keeps her letters', () =>
   assert.ok(!bPunches(g));
   assert.strictEqual(g.fighters[0].hp, G.MAX_HP);
   assert.strictEqual(g.fighters[0].typing, 'gr', 'still spelling');
+  g.random = () => 0.9; // grandpa's speed, not his charge
   type(g, 0, 'andpa');
   assert.ok(g.fighters[0].turbo > 0, 'and finishes the word');
   assert.ok(!G.snapshot(g).fighters[0].spelling);

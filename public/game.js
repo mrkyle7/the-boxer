@@ -27,7 +27,8 @@
 // to land behind them and kick them in the back for 30, unblockable.
 // "luna" teleports you to just beside the nearest opponent; "louise" dances,
 // reeling the nearest opponent in, and hip-bumps them for 30; "tamzin" cartwheels across at them for 30;
-// "grandpa" makes you super fast for ten seconds. (Luna's teleport ends in a
+// "grandpa" is one of two, 50:50: super fast for ten seconds, or a charge
+// (a sprint at whoever's nearest, and a kick when you get there). (Luna's teleport ends in a
 // kick.) "fart" turns you round and gasses them: poisoned for the match, 5
 // every 10 seconds, unless they jump it. "water" floods the ring for ten
 // seconds: first to type "boat" gets the boat, the rest keep typing "swim".
@@ -236,6 +237,10 @@
   const SWIM_TICKS = 4 * TICK_RATE; // how much longer each "swim" keeps you up
   // Grandpa: super fast.
   const GRANDPA_TICKS = POWER_TICKS;
+  // Grandpa's other one: the charge.
+  const CHARGE_SPEED = 20; // nearly five times walking pace
+  const CHARGE_MAX_TICKS = 45; // gives up after this
+  const CHARGE_KICK_AT = 150; // this close, and in goes the kick
   const GRANDPA_SPEED = 2.6;
 
   // The power-ups: how long each lasts, and what Jemini adds to your hits.
@@ -398,6 +403,7 @@
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
       turbo: 0, // ticks of Grandpa's super speed left
+      charge: null, // Grandpa's charge: who at, and for how long
       shoes: 0, // ticks of Daddy's fast shoes left
       love: 0, // ticks of Mummy's love left
       hug: 0, // ticks left in one of Mummy's cuddles
@@ -608,6 +614,14 @@
       return;
     }
     if (which === 'grandpa') {
+      const o = nearestFoe(game, f);
+      if (o && !f.car && !f.shree && game.random() < 0.5) {
+        f.charge = { target: game.fighters.indexOf(o), t: 0 };
+        setState(f, 'walk');
+        game.inputs[index].buffered = null;
+        game.events.push({ type: 'grandpaCharge', attacker: index, target: f.charge.target });
+        return;
+      }
       f.turbo = GRANDPA_TICKS;
       game.events.push({ type: 'grandpa', target: index });
       return;
@@ -761,9 +775,38 @@
     }
   }
 
+  /** Grandpa's charge: flat out at them, and a kick when he gets there. */
+  function runCharge(game, f, input) {
+    const c = f.charge;
+    const o = game.fighters[c.target];
+    c.t++;
+    const ring = game.mode === 'ring';
+    const x0 = f.x;
+    const y0 = f.y;
+    const there = !o || !standing(o) || distance(f, o) <= CHARGE_KICK_AT;
+    if (!there) {
+      const dx = o.x - f.x;
+      const dy = ring ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      f.x = Math.max(ring ? RING_MIN : RING_LEFT, Math.min(ring ? RING_MAX : RING_RIGHT, f.x + (dx / d) * CHARGE_SPEED));
+      if (ring) {
+        f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y + (dy / d) * CHARGE_SPEED));
+        f.angle = Math.atan2(dy, dx);
+      } else f.facing = dx >= 0 ? 1 : -1;
+    }
+    const stuck = !there && Math.abs(f.x - x0) < 1 && Math.abs(f.y - y0) < 1;
+    if (!there && !stuck && c.t < CHARGE_MAX_TICKS) return;
+    f.charge = null;
+    setState(f, 'attack', 'kick');
+    f.aim = input.aim;
+    f.stats.thrown++;
+    game.events.push({ type: 'grandpaKick', attacker: game.fighters.indexOf(f) });
+  }
+
   /** Knocked about: the cheat code goes out of your head, and you let go of the fist. */
   function knocked(game, f) {
     forgetTyping(f);
+    f.charge = null; // a hit stops a charge
     if (f.shree) {
       f.shree = null;
       game.events.push({ type: 'shreeCancel', attacker: game.fighters.indexOf(f) });
@@ -1189,6 +1232,11 @@
     if (f.car) {
       input.buffered = null;
       drive(game, f);
+      return;
+    }
+    if (f.charge) {
+      input.buffered = null;
+      runCharge(game, f, input);
       return;
     }
     if (airborne(f)) flipTravel(game, f);
@@ -1960,6 +2008,7 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
+        ...(f.charge ? { charge: true } : {}),
         ...(f.shoes > 0 ? { shoes: f.shoes } : {}),
         ...(f.love > 0 ? { love: f.love } : {}),
         ...(f.hug > 0 ? { hug: f.hug } : {}),
@@ -1999,7 +2048,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

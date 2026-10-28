@@ -466,6 +466,17 @@
       sound.whoosh();
       return;
     }
+    if (e.type === 'grandpaCharge') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Chaaarge!', '#c9a46a', 32);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'grandpaKick') {
+      const p = targetPos(e.attacker, 'body');
+      sparks(p.x, p.y + (mode === 'ring' ? 0 : 80), '#c9a46a', 14, 5); // dust off the skid
+      return;
+    }
     if (e.type === 'grandpa') {
       const p = targetPos(e.target, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 80), 'Grandpa speed!', '#c9a46a', 30);
@@ -1651,7 +1662,7 @@
       ctx.moveTo(hx + 12, hy + 12); ctx.lineTo(hx + 14, hy + 19); ctx.lineTo(hx + 16, hy + 12);
       ctx.fill();
     }
-    if (f.turbo) {
+    if (f.turbo || f.charge) {
       // Grandpa: a tweed flat cap and a big white moustache.
       ctx.fillStyle = '#8a7356';
       ctx.beginPath();
@@ -2250,7 +2261,7 @@
     ctx.beginPath();
     ctx.arc(5, 0, 5, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
-    if (f.turbo) {
+    if (f.turbo || f.charge) {
       // Grandpa's flat cap, from above, peak to the front.
       ctx.fillStyle = '#8a7356';
       ctx.beginPath();
@@ -3616,7 +3627,7 @@
       // Zoom: a streak behind them from where they've just been.
       d.trail = d.trail || [];
       const here = feetOf(i);
-      const speedy = f.fast || f.turbo || f.shoes;
+      const speedy = f.fast || f.turbo || f.shoes || f.charge;
       if (speedy) d.trail.push({ x: here.x, y: here.y });
       if (!speedy || d.trail.length > (f.turbo ? 14 : 9)) d.trail.shift();
       if (speedy && d.trail.length > 1) {
