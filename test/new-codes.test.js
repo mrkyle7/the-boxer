@@ -151,8 +151,9 @@ test('luna in the ring: next to the nearest, facing them', () => {
   assert.ok(Math.abs(a.angle - Math.atan2(c.y - a.y, c.x - a.x)) < 0.01);
 });
 
-test('grandpa: super fast for ten seconds', () => {
+test('grandpa: super fast for ten seconds (one of his two, 50:50)', () => {
   const g = fight();
+  g.random = () => 0.9; // the speed, not the charge
   const [a, b] = g.fighters;
   const stride = () => {
     a.x = 300;
