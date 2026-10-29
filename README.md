@@ -68,6 +68,8 @@ Or **jay**: a vampire for ten seconds. Your hits do half damage, but drain it, h
 
 Or **daniel**: you go spiky for ten seconds. Anyone who hits you gets 70% of it back, and you only take the other 30%. (Except the giant fist: there's nobody to spike.)
 
+Or **bear**: you throw a dollop of honey at whoever's nearest. It only carries about a quarter of the screen, so get close first. Whoever it splats is stuck in it, moving at half speed for ten seconds. Jump over it to dodge it.
+
 Or **priya**: a freeze ray at the one you're fighting. If it reaches them they're stuck in a block of ice for three seconds (they can still be hit). Hold block, facing it, to stop it, or get out of its way: it flies straight.
 
 **fart** turns you round and lets one go: a green cloud drifts at whoever you're fighting, and if it reaches them they're poisoned for the rest of the match, 5 damage every 10 seconds. Jump over it to dodge it (or get out of its way in the ring).
