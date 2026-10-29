@@ -82,6 +82,10 @@
 // "daniel" makes you spiky for ten seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
+// "bear" throws a pot's worth of honey at whoever's nearest. It only
+// carries a quarter of the screen; whoever it splats is stuck in it, moving
+// at half speed, for ten seconds. Jump over it, or just be out of range.
+//
 // "priya" fires a freeze ray at whoever you're fighting: three seconds in a
 // block of ice, unless they block it (guarding, facing it).
 //
@@ -253,9 +257,16 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear'];
+
+  // Bear: a throw of honey, a quarter of the screen at most.
+  const HONEY_SPEED = 12;
+  const HONEY_RANGE = 250;
+  const HONEY_HIT_RADIUS = 55;
+  const STICKY_TICKS = POWER_TICKS;
+  const STICKY_SPEED = 0.5;
 
   // Mummy: love all round, and a cuddle for anyone who comes too close.
   const MUMMY_TICKS = POWER_TICKS;
@@ -391,6 +402,7 @@
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
       spiky: 0, // ticks of Daniel's spikes left
+      sticky: 0, // ticks of being stuck in Bear's honey left
       vampire: 0, // ticks of Jay's vampire left
       lion: 0, // ticks of Leo's lion left
       sword: 0, // ticks of Ludo's sword left
@@ -469,6 +481,7 @@
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
       bolts: [], // Priya's freeze rays in flight
+      honey: [], // Bear's honey in flight
       clouds: [], // fart clouds drifting across
       water: null, // the flood: { t, boat }
       usa: 0, // ticks of the theme (Spreadbury's USA, Mamtora's India) left
@@ -667,6 +680,18 @@
     if (which === 'daniel') {
       f.spiky = SPIKY_TICKS;
       game.events.push({ type: 'daniel', target: index });
+      return;
+    }
+    if (which === 'bear') {
+      const o = nearestFoe(game, f);
+      if (!o) return;
+      const dx = o.x - f.x;
+      const dy = game.mode === 'ring' ? o.y - f.y : 0;
+      const d = Math.hypot(dx, dy) || 1;
+      // Thrown at where they are now: it doesn't follow them.
+      game.honey.push({ owner: index, x: f.x, y: f.y, dx: dx / d, dy: dy / d, dist: 0 });
+      if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
+      game.events.push({ type: 'bear', attacker: index, target: game.fighters.indexOf(o) });
       return;
     }
     if (which === 'priya') {
@@ -1213,6 +1238,7 @@
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
       if (f.spiky > 0) f.spiky--;
+      if (f.sticky > 0) f.sticky--;
       if (f.vampire > 0) f.vampire--;
       if (f.lion > 0) f.lion--;
       if (f.sword > 0) f.sword--;
@@ -1267,7 +1293,7 @@
         f.state = next;
         f.t = 0;
       }
-      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1) * (f.shoes > 0 ? DADDY_SPEED : 1) * (piece(f).speed || 1);
+      const speed = (wantBlock ? BLOCK_WALK_SPEED : WALK_SPEED) * (f.luna ? LUNA_SPEED : 1) * (f.fast > 0 ? ZOOM_SPEED : 1) * (f.turbo > 0 ? GRANDPA_SPEED : 1) * (f.shoes > 0 ? DADDY_SPEED : 1) * (f.sticky > 0 ? STICKY_SPEED : 1) * (piece(f).speed || 1);
       // Diagonals are no faster than straight lines.
       const norm = dir !== 0 && dirY !== 0 ? Math.SQRT1_2 : 1;
       let mx = dir * norm;
@@ -1610,6 +1636,7 @@
       game.events.push({ type: 'fight', round: game.round });
       game.fist = { next: nextFist(game), warn: null };
       game.bolts = [];
+      game.honey = [];
       game.clouds = [];
       game.water = null;
       game.paused = 0;
@@ -1650,6 +1677,7 @@
       else resolveHits(game);
       if (game.fists) updateFist(game);
       updateBolts(game);
+      updateHoney(game);
       updateLove(game);
       updateClouds(game);
       updateWater(game);
@@ -1830,6 +1858,27 @@
     }
   }
 
+  /** Bear's honey: flies until it splats on someone, or runs out of throw. */
+  function updateHoney(game) {
+    const ring = game.mode === 'ring';
+    game.honey = game.honey.filter((h) => {
+      h.x += h.dx * HONEY_SPEED;
+      h.y += h.dy * HONEY_SPEED;
+      h.dist += HONEY_SPEED;
+      // Anyone up in the air (a jump, a flip) goes over it.
+      const i = game.fighters.findIndex((o, j) => j !== h.owner && standing(o) && !shielded(o) && !airborne(o)
+        && Math.hypot(o.x - h.x, ring ? o.y - h.y : 0) <= HONEY_HIT_RADIUS);
+      if (i < 0) {
+        if (h.dist < HONEY_RANGE) return true;
+        game.events.push({ type: 'honeyMiss', x: h.x, y: h.y });
+        return false;
+      }
+      game.fighters[i].sticky = STICKY_TICKS;
+      game.events.push({ type: 'honeyHit', attacker: h.owner, target: i });
+      return false;
+    });
+  }
+
   function updateBolts(game) {
     const ring = game.mode === 'ring';
     game.bolts = game.bolts.filter((b) => {
@@ -1996,6 +2045,7 @@
       ...(game.hotdogs.some((h) => h.t >= 0) ? { hotdogs: game.hotdogs.filter((h) => h.t >= 0).map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), t: h.t, kind: h.kind })) } : {}),
       ...(game.water ? { water: { t: game.water.t, age: game.water.age, boat: game.water.boat } } : {}),
       ...(game.clouds.length ? { clouds: game.clouds.map((c) => ({ x: Math.round(c.x), y: Math.round(c.y), dx: c.dx, dy: c.dy, owner: c.owner })) } : {}),
+      ...(game.honey.length ? { honey: game.honey.map((h) => ({ x: Math.round(h.x), y: Math.round(h.y), dx: h.dx, dy: h.dy, owner: h.owner })) } : {}),
       ...(game.bolts.length ? { bolts: game.bolts.map((b) => ({ x: Math.round(b.x), y: Math.round(b.y), dx: b.dx, dy: b.dy, owner: b.owner })) } : {}),
       fighters: game.fighters.map((f) => ({
         name: f.name,
@@ -2018,6 +2068,7 @@
         ...(f.slip > 0 ? { slip: f.slip } : {}),
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
+        ...(f.sticky > 0 ? { sticky: f.sticky } : {}),
         ...(f.vampire > 0 ? { vampire: f.vampire } : {}),
         ...(f.lion > 0 ? { lion: f.lion } : {}),
         ...(f.sword > 0 ? { sword: f.sword } : {}),
@@ -2048,7 +2099,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

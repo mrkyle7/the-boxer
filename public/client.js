@@ -580,6 +580,25 @@
       sound.hit(0.7);
       return;
     }
+    if (e.type === 'bear') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Honey!', '#f5b415', 32);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'honeyHit') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#f5b415', 26, 6);
+      sparks(p.x, p.y, '#ffe08a', 12, 4);
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 150), 'Sticky!', '#f5b415', 34);
+      sound.splash();
+      return;
+    }
+    if (e.type === 'honeyMiss') {
+      const p = mode === 'ring' ? toScreen(e.x, e.y) : { x: e.x, y: FLOOR - 10 };
+      sparks(p.x, p.y, '#f5b415', 12, 3); // splat on the floor
+      return;
+    }
     if (e.type === 'priya') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Freeze ray!', '#7ff3ff', 32);
@@ -2370,6 +2389,7 @@
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
+    if (f.sticky) out.push({ text: `STUCK IN HONEY  ${secs(f.sticky)}s`, short: `STICKY ${secs(f.sticky)}s`, color: '#f5b415' });
     if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
     if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
     return out;
@@ -2605,6 +2625,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
     mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
     daddy: { fill: ['#fff3d6', '#ff5a36', '#a81e10'], spark: '#ffd23f' }, // trainer red
     grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
@@ -3095,6 +3116,67 @@
       ctx.fillText('SWIM!', p.x, y - 8);
     }
     ctx.restore();
+  }
+
+  /** Bear's honey in flight: a wobbling golden blob arcing over. */
+  function drawHoney(clock) {
+    for (const h of snap.honey || []) {
+      const owner = snap.fighters[h.owner];
+      if (owner && hiddenFrom(h.owner, owner)) continue;
+      const ring = mode === 'ring';
+      const p = ring ? toScreen(h.x, h.y) : { x: h.x, y: FLOOR - 150 };
+      const r = ring ? 10 : 16;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(clock * 6);
+      ctx.fillStyle = '#e09a0b';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, r * (1.1 + 0.1 * Math.sin(clock * 20)), r * 0.9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f5b415';
+      ctx.beginPath();
+      ctx.ellipse(-r * 0.15, -r * 0.15, r * 0.8, r * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.6)';
+      ctx.beginPath();
+      ctx.arc(-r * 0.35, -r * 0.35, r * 0.22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  /** Stuck in Bear's honey: golden drips down them and a puddle round their feet. */
+  function drawSticky(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.sticky || hiddenFrom(i, f)) return;
+      const p = feetOf(i);
+      const size = display[i].size || 1;
+      const ring = mode === 'ring';
+      ctx.save();
+      if (f.sticky < 40) ctx.globalAlpha *= f.sticky / 40;
+      ctx.fillStyle = 'rgba(224,154,11,0.55)';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + (ring ? 0 : 2), (ring ? 32 : 70) * size, (ring ? 32 : 12) * size, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#f5b415';
+      const drips = ring ? 6 : 5;
+      for (let k = 0; k < drips; k++) {
+        const q = (clock * 0.5 + k / drips) % 1;
+        let x; let y;
+        if (ring) {
+          const a = (k / drips) * Math.PI * 2 + clock * 0.3;
+          x = p.x + Math.cos(a) * 20 * size;
+          y = p.y + Math.sin(a) * 20 * size;
+        } else {
+          x = p.x + (k - 2) * 14 * size;
+          y = p.y - (220 - q * 200) * size;
+        }
+        ctx.beginPath();
+        ctx.ellipse(x, y, 4 * size, 7 * size, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
   }
 
   function drawBolts(clock) {
@@ -4380,6 +4462,8 @@
     drawSwooshes();
     drawBats(clock);
     drawBolts(clock);
+    drawHoney(clock);
+    drawSticky(clock);
     drawClouds(clock);
     drawPoison();
     drawWater(clock);
