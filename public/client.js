@@ -580,6 +580,30 @@
       sound.hit(0.7);
       return;
     }
+    if (e.type === 'simon') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'What a moustache!', '#c98a4a', 30);
+      sound.fanfare();
+      return;
+    }
+    if (e.type === 'moustacheKO') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#f4c542', 40, 9);
+      shake = Math.max(shake, 20);
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 150), 'MOUSTACHE KO!', '#f4c542', 40);
+      sound.slam();
+      return;
+    }
+    if (e.type === 'nap') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Sleepy...', '#c9d6ff', 30);
+      return;
+    }
+    if (e.type === 'wake') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Huh? Awake!', '#c9d6ff', 24);
+      return;
+    }
     if (e.type === 'bear') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Honey!', '#f5b415', 32);
@@ -1656,7 +1680,7 @@
     ctx.ellipse(hx - 3, hy - 9, 19, 14, -0.15, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#111';
-    if (f.state === 'ko' || hurt) {
+    if (f.state === 'ko' || hurt || f.nap) {
       ctx.fillRect(hx + 7, hy - 3, 7, 2);
     } else {
       ctx.beginPath();
@@ -1696,6 +1720,22 @@
       ctx.beginPath();
       ctx.ellipse(hx + 12, hy + 8, 10, 4, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (f.moustache) {
+      // Simon's giant handlebar moustache, curling up at the ends.
+      ctx.save();
+      ctx.translate(hx + 14, hy + 9);
+      ctx.scale(1.6, 1.6);
+      ctx.translate(-hx - 14, -hy - 9);
+      ctx.fillStyle = '#3a2210';
+      ctx.beginPath();
+      ctx.moveTo(hx + 14, hy + 6);
+      ctx.bezierCurveTo(hx + 30, hy + 2, hx + 44, hy + 10, hx + 40, hy - 6);
+      ctx.bezierCurveTo(hx + 48, hy + 4, hx + 40, hy + 20, hx + 20, hy + 13);
+      ctx.bezierCurveTo(hx + 10, hy + 18, hx - 4, hy + 20, hx - 8, hy + 6);
+      ctx.bezierCurveTo(hx - 2, hy + 12, hx + 6, hy + 6, hx + 14, hy + 6);
+      ctx.fill();
+      ctx.restore();
     }
     if (f.lion) {
       // Lion ears and a nose.
@@ -2291,6 +2331,17 @@
       ctx.ellipse(11, 0, 6, 9, 0, -Math.PI / 2, Math.PI / 2);
       ctx.fill();
     }
+    if (f.moustache) {
+      ctx.fillStyle = '#3a2210';
+      ctx.beginPath();
+      ctx.moveTo(9, 0);
+      ctx.bezierCurveTo(14, -8, 10, -20, 2, -22);
+      ctx.bezierCurveTo(8, -16, 8, -8, 7, -2);
+      ctx.lineTo(7, 2);
+      ctx.bezierCurveTo(8, 8, 8, 16, 2, 22);
+      ctx.bezierCurveTo(10, 20, 14, 8, 9, 0);
+      ctx.fill();
+    }
     if (snap && snap.theme === 'india') {
       // A marigold garland round the shoulders, from above.
       for (let k = 0; k < 14; k++) {
@@ -2389,6 +2440,8 @@
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
+    if (f.nap) out.push({ text: `NAPPING  ${secs(f.nap)}s`, short: `ZZZ ${secs(f.nap)}s`, color: '#c9d6ff' });
+    if (f.moustache) out.push({ text: 'MOUSTACHE', short: 'TASH', color: '#c98a4a' });
     if (f.sticky) out.push({ text: `STUCK IN HONEY  ${secs(f.sticky)}s`, short: `STICKY ${secs(f.sticky)}s`, color: '#f5b415' });
     if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
     if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
@@ -2625,6 +2678,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    simon: { fill: ['#f5e6d3', '#c98a4a', '#3a2210'], spark: '#e8c39a' }, // moustache brown
     bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
     mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
     daddy: { fill: ['#fff3d6', '#ff5a36', '#a81e10'], spark: '#ffd23f' }, // trainer red
@@ -3143,6 +3197,16 @@
       ctx.fill();
       ctx.restore();
     }
+  }
+
+  /** Napping: Zzz floating up off them. */
+  function drawNaps() {
+    snap.fighters.forEach((f, i) => {
+      if (!f.nap || hiddenFrom(i, f) || Math.random() > 0.06) return;
+      const p = targetPos(i, 'head');
+      texts.push({ x: p.x + 20 + Math.random() * 20, y: p.y - (mode === 'ring' ? 20 : 40), text: Math.random() < 0.5 ? 'z' : 'Z',
+        color: '#c9d6ff', size: mode === 'ring' ? 18 : 30, life: 50 });
+    });
   }
 
   /** Stuck in Bear's honey: golden drips down them and a puddle round their feet. */
@@ -4464,6 +4528,7 @@
     drawBolts(clock);
     drawHoney(clock);
     drawSticky(clock);
+    drawNaps();
     drawClouds(clock);
     drawPoison();
     drawWater(clock);
