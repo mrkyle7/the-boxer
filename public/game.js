@@ -82,6 +82,10 @@
 // "daniel" makes you spiky for ten seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
+// "simon" gives you a giant moustache for the rest of the match. Every punch
+// you land has a 5% chance of being an instant knockout, but also a 15%
+// chance you get sleepy and nod off for five seconds, wide open while you nap.
+//
 // "bear" throws a pot's worth of honey at whoever's nearest. It only
 // carries a quarter of the screen; whoever it splats is stuck in it, moving
 // at half speed, for ten seconds. Jump over it, or just be out of range.
@@ -257,9 +261,14 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon'];
+
+  // Simon: the moustache.
+  const MOUSTACHE_KO = 0.05; // a landed punch is a knockout
+  const MOUSTACHE_NAP = 0.15; // ...or sends you to sleep
+  const NAP_TICKS = 5 * TICK_RATE;
 
   // Bear: a throw of honey, a quarter of the screen at most.
   const HONEY_SPEED = 12;
@@ -403,6 +412,8 @@
       giant: 0, // ticks of Jemini left
       spiky: 0, // ticks of Daniel's spikes left
       sticky: 0, // ticks of being stuck in Bear's honey left
+      moustache: false, // Simon's, for the rest of the match
+      nap: 0, // ticks of a moustache nap left
       vampire: 0, // ticks of Jay's vampire left
       lion: 0, // ticks of Leo's lion left
       sword: 0, // ticks of Ludo's sword left
@@ -501,6 +512,7 @@
       fresh.stats = f.stats;
       // Poison lasts the whole match.
       fresh.poison = f.poison;
+      fresh.moustache = f.moustache; // and so does the moustache
       fresh.poisonT = f.poisonT;
       // Someone who left the ring stays out for the rest of the match.
       if (f.left) {
@@ -680,6 +692,12 @@
     if (which === 'daniel') {
       f.spiky = SPIKY_TICKS;
       game.events.push({ type: 'daniel', target: index });
+      return;
+    }
+    if (which === 'simon') {
+      if (f.moustache) return;
+      f.moustache = true;
+      game.events.push({ type: 'simon', target: index });
       return;
     }
     if (which === 'bear') {
@@ -982,7 +1000,7 @@
    */
   function typeKey(game, index, key) {
     const f = game.fighters[index];
-    if (!f || game.phase !== 'fight' || !standing(f)) return;
+    if (!f || game.phase !== 'fight' || !standing(f) || f.nap > 0) return; // no typing in your sleep
     const k = String(key || '').toLowerCase();
     if (!/^[a-z]$/.test(k)) return;
     f.typed = (f.typed + k).slice(-CODE_MAX);
@@ -1239,6 +1257,7 @@
       if (f.tiny > 0) f.tiny--;
       if (f.spiky > 0) f.spiky--;
       if (f.sticky > 0) f.sticky--;
+      if (f.nap > 0 && --f.nap === 0) game.events.push({ type: 'wake', target: index });
       if (f.vampire > 0) f.vampire--;
       if (f.lion > 0) f.lion--;
       if (f.sword > 0) f.sword--;
@@ -1247,6 +1266,11 @@
     if (!fighting || f.state === 'ko') return;
     // Frozen solid: no moving, no attacking (but you can still be hit).
     if (f.frozen > 0) {
+      input.buffered = null;
+      return;
+    }
+    // Napping: out for the count, and wide open.
+    if (f.nap > 0) {
       input.buffered = null;
       return;
     }
@@ -1538,8 +1562,18 @@
         const full = Math.round(h.damage * (counter ? COUNTER_MULTIPLIER : 1) * (att.giant > 0 ? JEMINI_DAMAGE : 1) * (att.tiny > 0 ? SHAAN_DAMAGE : 1)
           * (att.lion > 0 ? LION_DAMAGE : 1) * (att.vampire > 0 ? VAMPIRE_DAMAGE : 1)
           * (att.sword > 0 && hit.move === 'punch' ? SWORD_DAMAGE : 1) * (piece(att).damage || 1) * taken);
-        const damage = spikes(game, def, att, full);
+        // Simon's moustache: once in a while a punch puts them straight out.
+        const moustached = att.moustache && hit.move === 'punch' && !(game.paused > 0);
+        const knockout = moustached && taken > 0 && game.random() < MOUSTACHE_KO;
+        const damage = knockout ? def.hp : spikes(game, def, att, full);
         def.hp = Math.max(0, def.hp - damage);
+        if (knockout) game.events.push({ type: 'moustacheKO', attacker: hit.attacker, target: hit.defender });
+        else if (moustached && game.random() < MOUSTACHE_NAP) {
+          // ...and once in a while it's too much effort, and he nods off.
+          att.nap = NAP_TICKS;
+          game.inputs[hit.attacker].buffered = null;
+          game.events.push({ type: 'nap', target: hit.attacker });
+        }
         drain(game, att, damage);
         def.stamina = Math.max(0, def.stamina - h.winded);
         att.stats.landed++;
@@ -2069,6 +2103,8 @@
         ...(f.tiny > 0 ? { tiny: f.tiny } : {}),
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
         ...(f.sticky > 0 ? { sticky: f.sticky } : {}),
+        ...(f.moustache ? { moustache: true } : {}),
+        ...(f.nap > 0 ? { nap: f.nap } : {}),
         ...(f.vampire > 0 ? { vampire: f.vampire } : {}),
         ...(f.lion > 0 ? { lion: f.lion } : {}),
         ...(f.sword > 0 ? { sword: f.sword } : {}),
@@ -2099,7 +2135,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
