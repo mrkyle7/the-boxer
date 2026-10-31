@@ -580,6 +580,31 @@
       sound.hit(0.7);
       return;
     }
+    if (e.type === 'blake') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#3fae4a', 26, 6);
+      sparks(p.x, p.y, '#ff8a1e', 14, 5);
+      shake = Math.max(shake, 8);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 120), 'Here be dragons!', '#3fae4a', 32);
+      sound.roar();
+      return;
+    }
+    if (e.type === 'breathe') {
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'onFire') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#ff8a1e', 24, 6);
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 150), 'On fire!', '#ff8a1e', 32);
+      return;
+    }
+    if (e.type === 'burn') {
+      const p = targetPos(e.target, 'head');
+      floatText(p.x + 20, p.y - (mode === 'ring' ? 24 : 40), `-${e.damage}`, '#ff8a1e', 18);
+      return;
+    }
+    if (e.type === 'hit' && e.move === 'fire') return; // the fire says it all
     if (e.type === 'lizzie') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Ruck and roll!', '#7fe07f', 30);
@@ -1367,6 +1392,9 @@
           cartwheelPose(P, t, phase);
         } else if (f.move === 'flip' || f.move === 'vault') {
           flipPose(P, t, phase, p, kickReach, f.move);
+        } else if (f.move === 'fire') {
+          P.lean = e * 14;
+          P.headX += e * 10;
         } else if (f.move === 'punch') {
           P.front = { x: lerp(42, reach, e), y: lerp(-212, low ? -150 : -214, e) };
           P.lean = e * (low ? 12 : 8);
@@ -1606,7 +1634,8 @@
     const gF = { x: P.front.x + P.lean * 0.4, y: P.front.y + ty };
     const gB = { x: P.back.x + P.lean * 0.4, y: P.back.y + ty };
 
-    const pale = (k) => (f.vampire ? mix(k, '#dcd6ea', 0.6) : k); // vampires go pale
+    // Vampires go pale; dragons go green and scaly.
+    const pale = (k) => (f.vampire ? mix(k, '#dcd6ea', 0.6) : f.dragon ? mix(k, '#3fae4a', 0.7) : k);
     const skin = hurt ? mix(pale(c.skin), '#ffffff', 0.45) : pale(c.skin);
     const skinDark = hurt ? mix(pale(c.skinDark), '#ffffff', 0.35) : pale(c.skinDark);
 
@@ -1622,6 +1651,40 @@
       if (f.sword) sword(gF.x, gF.y, f.state === 'attack' && f.move === 'punch' ? -0.12 : -0.85, 125, f.sword < 40);
       ctx.restore();
       return;
+    }
+
+    if (f.dragon) {
+      // Blake's dragon: leathery wings off the back, and a tail (which
+      // whips round for a kick).
+      const flap = Math.sin(clock * 6) * 14;
+      ctx.fillStyle = '#2b7a34';
+      ctx.beginPath();
+      ctx.moveTo(shX - 10, shoulderY + 6);
+      ctx.lineTo(shX - 70, shoulderY - 70 - flap);
+      ctx.lineTo(shX - 60, shoulderY - 30 - flap * 0.6);
+      ctx.lineTo(shX - 95, shoulderY - 40 - flap);
+      ctx.lineTo(shX - 70, shoulderY + 4 - flap * 0.4);
+      ctx.lineTo(shX - 100, shoulderY + 10 - flap * 0.8);
+      ctx.lineTo(shX - 20, shoulderY + 50);
+      ctx.closePath();
+      ctx.fill();
+      const whip = f.state === 'attack' && f.move === 'kick' ? clamp01(attackProgress(f, t).p) : 0;
+      const tipX = lerp(hipX - 110, hipX + 150, whip);
+      const tipY = lerp(-30, P.kick ? P.kick.y : -150, whip);
+      ctx.strokeStyle = '#3fae4a';
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 16;
+      ctx.beginPath();
+      ctx.moveTo(hipX - 10, hipY + 10);
+      ctx.quadraticCurveTo(hipX - 80, -10 - whip * 40, tipX, tipY);
+      ctx.stroke();
+      ctx.fillStyle = '#2b7a34';
+      ctx.beginPath(); // the arrow-head tip
+      ctx.moveTo(tipX + (whip > 0.5 ? 18 : -18), tipY);
+      ctx.lineTo(tipX, tipY - 12);
+      ctx.lineTo(tipX, tipY + 12);
+      ctx.closePath();
+      ctx.fill();
     }
 
     // Jay's vampire: a cape, high-collared, billowing behind.
@@ -1758,6 +1821,34 @@
       ctx.beginPath();
       ctx.ellipse(hx + 12, hy + 8, 10, 4, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (f.dragon) {
+      // Horns, a ridge of spikes down the back of the head, and a snout.
+      ctx.fillStyle = '#e8e0c0';
+      for (const dx of [-8, 6]) {
+        ctx.beginPath();
+        ctx.moveTo(hx + dx - 5, hy - 16);
+        ctx.lineTo(hx + dx - 10, hy - 40);
+        ctx.lineTo(hx + dx + 4, hy - 18);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#2b7a34';
+      for (let k = 0; k < 3; k++) {
+        ctx.beginPath();
+        ctx.moveTo(hx - 16 - k * 4, hy - 8 + k * 12);
+        ctx.lineTo(hx - 30 - k * 4, hy - 4 + k * 12);
+        ctx.lineTo(hx - 18 - k * 4, hy + 4 + k * 12);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = skin;
+      ctx.beginPath();
+      ctx.ellipse(hx + 20, hy + 6, 14, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#111';
+      ctx.fillRect(hx + 28, hy + 2, 3, 3); // a nostril
+      if (f.state === 'attack' && f.move === 'fire') dragonFire(hx + 32, hy + 8, 1, 0, 200, attackProgress(f, t), clock, 1);
     }
     if (f.rugby) {
       // A padded scrum cap, strapped under the chin.
@@ -2159,7 +2250,7 @@
     const c = PALETTE[i];
     const p = toScreen(d.x, d.y);
     const hurt = f.state === 'hitstun' && t < 5;
-    const baseSkin = f.vampire ? mix(c.skin, '#dcd6ea', 0.6) : c.skin;
+    const baseSkin = f.vampire ? mix(c.skin, '#dcd6ea', 0.6) : f.dragon ? mix(c.skin, '#3fae4a', 0.7) : c.skin;
     const skin = hurt ? mix(baseSkin, '#ffffff', 0.5) : baseSkin;
     const low = f.aim === 'body';
 
@@ -2277,6 +2368,8 @@
         // Tucked up.
         front = { x: 10, y: 10 };
         back = { x: 10, y: -10 };
+      } else if (f.move === 'fire') {
+        // Gloves stay up: it's the mouth doing the work.
       } else if (f.move === 'punch') {
         const reach = ((G.MOVES.punch.range * (f.luna ? G.LUNA_REACH : 1) - 40) * VK) / fighterScale() * (f.sword ? 0.8 : 1);
         front = { x: lerp(18, reach, e), y: lerp(12, low ? 6 : 3, e) };
@@ -2359,6 +2452,33 @@
       ctx.stroke();
     }
     if (f.lion) lionMane(-1, 0, 24, clock);
+    if (f.dragon) {
+      const flap = Math.sin(clock * 6) * 4;
+      ctx.fillStyle = '#2b7a34';
+      for (const side of [-1, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(-4, side * 10);
+        ctx.lineTo(-22, side * (40 + flap));
+        ctx.lineTo(-14, side * (26 + flap));
+        ctx.lineTo(-30, side * (28 + flap));
+        ctx.lineTo(-10, side * 14);
+        ctx.closePath();
+        ctx.fill();
+      }
+      const whip = f.state === 'attack' && f.move === 'kick' ? clamp01(attackProgress(f, t).p) : 0;
+      const tail = { x: lerp(-46, 40, whip), y: lerp(0, 26, whip) };
+      ctx.strokeStyle = '#3fae4a';
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 7;
+      ctx.beginPath();
+      ctx.moveTo(-10, 0);
+      ctx.quadraticCurveTo(-30, 14 * (1 - whip) + 30 * whip, tail.x, tail.y);
+      ctx.stroke();
+      if (f.state === 'attack' && f.move === 'fire') {
+        const reach = ((G.MOVES.fire.range - 20) * VK) / fighterScale();
+        dragonFire(14, 0, 1, 0, reach, attackProgress(f, t), clock, 0.45);
+      }
+    }
     if (f.state === 'attack' && f.move === 'dance') ctx.rotate(t * 0.25); // spinning round on the spot
     if (f.state === 'attack' && f.move === 'cartwheel' && t < G.MOVES.cartwheel.startup) {
       ctx.scale(1, 0.4 + 0.6 * Math.abs(Math.cos(t * 0.4))); // flipping side over side
@@ -2515,6 +2635,8 @@
     if (f.spiky) out.push({ text: `SPIKY  ${secs(f.spiky)}s`, short: `SPIKY ${secs(f.spiky)}s`, color: '#b6e24a' });
     if (f.tiny) out.push({ text: `SHRUNK  ${secs(f.tiny)}s`, short: `TINY ${secs(f.tiny)}s`, color: '#ff6ad5' });
     if (f.shree && i === me) out.push({ text: 'STEER THE FIST · PUNCH TO DROP', short: 'FIST: PUNCH!', color: '#ff6b4a' });
+    if (f.dragon) out.push({ text: `DRAGON  ${secs(f.dragon)}s · PUNCH TO BREATHE FIRE`, short: `DRAGON ${secs(f.dragon)}s`, color: '#3fae4a' });
+    if (f.burn) out.push({ text: `ON FIRE  ${secs(f.burn)}s`, short: `FIRE ${secs(f.burn)}s`, color: '#ff8a1e' });
     if (f.nap) out.push({ text: `NAPPING  ${secs(f.nap)}s`, short: `ZZZ ${secs(f.nap)}s`, color: '#c9d6ff' });
     if (f.moustache) out.push({ text: 'MOUSTACHE', short: 'TASH', color: '#c98a4a' });
     if (f.sticky) out.push({ text: `STUCK IN HONEY  ${secs(f.sticky)}s`, short: `STICKY ${secs(f.sticky)}s`, color: '#f5b415' });
@@ -2753,6 +2875,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    blake: { fill: ['#fff1c2', '#ff8a1e', '#2b7a34'], spark: '#ff5a14' }, // dragon fire
     lizzie: { fill: ['#eaffea', '#7fe07f', '#1f6b2a'], spark: '#ffffff' }, // rugby-pitch green
     simon: { fill: ['#f5e6d3', '#c98a4a', '#3a2210'], spark: '#e8c39a' }, // moustache brown
     bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
@@ -3273,6 +3396,58 @@
       ctx.fill();
       ctx.restore();
     }
+  }
+
+  /**
+   * A dragon's fire: a flickering cone of flame from (x, y) along (dx, dy),
+   * growing out to `len` as the breath comes, dying back as it ends.
+   */
+  function dragonFire(x, y, dx, dy, len, prog, clock, k) {
+    const grow = prog.phase === 'startup' ? prog.p : prog.phase === 'active' ? 1 : prog.p;
+    if (grow <= 0.02) return;
+    const L = len * (prog.phase === 'recovery' ? 1 : grow);
+    ctx.save();
+    ctx.globalAlpha *= prog.phase === 'recovery' ? grow : 1;
+    ctx.translate(x, y);
+    ctx.rotate(Math.atan2(dy, dx));
+    for (const [w, c3] of [[1, 'rgba(255,90,20,0.75)'], [0.65, 'rgba(255,170,30,0.85)'], [0.3, 'rgba(255,240,150,0.95)']]) {
+      ctx.fillStyle = c3;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      for (let n = 0; n <= 12; n++) {
+        const q = n / 12;
+        ctx.lineTo(L * q, -((8 + 40 * q) * (1 - q ** 5)) * w * k - Math.sin(clock * 40 + n) * 5 * k * (1 - q));
+      }
+      for (let n = 12; n >= 0; n--) {
+        const q = n / 12;
+        ctx.lineTo(L * q, ((8 + 40 * q) * (1 - q ** 5)) * w * k + Math.sin(clock * 37 + n) * 5 * k * (1 - q));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** On fire: flames licking up off them. */
+  function drawBurning(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.burn || hiddenFrom(i, f)) return;
+      const p = feetOf(i);
+      const ring = mode === 'ring';
+      const size = display[i].size || 1;
+      ctx.save();
+      for (let k = 0; k < 7; k++) {
+        const q = (clock * 1.5 + k / 7) % 1;
+        const x = ring ? p.x + Math.cos(k * 2.4 + clock) * 22 * size : p.x + (k - 3) * 14 * size;
+        const y = ring ? p.y + Math.sin(k * 2.4 + clock) * 22 * size - q * 20 : p.y - (40 + q * 170) * size;
+        const r = (ring ? 9 : 20) * size * (1 - q * 0.6);
+        ctx.fillStyle = `rgba(255,${Math.round(90 + 130 * q)},20,${0.95 * (1 - q * 0.8)})`;
+        ctx.beginPath();
+        ctx.ellipse(x, y, r * 0.7, r, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    });
   }
 
   /** Napping: Zzz floating up off them. */
@@ -4605,6 +4780,7 @@
     drawHoney(clock);
     drawSticky(clock);
     drawNaps();
+    drawBurning(clock);
     drawClouds(clock);
     drawPoison();
     drawWater(clock);
