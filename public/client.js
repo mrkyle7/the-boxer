@@ -580,6 +580,26 @@
       sound.hit(0.7);
       return;
     }
+    if (e.type === 'lizzie') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Ruck and roll!', '#7fe07f', 30);
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'shoulderSmash') {
+      const p = targetPos(e.target, 'body');
+      sparks(p.x, p.y, '#ffffff', 30, 8);
+      sparks(p.x, p.y, '#7fe07f', 14, 6);
+      shake = Math.max(shake, 18);
+      floatText(p.x, p.y - (mode === 'ring' ? 70 : 150), 'SHOULDER SMASH!', '#7fe07f', 34);
+      sound.slam();
+      return;
+    }
+    if (e.type === 'smashMiss') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Missed!', '#cccccc', 24);
+      return;
+    }
     if (e.type === 'simon') {
       const p = targetPos(e.target, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'What a moustache!', '#c98a4a', 30);
@@ -1666,6 +1686,24 @@
     ctx.quadraticCurveTo(shX + 14, shoulderY + 30, shX + 22, shoulderY + 22);
     ctx.stroke();
 
+    if (f.rugby) {
+      // Lizzie's rugby shirt: hoops in her colour and white, and a collar.
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(hipX - 28, hipY - 18);
+      ctx.quadraticCurveTo(shX - 38, shoulderY + 30, shX - 28, shoulderY - 6);
+      ctx.quadraticCurveTo(shX, shoulderY - 16, shX + 30, shoulderY - 2);
+      ctx.quadraticCurveTo(shX + 36, shoulderY + 34, hipX + 28, hipY - 18);
+      ctx.closePath();
+      ctx.clip();
+      for (let k = 0; k < 6; k++) {
+        ctx.fillStyle = k % 2 ? '#ffffff' : c.trunks;
+        ctx.fillRect(shX - 60, shoulderY - 20 + k * 16, 140, 16);
+      }
+      ctx.restore();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(shX - 10, shoulderY - 8, 22, 6);
+    }
     // Head
     const hx = shX + P.headX;
     const hy = shoulderY - 30 + P.headY;
@@ -1720,6 +1758,27 @@
       ctx.beginPath();
       ctx.ellipse(hx + 12, hy + 8, 10, 4, 0, 0, Math.PI * 2);
       ctx.fill();
+    }
+    if (f.rugby) {
+      // A padded scrum cap, strapped under the chin.
+      ctx.fillStyle = c.trunks;
+      ctx.beginPath();
+      ctx.ellipse(hx - 2, hy - 6, 22, 20, 0, Math.PI * 0.95, Math.PI * 2.05);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth = 2;
+      for (const dx of [-10, 0, 10]) {
+        ctx.beginPath();
+        ctx.moveTo(hx - 2 + dx, hy - 25);
+        ctx.lineTo(hx - 2 + dx, hy - 6);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = c.trunks;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(hx - 16, hy - 2);
+      ctx.quadraticCurveTo(hx + 4, hy + 26, hx + 18, hy + 4);
+      ctx.stroke();
     }
     if (f.moustache) {
       // Simon's giant handlebar moustache, curling up at the ends.
@@ -2320,6 +2379,22 @@
     ctx.beginPath();
     ctx.arc(5, 0, 5, -Math.PI / 2, Math.PI / 2);
     ctx.fill();
+    if (f.rugby) {
+      // Lizzie's hooped shirt across the shoulders, and her scrum cap.
+      ctx.save();
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 13, 24, 0, 0, Math.PI * 2);
+      ctx.clip();
+      for (let k = -3; k < 3; k++) {
+        ctx.fillStyle = k % 2 ? '#ffffff' : c.trunks;
+        ctx.fillRect(-14, k * 8, 28, 8);
+      }
+      ctx.restore();
+      ctx.fillStyle = c.trunks;
+      ctx.beginPath();
+      ctx.arc(-1, 0, 11, 0, Math.PI * 2);
+      ctx.fill();
+    }
     if (f.turbo || f.charge) {
       // Grandpa's flat cap, from above, peak to the front.
       ctx.fillStyle = '#8a7356';
@@ -2678,6 +2753,7 @@
     luna: { fill: ['#e9fbff', '#b388ff', '#4b2ac9'], spark: '#d7c4ff' }, // teleport violet
     louise: { fill: ['#ffe3f1', '#ff5fa2', '#a8125c'], spark: '#ffb3d4' }, // disco pink
     tamzin: { fill: ['#fff0dc', '#ff9a3c', '#b4520b'], spark: '#ffc78a' }, // tumbling orange
+    lizzie: { fill: ['#eaffea', '#7fe07f', '#1f6b2a'], spark: '#ffffff' }, // rugby-pitch green
     simon: { fill: ['#f5e6d3', '#c98a4a', '#3a2210'], spark: '#e8c39a' }, // moustache brown
     bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
     mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
@@ -3773,7 +3849,7 @@
       // Zoom: a streak behind them from where they've just been.
       d.trail = d.trail || [];
       const here = feetOf(i);
-      const speedy = f.fast || f.turbo || f.shoes || f.charge;
+      const speedy = f.fast || f.turbo || f.shoes || f.charge || (f.rugby && f.state === 'walk');
       if (speedy) d.trail.push({ x: here.x, y: here.y });
       if (!speedy || d.trail.length > (f.turbo ? 14 : 9)) d.trail.shift();
       if (speedy && d.trail.length > 1) {
