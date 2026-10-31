@@ -82,6 +82,11 @@
 // "daniel" makes you spiky for ten seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
+// "blake" turns you into a dragon for ten seconds. Punches become fire
+// breath: further than a punch, no guard stops it, and it sets them on fire
+// (1 a second for five seconds). Then two seconds to get your breath back.
+// Kicks become a tail whip, exactly the same as a kick.
+//
 // "lizzie" turns you into a rugby player: kit on, head down, a charge at
 // whoever's nearest and a shoulder smash for 20 when you get there. No guard
 // stops it; get out of the way (or jump it, one on one). A hit stops her.
@@ -178,6 +183,16 @@
     },
   };
 
+  // Blake's fire breath, in place of a punch: a longer reach, held a while,
+  // and no guard stops it. It does no damage itself: it sets you on fire.
+  MOVES.fire = {
+    startup: 8, active: 12, recovery: 12, range: 240, stamina: 8,
+    unblockable: true, aimed: true, // straight ahead, in the ring too
+    blockstun: 0, blockDamage: 0, blockStamina: 0, blockKnockback: 0,
+    head: { damage: 0, hitstun: 10, knockback: 3, winded: 0 },
+    body: { damage: 0, hitstun: 10, knockback: 3, winded: 0 },
+  };
+
   // The Zeffen flip (the cheat code): a crouch, a front flip through the air
   // towards the opponent, and a landing that can't be blocked. It hits twice:
   // the landing holds them where they are, and the second knocks them away.
@@ -265,9 +280,15 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon', lizzie: 'lizzie',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon', lizzie: 'lizzie', blake: 'blake',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon', 'lizzie'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon', 'lizzie', 'blake'];
+
+  // Blake: a dragon. Fire breath instead of punches; it sets you on fire.
+  const DRAGON_TICKS = POWER_TICKS;
+  const FIRE_COOL = 2 * TICK_RATE; // before the next breath
+  const BURN_TICKS = 5 * TICK_RATE;
+  const BURN_DAMAGE = 1; // each second
 
   // Lizzie: the rugby charge and shoulder smash.
   const RUGBY_SMASH_AT = 100; // runs in this close...
@@ -440,6 +461,10 @@
       turbo: 0, // ticks of Grandpa's super speed left
       charge: null, // Grandpa's (or Lizzie's) charge: who at, and for how long
       rugby: 0, // ticks of Lizzie's kit left after the smash
+      dragon: 0, // ticks of Blake's dragon left
+      fireCool: 0, // ticks before the dragon can breathe fire again
+      burn: 0, // ticks of being on fire left
+      burnT: 0, // ticks to the next second of burning
       shoes: 0, // ticks of Daddy's fast shoes left
       love: 0, // ticks of Mummy's love left
       hug: 0, // ticks left in one of Mummy's cuddles
@@ -705,6 +730,11 @@
     if (which === 'daniel') {
       f.spiky = SPIKY_TICKS;
       game.events.push({ type: 'daniel', target: index });
+      return;
+    }
+    if (which === 'blake') {
+      f.dragon = DRAGON_TICKS;
+      game.events.push({ type: 'blake', target: index });
       return;
     }
     if (which === 'lizzie') {
@@ -1180,8 +1210,16 @@
   }
 
   function tryStartAction(game, f, input) {
-    const action = input.buffered;
+    let action = input.buffered;
     if (!action) return;
+    // A dragon breathes fire instead of punching (once it's got its breath back).
+    if (action === 'punch' && f.dragon > 0) {
+      if (f.fireCool > 0) {
+        input.buffered = null;
+        return;
+      }
+      action = 'fire';
+    }
     const m = MOVES[action];
     if (f.stamina < m.stamina) return;
     f.stamina -= m.stamina;
@@ -1190,7 +1228,10 @@
     // The attack's height is locked in when it starts.
     f.aim = input.aim;
     input.buffered = null;
-    if (action === 'flip') {
+    if (action === 'fire') {
+      f.fireCool = FIRE_COOL;
+      game.events.push({ type: 'breathe', attacker: game.fighters.indexOf(f) });
+    } else if (action === 'flip') {
       aimFlip(game, f);
       game.events.push({ type: 'flip', attacker: game.fighters.indexOf(f) });
     } else if (action === 'vault') {
@@ -1295,6 +1336,21 @@
           game.events.push({ type: 'ko', target: index });
         }
       }
+      if (f.burn > 0 && standing(f)) {
+        f.burn--;
+        if (--f.burnT <= 0) {
+          f.burnT = TICK_RATE;
+          const damage = game.paused > 0 || spelling(f) ? 0 : Math.round(BURN_DAMAGE * (piece(f).taken ?? 1));
+          f.hp = Math.max(0, f.hp - damage);
+          if (damage) game.events.push({ type: 'burn', target: index, damage });
+          if (f.hp <= 0) {
+            setState(f, 'ko');
+            game.events.push({ type: 'ko', target: index });
+          }
+        }
+      }
+      if (f.dragon > 0) f.dragon--;
+      if (f.fireCool > 0) f.fireCool--;
       if (f.slip > 0) f.slip--;
       if (f.frozen > 0) f.frozen--;
       if (f.tiny > 0) f.tiny--;
@@ -1486,7 +1542,7 @@
         const d = distance(att, o);
         if (d > reach(att, m) || d >= bestD) return;
         // The flip lands on whoever is nearest, whichever way they are.
-        if (!m.unblockable && angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
+        if ((!m.unblockable || m.aimed) && angleDiff(att.angle, angleTo(att, o)) > HIT_ARC) return;
         def = j;
         bestD = d;
       });
@@ -1631,6 +1687,11 @@
         // Guarding the wrong height (or the wrong way) is worth telling the defender about.
         game.events.push({ type: 'hit', ...ev, damage, counter, wrongGuard: guarding, ...(hit.second ? { second: true } : {}) });
         chessHit(game, att, hit.attacker);
+        if (hit.move === 'fire' && def.hp > 0) {
+          def.burn = BURN_TICKS;
+          def.burnT = TICK_RATE;
+          game.events.push({ type: 'onFire', attacker: hit.attacker, target: hit.defender });
+        }
       }
       if (def.hp <= 0) {
         setState(def, 'ko');
@@ -2149,6 +2210,8 @@
         ...(f.spiky > 0 ? { spiky: f.spiky } : {}),
         ...(f.sticky > 0 ? { sticky: f.sticky } : {}),
         ...(f.moustache ? { moustache: true } : {}),
+        ...(f.dragon > 0 ? { dragon: f.dragon } : {}),
+        ...(f.burn > 0 ? { burn: f.burn } : {}),
         ...(f.nap > 0 ? { nap: f.nap } : {}),
         ...(f.vampire > 0 ? { vampire: f.vampire } : {}),
         ...(f.lion > 0 ? { lion: f.lion } : {}),
@@ -2180,7 +2243,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
