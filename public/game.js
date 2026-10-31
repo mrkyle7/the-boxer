@@ -82,6 +82,10 @@
 // "daniel" makes you spiky for ten seconds: anyone who hits you takes 70%
 // of it back, and you take only the other 30%.
 //
+// "lizzie" turns you into a rugby player: kit on, head down, a charge at
+// whoever's nearest and a shoulder smash for 20 when you get there. No guard
+// stops it; get out of the way (or jump it, one on one). A hit stops her.
+//
 // "simon" gives you a giant moustache for the rest of the match. Every punch
 // you land has a 5% chance of being an instant knockout, but also a 15%
 // chance you get sleepy and nod off for five seconds, wide open while you nap.
@@ -261,9 +265,17 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon', lizzie: 'lizzie',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon', 'lizzie'];
+
+  // Lizzie: the rugby charge and shoulder smash.
+  const RUGBY_SMASH_AT = 100; // runs in this close...
+  const RUGBY_REACH = 125; // ...and the smash lands on anyone still this close
+  const RUGBY_DAMAGE = 20;
+  const RUGBY_KNOCKBACK = 24;
+  const RUGBY_STUN = 35;
+  const RUGBY_KIT_AFTER = 40; // ticks the kit stays on after the smash
 
   // Simon: the moustache.
   const MOUSTACHE_KO = 0.05; // a landed punch is a knockout
@@ -426,7 +438,8 @@
       frozen: 0, // ticks left in a block of ice
       fast: 0, // ticks of zooming left
       turbo: 0, // ticks of Grandpa's super speed left
-      charge: null, // Grandpa's charge: who at, and for how long
+      charge: null, // Grandpa's (or Lizzie's) charge: who at, and for how long
+      rugby: 0, // ticks of Lizzie's kit left after the smash
       shoes: 0, // ticks of Daddy's fast shoes left
       love: 0, // ticks of Mummy's love left
       hug: 0, // ticks left in one of Mummy's cuddles
@@ -694,6 +707,15 @@
       game.events.push({ type: 'daniel', target: index });
       return;
     }
+    if (which === 'lizzie') {
+      const o = nearestFoe(game, f);
+      if (!o || f.car || f.shree || f.charge) return;
+      f.charge = { target: game.fighters.indexOf(o), t: 0, kind: 'rugby' };
+      setState(f, 'walk');
+      game.inputs[index].buffered = null;
+      game.events.push({ type: 'lizzie', attacker: index, target: f.charge.target });
+      return;
+    }
     if (which === 'simon') {
       if (f.moustache) return;
       f.moustache = true;
@@ -826,7 +848,8 @@
     const ring = game.mode === 'ring';
     const x0 = f.x;
     const y0 = f.y;
-    const there = !o || !standing(o) || distance(f, o) <= CHARGE_KICK_AT;
+    const rugby = c.kind === 'rugby';
+    const there = !o || !standing(o) || distance(f, o) <= (rugby ? RUGBY_SMASH_AT : CHARGE_KICK_AT);
     if (!there) {
       const dx = o.x - f.x;
       const dy = ring ? o.y - f.y : 0;
@@ -840,10 +863,30 @@
     const stuck = !there && Math.abs(f.x - x0) < 1 && Math.abs(f.y - y0) < 1;
     if (!there && !stuck && c.t < CHARGE_MAX_TICKS) return;
     f.charge = null;
+    if (rugby) {
+      shoulderSmash(game, f, o);
+      return;
+    }
     setState(f, 'attack', 'kick');
     f.aim = input.aim;
     f.stats.thrown++;
     game.events.push({ type: 'grandpaKick', attacker: game.fighters.indexOf(f) });
+  }
+
+  /** Lizzie gets there: a shoulder into whoever's still in front of her. */
+  function shoulderSmash(game, f, o) {
+    const index = game.fighters.indexOf(f);
+    f.rugby = RUGBY_KIT_AFTER;
+    setState(f, 'idle');
+    const ring = game.mode === 'ring';
+    const close = o && standing(o) && Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) <= RUGBY_REACH;
+    if (!close || shielded(o) || airborne(o)) {
+      game.events.push({ type: 'smashMiss', attacker: index });
+      return;
+    }
+    if (o.x === f.x && (!ring || o.y === f.y)) o.x += ring ? 1 : f.facing;
+    game.events.push({ type: 'shoulderSmash', attacker: index, target: game.fighters.indexOf(o) });
+    hurt(game, f, o, RUGBY_DAMAGE, RUGBY_STUN, RUGBY_KNOCKBACK);
   }
 
   /** Knocked about: the cheat code goes out of your head, and you let go of the fist. */
@@ -1257,6 +1300,7 @@
       if (f.tiny > 0) f.tiny--;
       if (f.spiky > 0) f.spiky--;
       if (f.sticky > 0) f.sticky--;
+      if (f.rugby > 0) f.rugby--;
       if (f.nap > 0 && --f.nap === 0) game.events.push({ type: 'wake', target: index });
       if (f.vampire > 0) f.vampire--;
       if (f.lion > 0) f.lion--;
@@ -2092,7 +2136,8 @@
         ...(f.frozen > 0 ? { frozen: f.frozen } : {}),
         ...(f.fast > 0 ? { fast: f.fast } : {}),
         ...(f.turbo > 0 ? { turbo: f.turbo } : {}),
-        ...(f.charge ? { charge: true } : {}),
+        ...(f.charge && f.charge.kind !== 'rugby' ? { charge: true } : {}),
+        ...((f.charge && f.charge.kind === 'rugby') || f.rugby > 0 ? { rugby: true } : {}),
         ...(f.shoes > 0 ? { shoes: f.shoes } : {}),
         ...(f.love > 0 ? { love: f.love } : {}),
         ...(f.hug > 0 ? { hug: f.hug } : {}),
@@ -2135,7 +2180,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
