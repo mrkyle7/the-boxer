@@ -92,7 +92,7 @@
 // stops it; get out of the way (or jump it, one on one). A hit stops her.
 //
 // "simon" gives you a giant moustache for the rest of the match. Every punch
-// you land has a 9% chance of being an instant knockout, but also a 20%
+// you land has a 11% chance of being an instant knockout, but also a 14%
 // chance you get sleepy and nod off for five seconds, wide open while you nap.
 //
 // "bear" throws a pot's worth of honey at whoever's nearest. It only
