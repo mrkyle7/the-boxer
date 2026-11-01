@@ -299,8 +299,8 @@
   const RUGBY_KIT_AFTER = 40; // ticks the kit stays on after the smash
 
   // Simon: the moustache.
-  const MOUSTACHE_KO = 0.09; // a landed punch is a knockout
-  const MOUSTACHE_NAP = 0.20; // ...or sends you to sleep
+  const MOUSTACHE_KO = 0.11; // a landed punch is a knockout
+  const MOUSTACHE_NAP = 0.14; // ...or sends you to sleep
   const NAP_TICKS = 5 * TICK_RATE;
 
   // Bear: a throw of honey, a quarter of the screen at most.
