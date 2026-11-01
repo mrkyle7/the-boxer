@@ -92,7 +92,7 @@
 // stops it; get out of the way (or jump it, one on one). A hit stops her.
 //
 // "simon" gives you a giant moustache for the rest of the match. Every punch
-// you land has a 9% chance of being an instant knockout, but also a 20%
+// you land has a 11% chance of being an instant knockout, but also a 14%
 // chance you get sleepy and nod off for five seconds, wide open while you nap.
 //
 // "bear" throws a pot's worth of honey at whoever's nearest. It only
@@ -299,8 +299,8 @@
   const RUGBY_KIT_AFTER = 40; // ticks the kit stays on after the smash
 
   // Simon: the moustache.
-  const MOUSTACHE_KO = 0.09; // a landed punch is a knockout
-  const MOUSTACHE_NAP = 0.20; // ...or sends you to sleep
+  const MOUSTACHE_KO = 0.11; // a landed punch is a knockout
+  const MOUSTACHE_NAP = 0.14; // ...or sends you to sleep
   const NAP_TICKS = 5 * TICK_RATE;
 
   // Bear: a throw of honey, a quarter of the screen at most.
