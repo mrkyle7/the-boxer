@@ -72,7 +72,7 @@ Or **blake**: you turn into a dragon for ten seconds (green scales, horns, wings
 
 Or **lizzie**: you turn into a rugby player (hooped shirt, scrum cap) and charge flat out at whoever's nearest, shoulder-smashing them for 20 when you get there. No guard stops it: get out of the way, or jump it one on one. A hit on the way stops the charge.
 
-Or **simon**: a giant handlebar moustache for the rest of the match. Every punch you land has a 5% chance of being an instant knockout, but also a 15% chance you get sleepy and nod off for five seconds. While you nap you can't move, punch, block or type, so you're wide open.
+Or **simon**: a giant handlebar moustache for the rest of the match. Every punch you land has a 9% chance of being an instant knockout, but also a 20% chance you get sleepy and nod off for five seconds. While you nap you can't move, punch, block or type, so you're wide open.
 
 Or **bear**: you throw a dollop of honey at whoever's nearest. It only carries about a quarter of the screen, so get close first. Whoever it splats is stuck in it, moving at half speed for ten seconds. Jump over it to dodge it.
 
