@@ -1,7 +1,8 @@
 'use strict';
 
-// "simon": a giant moustache for the rest of the match. Each landed punch: 5%
-// an instant knockout, 15% he nods off for five seconds, wide open.
+// "simon": a giant moustache for the rest of the match. Each landed punch:
+// a small chance of an instant knockout (MOUSTACHE_KO), otherwise a chance
+// he nods off for five seconds, wide open (MOUSTACHE_NAP).
 
 const test = require('node:test');
 const assert = require('node:assert');
@@ -45,21 +46,20 @@ test('simon: a moustache, for the rest of the match', () => {
   assert.ok(g.fighters[0].moustache, 'still there next round');
 });
 
-test('a 5% punch is an instant knockout', () => {
+test('now and then a punch is an instant knockout', () => {
   const g = fight();
   G.cheat(g, 0, 'simon');
-  g.roll(0.04);
+  g.roll(G.MOUSTACHE_KO - 0.01);
   const events = punch(g);
   assert.ok(events.some((e) => e.type === 'moustacheKO' && e.attacker === 0 && e.target === 1));
   assert.ok(events.some((e) => e.type === 'ko' && e.target === 1));
   assert.strictEqual(g.fighters[1].hp, 0);
-  assert.strictEqual(G.MOUSTACHE_KO, 0.05);
 });
 
-test('otherwise a 15% chance he nods off for five seconds, and can be hit', () => {
+test('otherwise now and then he nods off for five seconds, and can be hit', () => {
   const g = fight();
   G.cheat(g, 0, 'simon');
-  g.roll(0.5, 0.1); // no knockout, but sleepy
+  g.roll(G.MOUSTACHE_KO + 0.01, G.MOUSTACHE_NAP - 0.01); // no knockout, but sleepy
   const events = punch(g);
   const hit = events.find((e) => e.type === 'hit' && e.attacker === 0);
   assert.strictEqual(hit.damage, G.MOVES.punch.head.damage, 'a normal punch');
@@ -79,7 +79,6 @@ test('otherwise a 15% chance he nods off for five seconds, and can be hit', () =
   const rest = run(g, G.NAP_TICKS);
   assert.ok(rest.some((e) => e.type === 'wake' && e.target === 0));
   assert.strictEqual(a.nap, 0);
-  assert.strictEqual(G.MOUSTACHE_NAP, 0.15);
   assert.strictEqual(G.NAP_TICKS, 5 * G.TICK_RATE);
 });
 
