@@ -10,6 +10,14 @@
 //   <ACCOUNTS_URL>/api/account/keys/<kid>
 // and never trusts a cookie it can't check.
 //
+// With KEYS_SUPABASE_URL and KEYS_SUPABASE_KEY set (the accounts database's
+// URL and its publishable key, which isn't secret), it reads the key straight
+// from the database's public_keys table instead, the one table anyone may
+// read. That answers even while the accounts service is asleep (it scales to
+// zero, and waking it can take longer than a player waits). If the database
+// doesn't have the key or doesn't answer, it asks the accounts service as
+// above.
+//
 // It also tells the accounts service when it sees a signed-in player, so the
 // site's owner hears when someone comes back (Bartenders' app/activity.py):
 // at most every 5 minutes per player, without holding up the request, by
@@ -28,6 +36,14 @@
 //   const player = await auth.player(req);   // { id, name } or null
 //   auth.loginUrl('https://snap.cheetahmoongames.com/')   // send them to sign in
 //   auth.guestSeen('Bob')                    // a guest started playing
+//   await auth.children(req)                 // a parent's children: [{ id, name }]
+//   await auth.isAdmin(req)                  // whether they're one of the site's admins
+//
+// Parents link to their children at cheetahmoongames.com/family (once each
+// child says yes). A game that shows parents how their children are doing
+// asks auth.children(req): it sends the player's own cookie back to the
+// accounts service (GET <ACCOUNTS_URL>/api/family/children), at most once a
+// minute per player. See "Families" in ADDING_A_GAME.md.
 //
 // No dependencies: Node's crypto does the checking.
 
@@ -37,6 +53,8 @@ const COOKIE_NAME = 'userjwt';
 const DEFAULT_ACCOUNTS_URL = 'https://cheetahmoongames.com';
 const MISSING_KEY_RETRY_MS = 60 * 1000;
 const REPORT_EVERY_MS = 5 * 60 * 1000;
+const CHILDREN_TTL_MS = 60 * 1000;
+const ADMIN_TTL_MS = 5 * 60 * 1000;
 // Who Bartenders accepts guest reports from: identity tokens made out to this.
 const GAME_AUDIENCE = 'https://cheetahmoongames.com';
 const METADATA_IDENTITY = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity';
@@ -70,7 +88,11 @@ function createAuth({
   place = process.env.K_SERVICE || null, // this game, for reporting players seen
   reportSeen, // (token, place) => Promise; tests pass their own
   reportGuest, // (name) => Promise; tests pass their own
+  fetchChildren, // (token) => Promise<[{ id, name }]>; tests pass their own
+  fetchAdmin, // (token) => Promise<boolean>; tests pass their own
   metadataUrl = METADATA_IDENTITY, // tests point it at a stand-in
+  keysDbUrl = process.env.KEYS_SUPABASE_URL || '', // the accounts database
+  keysDbKey = process.env.KEYS_SUPABASE_KEY || '', // its publishable key
 } = {}) {
   const base = accountsUrl.replace(/\/+$/, '');
   const keys = new Map(); // kid -> { key: Promise<KeyObject|null>, at }
@@ -84,7 +106,33 @@ function createAuth({
     const body = await r.json();
     return typeof body.pem === 'string' ? body.pem : null;
   };
-  const loadPem = fetchKey || defaultFetchKey;
+  // The key from the accounts database's public_keys table: its PEM, null if
+  // it hasn't got it, or an error if it couldn't be asked.
+  const dbBase = keysDbUrl.replace(/\/+$/, '');
+  const fetchKeyFromDb = async (kid) => {
+    const q = `select=public_key&valid=eq.true&kid=eq.${encodeURIComponent(kid)}`;
+    const r = await fetch(`${dbBase}/rest/v1/public_keys?${q}`, {
+      headers: { apikey: keysDbKey, Accept: 'application/json' },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!r.ok) throw new Error(`accounts database answered ${r.status}`);
+    const rows = await r.json();
+    const hex = Array.isArray(rows) && rows.length === 1 ? rows[0].public_key : null;
+    // A bytea column comes back as "\x" and hex.
+    if (typeof hex !== 'string' || !/^\\x[0-9a-fA-F]+$/.test(hex)) return null;
+    const pem = Buffer.from(hex.slice(2), 'hex').toString('utf8');
+    return pem.startsWith('-----BEGIN PUBLIC KEY-----') ? pem : null;
+  };
+  const fetchKeyFromDbThenService = async (kid) => {
+    try {
+      const pem = await fetchKeyFromDb(kid);
+      if (pem) return pem;
+    } catch (err) {
+      console.error(`auth: couldn't read signing key ${kid} from the accounts database: ${err.message}`);
+    }
+    return defaultFetchKey(kid);
+  };
+  const loadPem = fetchKey || (dbBase && keysDbKey ? fetchKeyFromDbThenService : defaultFetchKey);
 
   function keyFor(kid) {
     const cached = keys.get(kid);
@@ -207,12 +255,68 @@ function createAuth({
     });
   }
 
+  const defaultFetchChildren = async (token) => {
+    const r = await fetch(`${base}/api/family/children`, {
+      headers: { Cookie: `${COOKIE_NAME}=${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (r.status === 401) return [];
+    if (!r.ok) throw new Error(`accounts service answered ${r.status}`);
+    const body = await r.json();
+    return Array.isArray(body.children) ? body.children.filter((c) => c && typeof c.id === 'string' && typeof c.name === 'string') : [];
+  };
+  const loadChildren = fetchChildren || defaultFetchChildren;
+  const childrenOf = new Map(); // player id -> { list: Promise, at }
+
+  // The children of the signed-in player making this request, linked at
+  // cheetahmoongames.com/family: [{ id, name }], or [] (not signed in, or
+  // none). Remembered for a minute.
+  async function children(req) {
+    const token = cookieValue(req && req.headers && req.headers.cookie);
+    const who = token ? await verify(token) : null;
+    if (!who) return [];
+    const cached = childrenOf.get(who.id);
+    if (cached && now() - cached.at < CHILDREN_TTL_MS) return cached.list;
+    if (childrenOf.size > 10_000) childrenOf.clear();
+    const entry = { at: now(), list: Promise.resolve().then(() => loadChildren(token)) };
+    entry.list.catch(() => childrenOf.delete(who.id));
+    childrenOf.set(who.id, entry);
+    return entry.list;
+  }
+
+  const defaultFetchAdmin = async (token) => {
+    const r = await fetch(`${base}/api/account/me`, {
+      headers: { Cookie: `${COOKIE_NAME}=${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) throw new Error(`accounts service answered ${r.status}`);
+    return (await r.json()).admin === true;
+  };
+  const loadAdmin = fetchAdmin || defaultFetchAdmin;
+  const adminOf = new Map(); // player id -> { is: Promise<boolean>, at }
+
+  // Whether the signed-in player making this request is one of the site's
+  // admins (Bartenders' is_admin), for a game's admin pages: asked of the
+  // accounts service with their own cookie, remembered for 5 minutes. False
+  // if not signed in, or if it can't be asked.
+  async function isAdmin(req) {
+    const token = cookieValue(req && req.headers && req.headers.cookie);
+    const who = token ? await verify(token) : null;
+    if (!who) return false;
+    const cached = adminOf.get(who.id);
+    if (cached && now() - cached.at < ADMIN_TTL_MS) return cached.is;
+    if (adminOf.size > 10_000) adminOf.clear();
+    const entry = { at: now(), is: Promise.resolve().then(() => loadAdmin(token)).catch(() => false) };
+    adminOf.set(who.id, entry);
+    return entry.is;
+  }
+
   // Where to send someone to sign in; they come back to `returnTo` after.
   function loginUrl(returnTo) {
     return `${base}/login${returnTo ? `?next=${encodeURIComponent(returnTo)}` : ''}`;
   }
 
-  return { player, verify, loginUrl, guestSeen, accountsUrl: base };
+  return { player, verify, loginUrl, guestSeen, children, isAdmin, accountsUrl: base };
 }
 
 module.exports = { createAuth, cookieValue, COOKIE_NAME };
