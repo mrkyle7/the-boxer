@@ -306,3 +306,57 @@ test('a guest who starts playing is reported to the owner once; signed-in player
     assert.deepStrictEqual(fakeAuth.guestsSeen, ['Bob']);
   });
 });
+
+test('fight a bot straight from the lobby', async () => {
+  await withServer(async (port, connect) => {
+    const a = await connect();
+    a.send({ t: 'hello', name: 'Solo' });
+    a.send({ t: 'bot', level: 'hard' });
+    const start = await a.next((m) => m.t === 'start');
+    assert.deepStrictEqual(start.names, ['Solo', 'Champ Bot']);
+    assert.strictEqual(start.mode, 'side');
+    // The bot moves on its own.
+    let first = null;
+    let moved = false;
+    for (let k = 0; k < 120 && !moved; k++) {
+      const s = (await a.next((m) => m.t === 'state')).s;
+      if (s.phase !== 'fight') continue;
+      if (first === null) first = s.fighters[1].x;
+      else if (Math.abs(s.fighters[1].x - first) > 20) moved = true;
+    }
+    assert.ok(moved, 'the bot came at me');
+  });
+});
+
+test('the host adds and removes bots in a private room; bots never host', async () => {
+  await withServer(async (port, connect) => {
+    const a = await connect();
+    a.send({ t: 'hello', name: 'Host' });
+    a.send({ t: 'create' });
+    await a.next((m) => m.t === 'room');
+    a.send({ t: 'addBot', level: 'easy' });
+    a.send({ t: 'addBot', level: 'easy' });
+    let room = await a.next((m) => m.t === 'room' && m.players.length === 3);
+    assert.deepStrictEqual(room.players, ['Host', 'Rookie Bot', 'Rookie Bot 2']);
+    assert.deepStrictEqual(room.bots, [null, 'easy', 'easy']);
+
+    const b = await connect();
+    b.send({ t: 'hello', name: 'Pal' });
+    b.send({ t: 'join', code: room.code });
+    await b.next((m) => m.t === 'room');
+    b.send({ t: 'addBot', level: 'hard' }); // only the host can
+    a.send({ t: 'removeBot', index: 1 });
+    room = await a.next((m) => m.t === 'room' && m.players.length === 3 && !m.players.includes('Rookie Bot'));
+    assert.deepStrictEqual(room.players, ['Host', 'Rookie Bot 2', 'Pal']);
+    a.send({ t: 'removeBot', index: 2 }); // not a bot: nothing happens
+
+    // The host leaves: Pal runs the room, not the bot ahead of them.
+    a.send({ t: 'leave' });
+    const now = await b.next((m) => m.t === 'room' && m.players.length === 2);
+    assert.strictEqual(now.host, true);
+    assert.strictEqual(now.hostIndex, 1);
+    b.send({ t: 'start' });
+    const start = await b.next((m) => m.t === 'start');
+    assert.deepStrictEqual(start.names, ['Rookie Bot 2', 'Pal']);
+  });
+});

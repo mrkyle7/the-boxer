@@ -108,6 +108,7 @@
         $('room-players').hidden = true;
         $('room-note').textContent = '';
         $('start').hidden = true;
+        $('add-bot').hidden = true;
         show('waiting');
         break;
       }
@@ -179,10 +180,14 @@
     return `${list.slice(0, -1).join(', ')} and ${list[list.length - 1]}`;
   }
 
+  const BOT_LEVELS = { easy: 'Easy', medium: 'Medium', hard: 'Hard' };
+
   /** A private room before the fight: who's in, and the host's Start button. */
   function showRoom(msg) {
     roomCode = msg.code;
-    const host = msg.players[0];
+    const hostIndex = msg.hostIndex || 0;
+    const bots = msg.bots || [];
+    const host = msg.players[hostIndex];
     $('waiting-title').textContent = msg.host ? 'Your ring is ready' : `${host}'s ring`;
     $('share').hidden = false;
     $('room-code').textContent = msg.code;
@@ -199,8 +204,17 @@
         name.textContent = msg.players[i] + (i === msg.you ? ' (you)' : '');
         const tag = document.createElement('span');
         tag.className = 'tag';
-        tag.textContent = i === 0 ? 'Host' : '';
+        tag.textContent = i === hostIndex ? 'Host' : bots[i] ? `Bot · ${BOT_LEVELS[bots[i]]}` : '';
         li.append(dot, name, tag);
+        if (bots[i] && msg.host) {
+          // The host can take a bot back out.
+          const x = document.createElement('button');
+          x.className = 'remove-bot';
+          x.textContent = '✕';
+          x.setAttribute('aria-label', `Remove ${msg.players[i]}`);
+          x.addEventListener('click', () => send({ t: 'removeBot', index: i }));
+          li.append(x);
+        }
       } else {
         li.className = 'empty';
         li.textContent = 'Open corner';
@@ -212,13 +226,14 @@
     const view = n > 2 ? `${n} fighters: free-for-all in the ring.` : n === 2 ? 'Two fighters: one on one.' : '';
     if (msg.host) {
       $('room-note').textContent = n < 2
-        ? 'Send the link to one, two or three friends. Start when everyone is in.'
+        ? 'Send the link to one, two or three friends, or add a bot. Start when everyone is in.'
         : `${view} Start when everyone is in.`;
     } else {
       $('room-note').textContent = `${view} Waiting for ${host} to start.`;
     }
     $('start').hidden = !msg.host;
     $('start').disabled = n < 2;
+    $('add-bot').hidden = !msg.host || n >= msg.max;
     show('waiting');
   }
 
@@ -1295,6 +1310,13 @@
   $('quick').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'quick' }); });
   $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create' }); });
   $('start').addEventListener('click', () => { sound.unlock(); send({ t: 'start' }); });
+  document.querySelectorAll('[data-bot]').forEach((b) => b.addEventListener('click', () => {
+    beforeMatchmaking();
+    send({ t: 'bot', level: b.dataset.bot });
+  }));
+  document.querySelectorAll('[data-add-bot]').forEach((b) => b.addEventListener('click', () => {
+    send({ t: 'addBot', level: b.dataset.addBot });
+  }));
   $('join-form').addEventListener('submit', (e) => {
     e.preventDefault();
     beforeMatchmaking();

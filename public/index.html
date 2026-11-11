@@ -36,6 +36,15 @@
           <button id="create" class="btn">Private fight <span class="sub">2–4 players</span></button>
         </div>
 
+        <div class="bot-pick" role="group" aria-labelledby="bot-pick-label">
+          <span id="bot-pick-label">Fight the computer</span>
+          <div class="bot-levels">
+            <button class="btn" data-bot="easy">Easy</button>
+            <button class="btn" data-bot="medium">Medium</button>
+            <button class="btn" data-bot="hard">Hard</button>
+          </div>
+        </div>
+
         <form id="join-form" class="join">
           <label class="field">
             <span>Have a room code?</span>
@@ -73,6 +82,14 @@
         <h2 id="waiting-title">Waiting for an opponent</h2>
         <ul id="room-players" class="room-players" hidden></ul>
         <p id="room-note" class="room-note"></p>
+        <div id="add-bot" class="bot-pick" role="group" aria-labelledby="add-bot-label" hidden>
+          <span id="add-bot-label">Add a bot</span>
+          <div class="bot-levels">
+            <button class="btn" data-add-bot="easy">Easy</button>
+            <button class="btn" data-add-bot="medium">Medium</button>
+            <button class="btn" data-add-bot="hard">Hard</button>
+          </div>
+        </div>
         <button id="start" class="btn btn-primary" hidden>Start the fight</button>
         <div id="share" class="share">
           <p>Send this to a friend:</p>

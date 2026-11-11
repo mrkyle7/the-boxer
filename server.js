@@ -6,6 +6,7 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const Game = require('./public/game.js');
 const { createAuth } = require('./auth');
+const Bot = require('./bot');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -48,7 +49,9 @@ function serveStatic(req, res) {
 // Quick matches pair two strangers and start at once. Private rooms hold two
 // to four: friends join with the code or link, and whoever made the room
 // starts the fight. Three or four fight in the ring seen from above (see
-// public/game.js).
+// public/game.js). Bots (bot.js) can fill corners: one straight from the
+// lobby for a fight against the computer, or added by the host of a room.
+// A bot takes a seat like anyone else, but has no connection.
 
 const MAX_PLAYERS = Game.MAX_FIGHTERS;
 const rooms = new Map();
@@ -64,7 +67,20 @@ function makeCode() {
 }
 
 function send(ws, msg) {
-  if (ws && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+  if (ws && !ws.isBot && ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
+}
+
+const humans = (room) => room.players.filter((p) => !p.isBot);
+/** Whoever runs the room: the first person in it (never a bot). */
+const hostOf = (room) => humans(room)[0] || null;
+
+/** A computer fighter at this level, named so it doesn't clash with anyone. */
+function makeBot(room, level) {
+  const bot = Bot.createBot(level);
+  const base = Bot.LEVELS[bot.level].name;
+  let name = base;
+  for (let n = 2; room.players.some((p) => p.name === name); n++) name = `${base} ${n}`;
+  return { isBot: true, name, level: bot.level, bot, room, seat: null };
 }
 
 function createRoom(isPublic) {
@@ -94,8 +110,10 @@ const fighting = (room) => Boolean(room.game) && room.game.phase !== 'matchEnd';
 /** Tells everyone in a private room who's there, before the fight. */
 function sendRoom(room) {
   const names = room.players.map((p) => p.name);
+  const bots = room.players.map((p) => (p.isBot ? p.level : null));
+  const host = room.players.indexOf(hostOf(room));
   room.players.forEach((p, i) => send(p, {
-    t: 'room', code: room.code, players: names, you: i, host: i === 0, max: MAX_PLAYERS,
+    t: 'room', code: room.code, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
   }));
 }
 
@@ -106,16 +124,18 @@ function startMatch(room) {
   room.rematch = new Set();
   room.fighters.forEach((p, i) => {
     p.seat = i;
+    if (p.isBot) p.bot = Bot.createBot(p.level); // fresh for each match
     send(p, { t: 'start', you: i, names, code: room.code, mode: room.game.mode });
   });
   stopLoop(room);
   let n = 0;
   room.loop = setInterval(() => {
+    room.fighters.forEach((p, i) => { if (p && p.isBot) Bot.botTick(room.game, i, p.bot); });
     Game.step(room.game);
     if (++n % BROADCAST_EVERY !== 0) return;
     const msg = JSON.stringify({ t: 'state', s: Game.snapshot(room.game), e: room.game.events });
     room.game.events = [];
-    for (const p of room.fighters) if (p && p.readyState === p.OPEN) p.send(msg);
+    for (const p of room.fighters) if (p && !p.isBot && p.readyState === p.OPEN) p.send(msg);
     if (room.game.phase === 'matchEnd') stopLoop(room);
   }, 1000 / Game.TICK_RATE);
 }
@@ -141,7 +161,8 @@ function leaveRoom(ws) {
   room.rematch.delete(ws);
   const others = room.players;
 
-  if (others.length === 0) return closeRoom(room);
+  // Nobody left but bots: the room goes.
+  if (humans(room).length === 0) return closeRoom(room);
 
   if (fighting(room) && seat !== -1) {
     // One on one, the fight can't go on. In the ring the others fight on
@@ -173,7 +194,7 @@ function leaveRoom(ws) {
 
 function maybeRematch(room) {
   const present = room.players;
-  if (present.length >= 2 && present.every((p) => room.rematch.has(p))) startMatch(room);
+  if (present.length >= 2 && present.every((p) => p.isBot || room.rematch.has(p))) startMatch(room);
 }
 
 // ---- Messages --------------------------------------------------------------
@@ -208,9 +229,33 @@ const handlers = {
   },
   start(ws) {
     const room = ws.room;
-    if (!room || room.isPublic || room.game || room.players[0] !== ws) return;
+    if (!room || room.isPublic || room.game || hostOf(room) !== ws) return;
     if (room.players.length < 2) return send(ws, { t: 'error', msg: 'You need at least one opponent.' });
     startMatch(room);
+  },
+  /** A fight against the computer, straight from the lobby. */
+  bot(ws, msg) {
+    leaveRoom(ws);
+    const room = createRoom(false);
+    addPlayer(room, ws);
+    room.players.push(makeBot(room, msg.level));
+    startMatch(room);
+  },
+  /** The host fills a corner with a bot. */
+  addBot(ws, msg) {
+    const room = ws.room;
+    if (!room || room.isPublic || room.game || hostOf(room) !== ws) return;
+    if (room.players.length >= MAX_PLAYERS) return;
+    room.players.push(makeBot(room, msg.level));
+    sendRoom(room);
+  },
+  removeBot(ws, msg) {
+    const room = ws.room;
+    if (!room || room.isPublic || room.game || hostOf(room) !== ws) return;
+    const p = room.players[msg.index];
+    if (!p || !p.isBot) return;
+    room.players.splice(msg.index, 1);
+    sendRoom(room);
   },
   quick(ws) {
     if (quickQueue && quickQueue === ws.room) return;
@@ -243,7 +288,7 @@ const handlers = {
     const room = ws.room;
     if (!room || !room.game || room.game.phase !== 'matchEnd') return;
     room.rematch.add(ws);
-    const waitingFor = room.players.filter((p) => !room.rematch.has(p)).map((p) => p.name);
+    const waitingFor = humans(room).filter((p) => !room.rematch.has(p)).map((p) => p.name);
     room.players.forEach((p) => {
       if (p !== ws) send(p, { t: 'rematchRequested', name: ws.name, waitingFor });
     });
@@ -300,7 +345,7 @@ function createServer({ auth = createAuth() } = {}) {
         handler(ws, msg);
         // A guest starting to play: tell the owner (auth.js keeps it to
         // one report per name every few minutes).
-        if (!ws.account && !ws.guestReported && ['quick', 'create', 'join'].includes(msg.t)) {
+        if (!ws.account && !ws.guestReported && ['quick', 'create', 'join', 'bot'].includes(msg.t)) {
           ws.guestReported = true;
           auth.guestSeen(ws.name);
         }
