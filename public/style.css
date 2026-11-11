@@ -251,6 +251,13 @@ canvas {
 .room-players li .tag { margin-left: auto; font-size: 13px; color: var(--muted); font-weight: 400; }
 .room-players li.empty { color: var(--muted); border-style: dashed; font-weight: 400; }
 .room-note { color: var(--muted); margin: 8px 0 14px; }
+.bot-pick { margin-top: 14px; text-align: left; }
+.bot-pick > span { display: block; font-size: 14px; color: var(--muted); margin-bottom: 6px; }
+.bot-levels { display: flex; gap: 8px; }
+.bot-levels .btn { flex: 1 1 0; min-width: 0; padding-left: 8px; padding-right: 8px; }
+#add-bot { margin: 0 0 14px; }
+.room-players li .remove-bot { margin-left: 8px; background: none; border: 0; color: var(--muted); font: inherit; font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 6px; }
+.room-players li .remove-bot:hover { color: var(--text, #fff); }
 #start { margin-bottom: 12px; }
 .btn .sub { display: block; font-size: 12px; font-weight: 400; opacity: 0.75; }
 
