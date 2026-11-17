@@ -36,11 +36,12 @@ const LEVELS = {
 };
 
 // The codes a bot will use: ones that just happen once typed (no steering a
-// fist, and no flood to swim through).
+// fist, no flood to swim through, and not supercalifragilisticexpialidocious:
+// two rounds of invincibility from a computer would be no fun).
 const CODE_POOL = [
   'zeffen', 'kalya', 'luna', 'louise', 'tamzin', 'grandpa', 'fart', 'jemini', 'kyle', 'harrison',
   'shaan', 'parimal', 'priya', 'daniel', 'edward', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy',
-  'bear', 'lizzie', 'blake', 'simon', 'spreadbury', 'mamtora',
+  'bear', 'lizzie', 'blake', 'simon', 'spreadbury', 'mamtora', 'briony',
 ].filter((c) => c in Game.CODES);
 
 const LOW_STAMINA = 20;

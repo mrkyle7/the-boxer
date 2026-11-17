@@ -664,6 +664,56 @@
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Huh? Awake!', '#c9d6ff', 24);
       return;
     }
+    if (e.type === 'briony') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Send in the clown!', '#ff3b5c', 30);
+      sound.fanfare();
+      return;
+    }
+    if (e.type === 'pieThrow') {
+      sound.whoosh();
+      return;
+    }
+    if (e.type === 'pieHit') {
+      const p = targetPos(e.target, 'head');
+      const col = PIE_COLOURS[e.flavour] || PIE_COLOURS.raspberry;
+      sparks(p.x, p.y, col.fill, 26, 6);
+      sparks(p.x, p.y, '#fff8e7', 14, 5);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), e.flavour === 'blueberry' ? 'Blueberry face!' : 'Raspberry face!', col.text, 30);
+      sound.splash();
+      return;
+    }
+    if (e.type === 'pieBlocked') {
+      const p = targetPos(e.target, 'head');
+      const col = PIE_COLOURS[e.flavour] || PIE_COLOURS.raspberry;
+      sparks(p.x, p.y, col.fill, 14, 4);
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Pie blocked!', '#fff8e7', 24);
+      return;
+    }
+    if (e.type === 'pieMiss') {
+      const p = mode === 'ring' ? toScreen(e.x, e.y) : { x: e.x, y: FLOOR - 10 };
+      sparks(p.x, p.y, (PIE_COLOURS[e.flavour] || PIE_COLOURS.raspberry).fill, 12, 3);
+      return;
+    }
+    if (e.type === 'clownDrop') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Dropped the balls!', '#ffd23f', 24);
+      return;
+    }
+    if (e.type === 'clownBow') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Ta-da!', '#ffd23f', 26);
+      return;
+    }
+    if (e.type === 'super') {
+      const p = targetPos(e.target, 'head');
+      sparks(p.x, p.y, '#ffd23f', 40, 8);
+      sparks(p.x, p.y, '#ffffff', 20, 6);
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Practically perfect!', '#ffd23f', 28);
+      announce('Invincible!', 90, '#ffd23f', `${snap.fighters[e.target].name}, for two rounds`);
+      sound.fanfare();
+      return;
+    }
     if (e.type === 'bear') {
       const p = targetPos(e.attacker, 'head');
       floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Honey!', '#f5b415', 32);
@@ -1616,6 +1666,7 @@
     const size = d.size || 1;
     if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
     if (f.spelling && !echo) spellBubble(0, -125 * size, 150 * size, clock);
+    if (f.invincible && !echo) invincibleAura(0, -125 * size, 155 * size, clock);
     if (f.love && !echo) loveAura(G.MUMMY_RADIUS, 22, -120, clock, f.love < 40);
     if (f.hug && !echo) hugHearts(0, -150, 70, clock);
     ctx.scale(size, size);
@@ -2282,6 +2333,7 @@
     const size = d.size || 1;
     if (size > 1.01) giantAura(0, 0, 56 * size, clock, false);
     if (f.spelling) spellBubble(0, 0, 44 * size, clock);
+    if (f.invincible) invincibleAura(0, 0, 48 * size, clock);
     if (f.love) {
       const r = (G.MUMMY_RADIUS * VK) / fighterScale();
       loveAura(r, r, 0, clock, f.love < 40);
@@ -2661,6 +2713,9 @@
     if (f.burn) out.push({ text: `ON FIRE  ${secs(f.burn)}s`, short: `FIRE ${secs(f.burn)}s`, color: '#ff8a1e' });
     if (f.nap) out.push({ text: `NAPPING  ${secs(f.nap)}s`, short: `ZZZ ${secs(f.nap)}s`, color: '#c9d6ff' });
     if (f.moustache) out.push({ text: 'MOUSTACHE', short: 'TASH', color: '#c98a4a' });
+    if (f.invincible) out.push({ text: f.invincible > 1 ? 'INVINCIBLE · THIS ROUND AND NEXT' : 'INVINCIBLE · THIS ROUND', short: 'INVINCIBLE', color: '#ffd23f' });
+    if (f.clown) out.push({ text: 'CLOWNING AROUND', short: 'CLOWN', color: '#ff3b5c' });
+    if (f.pieFace) out.push({ text: `${f.pieFlavour === 'blueberry' ? 'BLUEBERRY' : 'RASPBERRY'} FACE  ${secs(f.pieFace)}s`, short: `PIE ${secs(f.pieFace)}s`, color: (PIE_COLOURS[f.pieFlavour] || PIE_COLOURS.raspberry).text });
     if (f.sticky) out.push({ text: `STUCK IN HONEY  ${secs(f.sticky)}s`, short: `STICKY ${secs(f.sticky)}s`, color: '#f5b415' });
     if (f.frozen) out.push({ text: `FROZEN  ${secs(f.frozen)}s`, short: `FROZEN ${secs(f.frozen)}s`, color: '#b5ecff' });
     if (f.invisible && i === me) out.push({ text: `INVISIBLE  ${secs(f.invisible)}s`, short: `INVISIBLE ${secs(f.invisible)}s`, color: '#b5ecff' });
@@ -2901,6 +2956,8 @@
     lizzie: { fill: ['#eaffea', '#7fe07f', '#1f6b2a'], spark: '#ffffff' }, // rugby-pitch green
     simon: { fill: ['#f5e6d3', '#c98a4a', '#3a2210'], spark: '#e8c39a' }, // moustache brown
     bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
+    briony: { fill: ['#fff6d6', '#ff3b5c', '#8a1030'], spark: '#ffd23f' }, // clown red
+    supercalifragilisticexpialidocious: { fill: [], spark: '#ffd23f', rainbow: true }, // practically perfect
     mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
     daddy: { fill: ['#fff3d6', '#ff5a36', '#a81e10'], spark: '#ffd23f' }, // trainer red
     grandpa: { fill: ['#f6ecd9', '#c9a46a', '#6e5a42'], spark: '#e8d3a8' }, // tweed
@@ -2935,11 +2992,12 @@
   function drawTyping() {
     const now = performance.now();
     const ring = mode === 'ring';
-    const size = ring ? 36 : 48;
     snap.fighters.forEach((f, i) => {
       const d = display[i];
       // Someone else's Kyle doesn't give themselves away by typing, either.
       const word = f.left || hiddenFrom(i, f) ? '' : (f.typing || '').toUpperCase();
+      // A long one (supercalifragilisticexpialidocious) gets smaller letters, to fit.
+      const size = Math.min(ring ? 36 : 48, (ring ? 560 : 900) / (Math.max(1, word.length) * 0.62));
       const style = styleFor(word);
       const p = targetPos(i, 'head');
       const y = p.y - (ring ? 52 : 118);
@@ -3389,6 +3447,198 @@
       ctx.strokeText('SWIM!', p.x, y - 8);
       ctx.fillStyle = '#e6fbff';
       ctx.fillText('SWIM!', p.x, y - 8);
+    }
+    ctx.restore();
+  }
+
+  // Briony's pies: the fruit inside, and what it looks like on your face.
+  const PIE_COLOURS = {
+    blueberry: { fill: '#4b3fb8', dark: '#2a1f6e', berry: '#2f2a8a', text: '#8f86ff' },
+    raspberry: { fill: '#e0245e', dark: '#8f0f38', berry: '#ff4f7f', text: '#ff6f9a' },
+  };
+  const BALL_COLOURS = ['#ff3b5c', '#ffd23f', '#38b6ff'];
+
+  /** A pie: a golden crust in a tin, fruit bubbling on top, a dollop of cream. */
+  function drawPie(x, y, r, flavour, tilt) {
+    const col = PIE_COLOURS[flavour] || PIE_COLOURS.raspberry;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(tilt || 0);
+    ctx.fillStyle = '#b8b8c4'; // the tin
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.25, r * 1.05, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#d99a4a'; // crust
+    ctx.beginPath();
+    ctx.ellipse(0, 0, r, r * 0.42, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = col.fill; // fruit
+    ctx.beginPath();
+    ctx.ellipse(0, -r * 0.05, r * 0.78, r * 0.3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = col.berry;
+    for (let k = 0; k < 4; k++) {
+      ctx.beginPath();
+      ctx.arc((k - 1.5) * r * 0.35, -r * 0.08 + (k % 2) * r * 0.1, r * 0.12, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = '#fffaf0'; // cream on top
+    ctx.beginPath();
+    ctx.arc(0, -r * 0.3, r * 0.28, 0, Math.PI * 2);
+    ctx.arc(-r * 0.2, -r * 0.2, r * 0.2, 0, Math.PI * 2);
+    ctx.arc(r * 0.2, -r * 0.2, r * 0.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  /** Where a fighter's head is, on screen (for things drawn over them). */
+  function headOf(i) {
+    const f = snap.fighters[i];
+    const d = display[i];
+    const size = d.size || 1;
+    if (mode === 'ring') return toScreen(d.x, d.y);
+    return { x: d.x + f.facing * 8 * size, y: FLOOR - 222 * size };
+  }
+
+  /**
+   * Briony's clown: a curly rainbow wig, a red nose, a ruff, and three balls
+   * going up and over. Once the juggling's done a pie sits on each ball, and
+   * off they go one by one.
+   */
+  function drawClowns(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.clown || hiddenFrom(i, f)) return;
+      const ring = mode === 'ring';
+      const size = display[i].size || 1;
+      const h = headOf(i);
+      const s = (ring ? 0.45 : 1) * size;
+      const dir = ring ? 1 : f.facing;
+      ctx.save();
+      // The wig: puffs of colour each side of the head.
+      const wig = ['#ff3b5c', '#ff9a3c', '#ffd23f', '#5fe07f', '#38b6ff', '#b388ff'];
+      for (let k = 0; k < 6; k++) {
+        const side = k % 2 ? 1 : -1;
+        const a = (k >> 1) * 0.7 - 0.7;
+        ctx.fillStyle = wig[k];
+        ctx.beginPath();
+        ctx.arc(h.x + side * (26 + 6 * Math.cos(a)) * s, h.y - 10 * s + a * 16 * s, 12 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (!ring) {
+        // A frilly ruff round the neck.
+        ctx.fillStyle = '#ffffff';
+        for (let k = 0; k < 7; k++) {
+          ctx.beginPath();
+          ctx.arc(h.x - dir * 6 * s + (k - 3) * 9 * s, h.y + 34 * s + (k % 2) * 4 * s, 8 * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      // The red nose.
+      ctx.fillStyle = '#ff1f3d';
+      ctx.beginPath();
+      ctx.arc(h.x + dir * (ring ? 10 : 20) * s, h.y + (ring ? 0 : 4 * s), 7 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath();
+      ctx.arc(h.x + dir * (ring ? 8 : 18) * s, h.y + (ring ? -2 : 2) * s, 2 * s, 0, Math.PI * 2);
+      ctx.fill();
+      // The balls, going round in a loop above the head.
+      const left = G.PIES - f.clown.thrown;
+      const pies = f.clown.t >= G.JUGGLE_TICKS - 12;
+      for (let k = 0; k < left; k++) {
+        const a = clock * 7 + (k / G.PIES) * Math.PI * 2;
+        const bx = h.x + Math.cos(a) * 34 * s;
+        const by = h.y - (ring ? 0 : 70 * s) + Math.sin(a) * (ring ? 34 : 40) * s - (ring ? 0 : Math.abs(Math.cos(a)) * 20 * s);
+        ctx.fillStyle = BALL_COLOURS[k % BALL_COLOURS.length];
+        ctx.beginPath();
+        ctx.arc(bx, by, 9 * s, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = 'rgba(255,255,255,0.6)';
+        ctx.beginPath();
+        ctx.arc(bx - 3 * s, by - 3 * s, 3 * s, 0, Math.PI * 2);
+        ctx.fill();
+        if (pies) drawPie(bx, by - 12 * s, 13 * s, k % 2 ? 'raspberry' : 'blueberry', 0);
+      }
+      ctx.restore();
+    });
+  }
+
+  /** Briony's pies in flight, spinning a little, at head height. */
+  function drawPies(clock) {
+    for (const p of snap.pies || []) {
+      const owner = snap.fighters[p.owner];
+      if (owner && hiddenFrom(p.owner, owner)) continue;
+      const ring = mode === 'ring';
+      const q = ring ? toScreen(p.x, p.y) : { x: p.x, y: FLOOR - 222 };
+      drawPie(q.x, q.y, ring ? 12 : 22, p.flavour, Math.sin(clock * 12) * 0.25 + (ring ? 0 : p.dx * 0.3));
+    }
+  }
+
+  /** A pie in the face: fruit and cream splattered over the head, dripping. */
+  function drawPieFaces(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.pieFace || hiddenFrom(i, f)) return;
+      const col = PIE_COLOURS[f.pieFlavour] || PIE_COLOURS.raspberry;
+      const ring = mode === 'ring';
+      const size = display[i].size || 1;
+      const s = (ring ? 0.45 : 1) * size;
+      const h = headOf(i);
+      ctx.save();
+      if (f.pieFace < 40) ctx.globalAlpha *= f.pieFace / 40;
+      // Cream first, then the fruit on top of it.
+      ctx.fillStyle = '#fffaf0';
+      ctx.beginPath();
+      ctx.arc(h.x, h.y, 24 * s, 0, Math.PI * 2);
+      ctx.arc(h.x - 14 * s, h.y + 10 * s, 12 * s, 0, Math.PI * 2);
+      ctx.arc(h.x + 16 * s, h.y - 8 * s, 11 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = col.fill;
+      ctx.beginPath();
+      ctx.arc(h.x + 2 * s, h.y - 2 * s, 16 * s, 0, Math.PI * 2);
+      ctx.arc(h.x - 12 * s, h.y - 12 * s, 8 * s, 0, Math.PI * 2);
+      ctx.arc(h.x + 14 * s, h.y + 10 * s, 7 * s, 0, Math.PI * 2);
+      ctx.fill();
+      // Berries stuck on.
+      for (let k = 0; k < 5; k++) {
+        const a = k * 1.3;
+        ctx.fillStyle = col.berry;
+        ctx.beginPath();
+        ctx.arc(h.x + Math.cos(a) * 14 * s, h.y + Math.sin(a) * 12 * s, 4.5 * s, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      if (!ring) {
+        // Juice dripping down.
+        ctx.fillStyle = col.dark;
+        for (let k = 0; k < 3; k++) {
+          const q = (clock * 0.6 + k / 3) % 1;
+          ctx.beginPath();
+          ctx.ellipse(h.x + (k - 1) * 12 * s, h.y + (16 + q * 40) * s, 3 * s, 5 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.restore();
+    });
+  }
+
+  /** Supercalifragilisticexpialidocious: a golden shield, sparkling in all colours. */
+  function invincibleAura(cx, cy, r, clock) {
+    ctx.save();
+    const g = ctx.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
+    g.addColorStop(0, 'rgba(255,210,63,0)');
+    g.addColorStop(1, 'rgba(255,210,63,0.3)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = `rgba(255,226,120,${0.55 + 0.35 * Math.sin(clock * 6)})`;
+    ctx.lineWidth = 4;
+    ctx.stroke();
+    for (let k = 0; k < 8; k++) {
+      const a = -clock * 1.5 + (k / 8) * Math.PI * 2;
+      ctx.fillStyle = `hsl(${(k * 45 + clock * 120) % 360}, 95%, 65%)`;
+      ctx.beginPath();
+      ctx.arc(cx + Math.cos(a) * r, cy + Math.sin(a) * r, r > 80 ? 5 : 3, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }
@@ -4801,6 +5051,9 @@
     drawBolts(clock);
     drawHoney(clock);
     drawSticky(clock);
+    drawPieFaces(clock);
+    drawClowns(clock);
+    drawPies(clock);
     drawNaps();
     drawBurning(clock);
     drawClouds(clock);
