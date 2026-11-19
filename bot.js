@@ -37,7 +37,8 @@ const LEVELS = {
 
 // The codes a bot will use: ones that just happen once typed (no steering a
 // fist, no flood to swim through, and not supercalifragilisticexpialidocious:
-// two rounds of invincibility from a computer would be no fun).
+// two rounds of invincibility from a computer would be no fun; nor paul, as
+// a lullaby from an easy bot puts a hard one to sleep and evens them up).
 const CODE_POOL = [
   'zeffen', 'kalya', 'luna', 'louise', 'tamzin', 'grandpa', 'fart', 'jemini', 'kyle', 'harrison',
   'shaan', 'parimal', 'priya', 'daniel', 'edward', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy',

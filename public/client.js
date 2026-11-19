@@ -705,6 +705,24 @@
       floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Ta-da!', '#ffd23f', 26);
       return;
     }
+    if (e.type === 'paul') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Time for a lullaby...', '#b9a6ff', 28);
+      sound.lullaby();
+      return;
+    }
+    if (e.type === 'lullaby') {
+      for (const i of e.targets) {
+        const p = targetPos(i, 'head');
+        floatText(p.x, p.y - (mode === 'ring' ? 60 : 110), 'Fast asleep!', '#c9d6ff', 30);
+      }
+      return;
+    }
+    if (e.type === 'pianoStop') {
+      const p = targetPos(e.attacker, 'head');
+      floatText(p.x, p.y - (mode === 'ring' ? 50 : 90), 'Bum note!', '#b9a6ff', 24);
+      return;
+    }
     if (e.type === 'super') {
       const p = targetPos(e.target, 'head');
       sparks(p.x, p.y, '#ffd23f', 40, 8);
@@ -1052,6 +1070,12 @@
         [0, 0.08, 0.16, 0.24].forEach((at, k) => setTimeout(() => tone(a, 330 * 2 ** (k * 4 / 12), 0.22, 0.12, 'square'), at * 1000));
       },
       // Spreadbury: a little bugle fanfare; a chomp for a caught hotdog.
+      lullaby() {
+        // Brahms, more or less, softly on a sine.
+        const a = ctxOk(); if (!a) return;
+        [[659, 0], [659, 0.22], [784, 0.44], [659, 0.88], [659, 1.1], [784, 1.32], [659, 1.54], [784, 1.66], [1047, 1.78]].forEach(([fq, at]) =>
+          setTimeout(() => tone(a, fq, 0.35, 0.08, 'sine'), at * 1000));
+      },
       fanfare() {
         const a = ctxOk(); if (!a) return;
         [[392, 0], [523, 0.15], [659, 0.3], [784, 0.45], [659, 0.65], [784, 0.8]].forEach(([fq, at]) =>
@@ -1854,7 +1878,7 @@
     ctx.ellipse(hx - 3, hy - 9, 19, 14, -0.15, Math.PI, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#111';
-    if (f.state === 'ko' || hurt || f.nap) {
+    if (f.state === 'ko' || hurt || f.nap || f.asleep) {
       ctx.fillRect(hx + 7, hy - 3, 7, 2);
     } else {
       ctx.beginPath();
@@ -2714,6 +2738,8 @@
     if (f.nap) out.push({ text: `NAPPING  ${secs(f.nap)}s`, short: `ZZZ ${secs(f.nap)}s`, color: '#c9d6ff' });
     if (f.moustache) out.push({ text: 'MOUSTACHE', short: 'TASH', color: '#c98a4a' });
     if (f.invincible) out.push({ text: f.invincible > 1 ? 'INVINCIBLE · THIS ROUND AND NEXT' : 'INVINCIBLE · THIS ROUND', short: 'INVINCIBLE', color: '#ffd23f' });
+    if (f.piano) out.push({ text: 'PLAYING A LULLABY', short: 'PIANO', color: '#b9a6ff' });
+    if (f.asleep) out.push({ text: i === me ? 'FAST ASLEEP · TILL SOMEONE HITS YOU' : 'FAST ASLEEP · HIT TO WAKE', short: 'ASLEEP', color: '#c9d6ff' });
     if (f.clown) out.push({ text: 'CLOWNING AROUND', short: 'CLOWN', color: '#ff3b5c' });
     if (f.pieFace) out.push({ text: `${f.pieFlavour === 'blueberry' ? 'BLUEBERRY' : 'RASPBERRY'} FACE  ${secs(f.pieFace)}s`, short: `PIE ${secs(f.pieFace)}s`, color: (PIE_COLOURS[f.pieFlavour] || PIE_COLOURS.raspberry).text });
     if (f.sticky) out.push({ text: `STUCK IN HONEY  ${secs(f.sticky)}s`, short: `STICKY ${secs(f.sticky)}s`, color: '#f5b415' });
@@ -2956,6 +2982,7 @@
     lizzie: { fill: ['#eaffea', '#7fe07f', '#1f6b2a'], spark: '#ffffff' }, // rugby-pitch green
     simon: { fill: ['#f5e6d3', '#c98a4a', '#3a2210'], spark: '#e8c39a' }, // moustache brown
     bear: { fill: ['#fff3c4', '#f5b415', '#8a4f12'], spark: '#ffe08a' }, // honey gold
+    paul: { fill: ['#f4f0ff', '#b9a6ff', '#2a2350'], spark: '#ffffff' }, // ivory keys at bedtime
     briony: { fill: ['#fff6d6', '#ff3b5c', '#8a1030'], spark: '#ffd23f' }, // clown red
     supercalifragilisticexpialidocious: { fill: [], spark: '#ffd23f', rainbow: true }, // practically perfect
     mummy: { fill: ['#fff0f7', '#ff6fb1', '#b0185e'], spark: '#ffc2dd' }, // all heart pink
@@ -3620,6 +3647,103 @@
     });
   }
 
+  /**
+   * Paul at the piano: an upright piano in front of him, his hands going on
+   * the keys, and notes drifting off it.
+   */
+  function drawPianos(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.piano || hiddenFrom(i, f)) return;
+      const ring = mode === 'ring';
+      const size = display[i].size || 1;
+      const feet = feetOf(i);
+      ctx.save();
+      let keys; // where the keyboard is, for the notes to come off
+      if (ring) {
+        const a = f.angle || 0;
+        ctx.translate(feet.x, feet.y);
+        ctx.rotate(a);
+        ctx.translate(30 * size, 0);
+        ctx.scale(size, size);
+        ctx.fillStyle = '#1b1b22'; // the piano, from above
+        ctx.fillRect(0, -30, 22, 60);
+        ctx.fillStyle = '#f4f0e6';
+        ctx.fillRect(-8, -28, 9, 56);
+        ctx.fillStyle = '#111';
+        for (let k = 0; k < 7; k++) ctx.fillRect(-8, -26 + k * 8, 5, 4);
+        ctx.restore();
+        ctx.save();
+        keys = { x: feet.x + Math.cos(a) * 30 * size, y: feet.y + Math.sin(a) * 30 * size };
+      } else {
+        const dir = f.facing;
+        const x = feet.x + dir * 100 * size;
+        ctx.translate(x, feet.y);
+        ctx.scale(dir * size, size);
+        // Upright piano, keyboard towards him.
+        ctx.fillStyle = '#1b1b22';
+        ctx.fillRect(-10, -150, 70, 150);
+        ctx.fillStyle = '#2c2c38';
+        ctx.fillRect(-4, -142, 58, 50);
+        ctx.fillStyle = '#1b1b22';
+        ctx.fillRect(-36, -100, 40, 14); // the keybed
+        ctx.fillStyle = '#f4f0e6';
+        ctx.fillRect(-36, -104, 40, 8);
+        ctx.fillStyle = '#111';
+        for (let k = 0; k < 5; k++) ctx.fillRect(-34 + k * 8, -104, 4, 4);
+        ctx.fillRect(-32, -86, 6, 86); // a leg
+        // A candle on top, for bedtime.
+        ctx.fillStyle = '#fff2c4';
+        ctx.fillRect(40, -166, 6, 16);
+        ctx.fillStyle = `rgba(255,200,80,${0.75 + 0.25 * Math.sin(clock * 17)})`;
+        ctx.beginPath();
+        ctx.ellipse(43, -172, 3.5, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        keys = { x: x - dir * 16 * size, y: feet.y - 110 * size };
+      }
+      // The notes, floating up and away, wobbling.
+      ctx.textAlign = 'center';
+      ctx.font = `${Math.round((ring ? 18 : 30) * size)}px serif`;
+      for (let k = 0; k < 4; k++) {
+        const q = (clock * 0.7 + k / 4) % 1;
+        ctx.globalAlpha = 1 - q;
+        ctx.fillStyle = ['#b9a6ff', '#ffffff', '#c9d6ff', '#ffd6f5'][k];
+        const drift = (ring ? 40 : 90) * q * size;
+        ctx.fillText(k % 2 ? '♫' : '♪', keys.x + Math.sin(clock * 3 + k) * 14 + (ring ? 0 : f.facing * drift), keys.y - (ring ? drift : 80 * q * size));
+      }
+      ctx.restore();
+    });
+  }
+
+  /** Sent to sleep by the lullaby: a floppy nightcap with a bobble. */
+  function drawNightcaps(clock) {
+    snap.fighters.forEach((f, i) => {
+      if (!f.asleep || hiddenFrom(i, f)) return;
+      const ring = mode === 'ring';
+      const size = display[i].size || 1;
+      const s = (ring ? 0.45 : 1) * size;
+      const h = headOf(i);
+      if (!ring) h.y -= 8 * s; // sits on top, clear of the eyes
+      const dir = ring ? 1 : -f.facing; // flops down the back
+      const sway = Math.sin(clock * 1.5) * 4 * s;
+      ctx.save();
+      ctx.fillStyle = '#5a6fd6';
+      ctx.beginPath();
+      ctx.moveTo(h.x - 22 * s, h.y - 12 * s);
+      ctx.quadraticCurveTo(h.x, h.y - 50 * s, h.x + dir * 40 * s + sway, h.y - 6 * s);
+      ctx.lineTo(h.x + 22 * s, h.y - 14 * s);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(h.x - 23 * s, h.y - 18 * s, 46 * s, 8 * s);
+      ctx.beginPath();
+      ctx.arc(h.x + dir * 40 * s + sway, h.y - 6 * s, 7 * s, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
   /** Supercalifragilisticexpialidocious: a golden shield, sparkling in all colours. */
   function invincibleAura(cx, cy, r, clock) {
     ctx.save();
@@ -3725,7 +3849,7 @@
   /** Napping: Zzz floating up off them. */
   function drawNaps() {
     snap.fighters.forEach((f, i) => {
-      if (!f.nap || hiddenFrom(i, f) || Math.random() > 0.06) return;
+      if (!(f.nap || f.asleep) || hiddenFrom(i, f) || Math.random() > 0.06) return;
       const p = targetPos(i, 'head');
       texts.push({ x: p.x + 20 + Math.random() * 20, y: p.y - (mode === 'ring' ? 20 : 40), text: Math.random() < 0.5 ? 'z' : 'Z',
         color: '#c9d6ff', size: mode === 'ring' ? 18 : 30, life: 50 });
@@ -5053,6 +5177,8 @@
     drawSticky(clock);
     drawPieFaces(clock);
     drawClowns(clock);
+    drawPianos(clock);
+    drawNightcaps(clock);
     drawPies(clock);
     drawNaps();
     drawBurning(clock);
