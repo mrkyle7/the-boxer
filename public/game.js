@@ -108,6 +108,10 @@
 // Guard your head (facing them) and the pie splats on your gloves instead.
 // You stand still while you juggle, and getting hit makes you drop the lot.
 //
+// "paul" sits down at a piano and plays a lullaby for two seconds. If nobody
+// stops you (a hit makes you stop playing), everyone else nods off, and stays
+// asleep, wide open, till something hits them.
+//
 // "supercalifragilisticexpialidocious" makes you invincible for two rounds:
 // the rest of this one and all of the next. Nothing touches you: no hits, no
 // fist, no poison, no fire, no sinking. Once a match.
@@ -290,9 +294,12 @@
   // Cheat codes, and the move (or power-up) each one does.
   const CODES = {
     [FLIP_CODE]: 'flip', kalya: 'vault', luna: 'luna', louise: 'dance', tamzin: 'cartwheel', grandpa: 'grandpa', fart: 'fart', water: 'water', boat: 'boat', swim: 'swim', jemini: 'jemini', kyle: 'kyle', harrison: 'harrison',
-    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon', lizzie: 'lizzie', blake: 'blake', briony: 'briony', supercalifragilisticexpialidocious: 'super',
+    shree: 'shree', shaan: 'shaan', parimal: 'parimal', priya: 'priya', daniel: 'daniel', edward: 'edward', spreadbury: 'spreadbury', mamtora: 'mamtora', jay: 'jay', leo: 'leo', ludo: 'ludo', tony: 'tony', daddy: 'daddy', mummy: 'mummy', bear: 'bear', simon: 'simon', lizzie: 'lizzie', blake: 'blake', briony: 'briony', paul: 'paul', supercalifragilisticexpialidocious: 'super',
   };
-  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon', 'lizzie', 'blake', 'briony', 'super'];
+  const POWERS = ['luna', 'grandpa', 'water', 'boat', 'swim', 'jemini', 'kyle', 'harrison', 'shree', 'shaan', 'parimal', 'priya', 'daniel', 'edward', 'spreadbury', 'mamtora', 'jay', 'leo', 'ludo', 'tony', 'daddy', 'mummy', 'bear', 'simon', 'lizzie', 'blake', 'briony', 'paul', 'super'];
+
+  // Paul: a lullaby on the piano, and everyone else asleep till they're hit.
+  const PIANO_TICKS = 2 * TICK_RATE;
 
   // Briony: the clown. Juggles, then pies on the balls and at their head.
   const JUGGLE_TICKS = TICK_RATE; // juggling before the first pie goes
@@ -476,6 +483,8 @@
       invincible: 0, // rounds of supercalifragilisticexpialidocious left (this one included)
       superUsed: false, // ...which you only get once a match
       clown: null, // Briony's act: { t, thrown }
+      piano: 0, // ticks of Paul's lullaby played so far (0: not playing)
+      asleep: false, // sent to sleep by the lullaby, till something hits you
       pieFace: 0, // ticks of pie left on your face
       pieFlavour: null, // ...blueberry or raspberry
       nap: 0, // ticks of a moustache nap left
@@ -796,6 +805,14 @@
       game.events.push({ type: 'briony', attacker: index });
       return;
     }
+    if (which === 'paul') {
+      if (f.piano || f.clown || f.car || f.shree || f.charge) return;
+      f.piano = 1;
+      setState(f, 'idle');
+      game.inputs[index].buffered = null;
+      game.events.push({ type: 'paul', attacker: index });
+      return;
+    }
     if (which === 'super') {
       if (f.superUsed) return;
       f.superUsed = true;
@@ -974,6 +991,14 @@
   function knocked(game, f) {
     forgetTyping(f);
     f.charge = null; // a hit stops a charge
+    if (f.asleep) {
+      f.asleep = false; // ...wakes you up from the lullaby
+      game.events.push({ type: 'wake', target: game.fighters.indexOf(f) });
+    }
+    if (f.piano) {
+      f.piano = 0; // ...stops the music
+      game.events.push({ type: 'pianoStop', attacker: game.fighters.indexOf(f) });
+    }
     if (f.clown) {
       f.clown = null; // ...and makes the clown drop the balls
       game.events.push({ type: 'clownDrop', attacker: game.fighters.indexOf(f) });
@@ -1129,7 +1154,7 @@
    */
   function typeKey(game, index, key) {
     const f = game.fighters[index];
-    if (!f || game.phase !== 'fight' || !standing(f) || f.nap > 0) return; // no typing in your sleep
+    if (!f || game.phase !== 'fight' || !standing(f) || f.nap > 0 || f.asleep) return; // no typing in your sleep
     const k = String(key || '').toLowerCase();
     if (!/^[a-z]$/.test(k)) return;
     f.typed = (f.typed + k).slice(-CODE_MAX);
@@ -1427,7 +1452,7 @@
       return;
     }
     // Napping: out for the count, and wide open.
-    if (f.nap > 0) {
+    if (f.nap > 0 || f.asleep) {
       input.buffered = null;
       return;
     }
@@ -1444,6 +1469,12 @@
     if (f.charge) {
       input.buffered = null;
       runCharge(game, f, input);
+      return;
+    }
+    // Paul at the piano: sitting still, playing the lullaby.
+    if (f.piano) {
+      input.buffered = null;
+      playPiano(game, f);
       return;
     }
     // Briony's clown act: standing still, juggling, then the pies.
@@ -2063,6 +2094,28 @@
     }
   }
 
+  /** Paul's lullaby: two seconds of it, and everyone else is asleep. */
+  function playPiano(game, f) {
+    if (++f.piano < PIANO_TICKS) return;
+    f.piano = 0;
+    const index = game.fighters.indexOf(f);
+    const targets = [];
+    game.fighters.forEach((o, i) => {
+      if (o === f || !standing(o) || shielded(o)) return;
+      o.asleep = true;
+      if (o.state !== 'hitstun') setState(o, 'idle');
+      o.vx = 0;
+      o.vy = 0;
+      forgetTyping(o);
+      o.charge = null;
+      if (o.shree) o.shree = null;
+      if (o.clown) o.clown = null;
+      if (o.piano) o.piano = 0;
+      targets.push(i);
+    });
+    game.events.push({ type: 'lullaby', attacker: index, targets });
+  }
+
   /** Briony's act: juggle, then a pie on each ball, and at their head they go. */
   function juggle(game, f) {
     const c = f.clown;
@@ -2337,6 +2390,8 @@
         ...(f.sticky > 0 ? { sticky: f.sticky } : {}),
         ...(f.moustache ? { moustache: true } : {}),
         ...(f.invincible > 0 ? { invincible: f.invincible } : {}),
+        ...(f.piano ? { piano: f.piano } : {}),
+        ...(f.asleep ? { asleep: true } : {}),
         ...(f.clown ? { clown: { t: f.clown.t, thrown: f.clown.thrown } } : {}),
         ...(f.pieFace > 0 ? { pieFace: f.pieFace, pieFlavour: f.pieFlavour } : {}),
         ...(f.dragon > 0 ? { dragon: f.dragon } : {}),
@@ -2372,7 +2427,7 @@
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
-    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, JUGGLE_TICKS, PIES, PIE_EVERY, CLOWN_TICKS, PIE_SPEED, PIE_DAMAGE, PIE_FACE_TICKS, PIE_FLAVOURS, SUPER_ROUNDS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
+    DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, JUGGLE_TICKS, PIES, PIE_EVERY, CLOWN_TICKS, PIE_SPEED, PIE_DAMAGE, PIE_FACE_TICKS, PIE_FLAVOURS, SUPER_ROUNDS, PIANO_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

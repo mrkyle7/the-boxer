@@ -82,6 +82,8 @@ Or **priya**: a freeze ray at the one you're fighting. If it reaches them they'r
 
 Or **briony**: you turn into a clown (rainbow wig, red nose, frilly ruff) and juggle three balls. After a second a pie lands on each ball, and you throw them one after another at the head of whoever's nearest: 10 a pie, and they're left with a face full of blueberry or raspberry for five seconds. Guard your head, facing the pies, and they splat on your gloves instead. The clown stands still while juggling, and a hit makes them drop the lot.
 
+Or **paul**: you sit down at a piano and play a lullaby. Two seconds later everyone else falls fast asleep (nightcaps on) and stays asleep, wide open, until something hits them. They can't move, block or type in their sleep. Hit the pianist before the song's over and the music stops, and nobody nods off.
+
 Or, if you can spell it, **supercalifragilisticexpialidocious**: invincible for two rounds, the rest of this one and all of the next. Nothing touches you (no hits, no giant fist, no poison, no fire, no sinking) and a golden bubble shows it. Once a match. It's a long word to type with everyone watching, though, and a hit wipes the letters.
 
 **fart** turns you round and lets one go: a green cloud drifts at whoever you're fighting, and if it reaches them they're poisoned for the rest of the match, 5 damage every 10 seconds. Jump over it to dodge it (or get out of its way in the ring).
