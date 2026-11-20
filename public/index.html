@@ -46,10 +46,16 @@
         </div>
 
         <div class="bot-pick adventure-pick" role="group" aria-labelledby="adventure-label">
-          <span id="adventure-label">Adventure: punch your way past fun creatures to the boss</span>
+          <span id="adventure-label">Adventure: four levels of creatures and bosses</span>
           <div class="bot-levels">
             <button class="btn btn-adventure" id="adventure-solo">Play solo</button>
             <button class="btn btn-adventure" id="adventure-team">Team up <span class="sub">1–4 players</span></button>
+          </div>
+          <div class="adv-levels" role="radiogroup" aria-label="Start at level">
+            <button class="on" data-adv-level="0" role="radio" aria-checked="true">1 <span>Meadow</span></button>
+            <button data-adv-level="1" role="radio" aria-checked="false">2 <span>Forest</span></button>
+            <button data-adv-level="2" role="radio" aria-checked="false">3 <span>Peaks</span></button>
+            <button data-adv-level="3" role="radio" aria-checked="false">4 <span>Volcano</span></button>
           </div>
         </div>
 
@@ -169,6 +175,7 @@
             <button id="adv-leave" class="btn">Leave</button>
           </div>
         </div>
+        <div id="adv-kb" class="kb" hidden aria-label="Cheat code keyboard"></div>
         <div id="adv-notice" class="notice" hidden>
           <p id="adv-notice-text"></p>
           <button id="adv-notice-ok" class="btn btn-primary">Back to lobby</button>
@@ -180,6 +187,7 @@
           <button data-adv-hold="right" aria-label="Move right">▶</button>
           <button data-adv-hold="down" aria-label="Down">▼</button>
           <button data-adv-hold="block">Block</button>
+          <button id="adv-kb-toggle" class="kb-toggle" aria-label="Keyboard for cheat codes">⌨</button>
         </div>
         <div class="pad">
           <button data-adv-act="punch">Punch</button>
@@ -187,7 +195,7 @@
           <button data-adv-act="jump" data-adv-hold="jump">Jump</button>
         </div>
       </div>
-      <p class="hint">← → move · Space or ↑ jump · A punch · B kick · C block · ↓ + jump drop through · M sound</p>
+      <p class="hint">← → move · Space or ↑ jump · A punch · B kick · C block · ↓ + jump drop through · type a cheat code · M sound</p>
     </section>
   </main>
 

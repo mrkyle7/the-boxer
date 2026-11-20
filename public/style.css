@@ -40,6 +40,14 @@ body {
 .bot-pick.adventure-pick > span { color: var(--gold); font-weight: 600; }
 .btn-adventure { background: #23471f; border-color: #3f7d36; }
 .btn-adventure:hover { background: #2d5a27; border-color: #57a14b; }
+.adv-levels { display: flex; gap: 6px; margin-top: 8px; }
+.adv-levels button {
+  flex: 1 1 0; min-width: 0; font: inherit; font-weight: 700; font-size: 14px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 4px; cursor: pointer;
+}
+.adv-levels button span { display: block; font-weight: 400; font-size: 12px; }
+.adv-levels button.on { color: var(--text); background: #23471f; border-color: #57a14b; }
+.adv-levels button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 .adv-score { font-family: var(--display); font-size: 26px; color: var(--gold); margin: 0 0 12px; letter-spacing: 0.04em; }
 
 .poster {

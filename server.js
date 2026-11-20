@@ -125,14 +125,14 @@ function sendRoom(room) {
   const bots = room.players.map((p) => (p.isBot ? p.level : null));
   const host = room.players.indexOf(hostOf(room));
   room.players.forEach((p, i) => send(p, {
-    t: 'room', code: room.code, kind: room.kind, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
+    t: 'room', code: room.code, kind: room.kind, level: room.level, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
   }));
 }
 
 function startAdventure(room) {
   room.fighters = humans(room).slice(0, MAX_PLAYERS);
   const names = room.fighters.map((p) => p.name);
-  room.game = Adventure.createGame(names);
+  room.game = Adventure.createGame(names, { level: room.level, seed: Math.floor(Math.random() * 2 ** 31) });
   room.rematch = new Set();
   room.fighters.forEach((p, i) => {
     p.seat = i;
@@ -288,6 +288,8 @@ const handlers = {
   adventure(ws, msg) {
     leaveRoom(ws);
     const room = createRoom(false, 'adventure');
+    // Which level to start on (all four can be picked from the lobby).
+    room.level = Math.max(0, Math.min(Adventure.LEVELS.length - 1, Math.floor(Number(msg.level)) || 0));
     addPlayer(room, ws);
     if (msg.solo) startMatch(room);
     else sendRoom(room);
@@ -332,8 +334,8 @@ const handlers = {
     simOf(ws.room).pressAction(ws.room.game, ws.seat, msg.a);
   },
   type(ws, msg) {
-    if (!ws.room || !ws.room.game || typeof ws.seat !== 'number' || adventure(ws.room)) return;
-    Game.typeKey(ws.room.game, ws.seat, msg.k);
+    if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
+    simOf(ws.room).typeKey(ws.room.game, ws.seat, msg.k);
   },
   rematch(ws) {
     const room = ws.room;

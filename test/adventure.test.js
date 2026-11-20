@@ -18,7 +18,7 @@ function playing(names = ['Kyle']) {
   const g = A.createGame(names);
   run(g, A.READY_TICKS + 1);
   assert.strictEqual(g.phase, 'run');
-  g.nextSpawn = A.LEVEL.spawns.length;
+  g.nextSpawn = A.LEVELS[0].spawns.length;
   g.enemies = [];
   return g;
 }
@@ -125,6 +125,7 @@ test('a curled-up hedgehog is spiky: punches bounce off and landing on it hurts'
   const e = A.spawnEnemy(g, { type: 'hedgehog', x: p.x + 50 });
   e.state = 'curl';
   e.spiky = true;
+  e.shelled = true;
   e.t = -1000;
   A.hurtEnemy(g, e, 10, 1, 0, 0);
   assert.strictEqual(e.hp, A.CREATURES.hedgehog.hp);
@@ -168,7 +169,7 @@ test('falling down a pit costs a life, and you drop back in', () => {
   assert.strictEqual(g.lives, A.LIVES_EACH - 1);
   assert.strictEqual(p.hp, A.MAX_HP);
   assert.ok(p.onGround, 'landed on solid ground');
-  assert.ok(A.surfaceBelow(p.x, p.y - 1) === p.y);
+  assert.ok(A.surfaceBelow(g.L, p.x, p.y - 1) === p.y);
 });
 
 test('out of lives: game over when the whole team is out', () => {
@@ -189,7 +190,7 @@ test('out of lives: game over when the whole team is out', () => {
 test('coins score, hearts heal, and a 1UP brings back someone who was out', () => {
   const g = playing(['A', 'B']);
   const [a, b] = g.players;
-  const coin = A.LEVEL.pickups.find((pk) => pk.type === 'coin' && pk.y > 400);
+  const coin = A.LEVELS[0].pickups.find((pk) => pk.type === 'coin' && pk.y > 400);
   a.x = coin.x;
   A.step(g);
   assert.strictEqual(g.score, A.COIN_SCORE);
@@ -201,7 +202,7 @@ test('coins score, hearts heal, and a 1UP brings back someone who was out', () =
   assert.strictEqual(a.hp, 20 + A.HEART_HEAL);
 
   b.out = true;
-  const life = A.LEVEL.pickups.find((pk) => pk.type === 'life');
+  const life = A.LEVELS[0].pickups.find((pk) => pk.type === 'life');
   g.camX = life.x - 500;
   a.x = life.x;
   a.y = life.y + 40;
@@ -214,8 +215,8 @@ test('coins score, hearts heal, and a 1UP brings back someone who was out', () =
 
 test('reaching the arena brings on the boss, tougher with more players', () => {
   const solo = playing();
-  solo.players[0].x = A.ARENA_X + 500;
-  solo.camX = A.ARENA_X - 1;
+  solo.players[0].x = A.LEVELS[0].arenaX + 500;
+  solo.camX = A.LEVELS[0].arenaX - 1;
   run(solo, 2);
   assert.strictEqual(solo.phase, 'bossIntro');
   assert.strictEqual(solo.boss.type, 'rhino');
@@ -225,8 +226,8 @@ test('reaching the arena brings on the boss, tougher with more players', () => {
   assert.strictEqual(solo.boss.y, A.GROUND_Y, 'landed');
 
   const team = playing(['A', 'B', 'C']);
-  team.players.forEach((p) => { p.x = A.ARENA_X + 500; });
-  team.camX = A.ARENA_X - 1;
+  team.players.forEach((p) => { p.x = A.LEVELS[0].arenaX + 500; });
+  team.camX = A.LEVELS[0].arenaX - 1;
   run(team, 2);
   assert.ok(team.boss.maxHp > solo.boss.maxHp);
 });
@@ -234,10 +235,10 @@ test('reaching the arena brings on the boss, tougher with more players', () => {
 test('the rhino charges into the ropes and is left dizzy, taking extra damage', () => {
   const g = playing();
   const p = g.players[0];
-  p.x = A.ARENA_X + 500;
-  g.camX = A.ARENA_X - 1;
+  p.x = A.LEVELS[0].arenaX + 500;
+  g.camX = A.LEVELS[0].arenaX - 1;
   run(g, 2);
-  p.x = A.ARENA_X + 100;
+  p.x = A.LEVELS[0].arenaX + 100;
   run(g, A.BOSS_INTRO_TICKS + 1, () => { p.invuln = 5; });
   const boss = g.boss;
   let dizzy = false;
@@ -249,11 +250,36 @@ test('the rhino charges into the ropes and is left dizzy, taking extra damage', 
   assert.strictEqual(hp - boss.hp, 15);
 });
 
-test('beating the boss wins', () => {
-  const g = playing();
-  g.players[0].x = A.ARENA_X + 500;
-  g.camX = A.ARENA_X - 1;
+test('beating a boss clears the level: on to the next, everyone back in with full health', () => {
+  const g = playing(['A', 'B']);
+  g.players.forEach((p) => { p.x = A.LEVELS[0].arenaX + 500; });
+  g.camX = A.LEVELS[0].arenaX - 1;
   run(g, A.BOSS_INTRO_TICKS + 5);
+  g.players[0].hp = 30;
+  g.players[1].out = true;
+  const score = g.score;
+  A.hurtEnemy(g, g.boss, 9999, 1, 0, 0);
+  assert.strictEqual(g.phase, 'cleared');
+  assert.ok(g.score > score);
+  run(g, A.CLEARED_TICKS + 1);
+  assert.strictEqual(g.level, 1);
+  assert.strictEqual(g.L.name, 'Spooky Forest');
+  assert.strictEqual(g.phase, 'ready');
+  assert.strictEqual(g.camX, 0);
+  assert.strictEqual(g.boss, null);
+  for (const p of g.players) {
+    assert.strictEqual(p.hp, A.MAX_HP);
+    assert.ok(!p.out);
+  }
+});
+
+test('beating the last boss wins the game', () => {
+  const g = A.createGame(['A'], { level: 3 });
+  run(g, A.READY_TICKS + 1);
+  g.players[0].x = g.L.arenaX + 500;
+  g.camX = g.L.arenaX - 1;
+  run(g, A.BOSS_INTRO_TICKS + 5);
+  assert.strictEqual(g.boss.type, 'gorilla');
   A.hurtEnemy(g, g.boss, 9999, 1, 0, 0);
   assert.strictEqual(g.phase, 'won');
   run(g, A.END_TICKS + 1);
@@ -334,8 +360,9 @@ test('a solo adventure starts straight away, and walking right moves you', async
     let s;
     do { s = (await a.next((m) => m.t === 'state')).s; } while (s.phase !== 'run' || s.players[0].x < 200);
     assert.strictEqual(s.mode, 'adventure');
-    // Letters don't do anything here (no cheat codes).
-    a.send({ t: 'type', k: 'k' });
+    // Cheat codes work here too.
+    for (const k of 'daddy') a.send({ t: 'type', k });
+    do { s = (await a.next((m) => m.t === 'state')).s; } while (!s.players[0].shoes);
   });
 });
 
@@ -343,9 +370,10 @@ test('friends join an adventure room and the host starts it, no opponent needed'
   await withServer(async (connect) => {
     const host = await connect();
     host.send({ t: 'hello', name: 'Host' });
-    host.send({ t: 'adventure' });
+    host.send({ t: 'adventure', level: 2 });
     const room = await host.next((m) => m.t === 'room');
     assert.strictEqual(room.kind, 'adventure');
+    assert.strictEqual(room.level, 2, 'starting on the Frosty Peaks');
     // No bots in an adventure.
     host.send({ t: 'addBot', level: 'easy' });
     const friend = await connect();
@@ -362,6 +390,7 @@ test('friends join an adventure room and the host starts it, no opponent needed'
     const st = (await friend.next((m) => m.t === 'state')).s;
     assert.strictEqual(st.players.length, 2);
     assert.strictEqual(st.lives, 2 * A.LIVES_EACH);
+    assert.strictEqual(st.level, 2);
 
     // One leaves: the other plays on.
     friend.send({ t: 'leave' });

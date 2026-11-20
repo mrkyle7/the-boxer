@@ -233,9 +233,11 @@
     const n = msg.players.length;
     if (msg.kind === 'adventure') {
       $('waiting-title').textContent = msg.host ? 'Your adventure is ready' : `${host}'s adventure`;
+      const LV = window.BoxerAdventure && window.BoxerAdventure.LEVELS[msg.level || 0];
+      const from = LV ? ` Starting at level ${(msg.level || 0) + 1}: ${LV.name}.` : '';
       $('room-note').textContent = msg.host
-        ? 'Send the link to up to three friends to play together. Start when everyone is in.'
-        : `${n} in the team. Waiting for ${host} to start.`;
+        ? `Send the link to up to three friends to play together. Start when everyone is in.${from}`
+        : `${n} in the team. Waiting for ${host} to start.${from}`;
       $('start').textContent = 'Start the adventure';
       $('start').hidden = !msg.host;
       $('start').disabled = false;
@@ -1412,8 +1414,10 @@
   document.querySelectorAll('[data-add-bot]').forEach((b) => b.addEventListener('click', () => {
     send({ t: 'addBot', level: b.dataset.addBot });
   }));
-  $('adventure-solo').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure', solo: true }); });
-  $('adventure-team').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure' }); });
+  // The level to start on, picked in the lobby (adventure-client.js).
+  const advLevel = () => Number((document.querySelector('[data-adv-level].on') || { dataset: {} }).dataset.advLevel) || 0;
+  $('adventure-solo').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure', solo: true, level: advLevel() }); });
+  $('adventure-team').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure', level: advLevel() }); });
   $('join-form').addEventListener('submit', (e) => {
     e.preventDefault();
     beforeMatchmaking();
@@ -5248,11 +5252,15 @@
   const artDisplay = [{}, {}, {}, {}];
   window.BoxerArt = {
     PALETTE, sound, send, show, listNames,
-    drawBoxer(target, i, f, t, clock, x, y, scale) {
+    // opts.size: a Jemini giant; opts.theme: 'usa' or 'india' (the hats).
+    drawBoxer(target, i, f, t, clock, x, y, scale, opts = {}) {
       const savedCtx = ctx;
       const savedDisplay = display;
+      const savedSnap = snap;
       ctx = target;
       display = artDisplay;
+      artDisplay[i].size = opts.size || 1;
+      snap = opts.theme ? { theme: opts.theme } : null;
       ctx.save();
       try {
         ctx.translate(x, y);
@@ -5263,6 +5271,7 @@
         ctx.restore();
         ctx = savedCtx;
         display = savedDisplay;
+        snap = savedSnap;
       }
     },
   };
