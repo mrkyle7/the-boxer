@@ -17,6 +17,8 @@ Four levels, each with its own creatures and a boss in a ring at the end. Beat t
 3. **Frosty Peaks.** The ground is slippery here. Ice cubes, snowbirds, penguins that belly-slide at you, and snowmen throwing snowballs. The boss is **Frostbite** the yeti, who charges, bowls giant snowballs along the ground (jump them) and stomps. Angry, he brings icicles down from above.
 4. **Volcano.** Mind the lava. Lava blobs, fire imps, crabs that raise their claws (spiky, and no punch gets through), and lizards spitting fireballs. The boss is **the Silverback**, the undefeated champ. He leaps across the ring and lands with a shockwave, throws lava rocks, charges, and beats his chest to bring rocks down on you.
 
+Every level also hides a few secrets. Nobody's telling where: go exploring.
+
 Anything that falls from above hangs at the top of the screen, shaking, for a moment first, so you can get out from under it.
 
 Jump on most creatures' heads to squash them (hold jump to bounce higher). Anything spiky hurts to land on, and nothing gets through a shell. Grab coins for points and hearts for health. Every sixth creature down drops a heart, and each level has a 1UP hidden up high. The team shares a pool of lives, three each: fall down a hole or run out of health and you lose one, and drop back in a moment later. Lose the last and you're out; when everyone's out it's game over.

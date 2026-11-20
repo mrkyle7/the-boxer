@@ -347,3 +347,19 @@ body.ring .side-only { display: none !important; }
 .bmc:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
 .bmc svg { width: 18px; height: 18px; flex: none; }
 .bmc-row { margin: 24px 0 0; text-align: center; }
+/* Phones held sideways: the cheat-code letter pad goes under the game, in a
+   short strip, and the game shrinks to make room, instead of the pad
+   covering it. */
+@media (pointer: coarse) and (orientation: landscape) {
+  #fight .kb, #adventure .kb {
+    position: static; transform: none; width: 100%;
+    margin: 4px 0 0; padding: 3px; gap: 3px; background: var(--panel);
+  }
+  #fight .kb-row, #adventure .kb-row { gap: 3px; }
+  #fight .kb button, #adventure .kb button { height: 28px; font-size: 17px; }
+  #fight .stage:has(> .kb:not([hidden])) canvas,
+  #adventure .stage:has(> .kb:not([hidden])) canvas {
+    max-height: calc(100vh - 118px);
+    max-height: calc(100dvh - 118px);
+  }
+}
