@@ -45,6 +45,20 @@
           </div>
         </div>
 
+        <div class="bot-pick adventure-pick" role="group" aria-labelledby="adventure-label">
+          <span id="adventure-label">Adventure: four levels of creatures and bosses</span>
+          <div class="bot-levels">
+            <button class="btn btn-adventure" id="adventure-solo">Play solo</button>
+            <button class="btn btn-adventure" id="adventure-team">Team up <span class="sub">1–4 players</span></button>
+          </div>
+          <div class="adv-levels" role="radiogroup" aria-label="Start at level">
+            <button class="on" data-adv-level="0" role="radio" aria-checked="true">1 <span>Meadow</span></button>
+            <button data-adv-level="1" role="radio" aria-checked="false">2 <span>Forest</span></button>
+            <button data-adv-level="2" role="radio" aria-checked="false">3 <span>Peaks</span></button>
+            <button data-adv-level="3" role="radio" aria-checked="false">4 <span>Volcano</span></button>
+          </div>
+        </div>
+
         <form id="join-form" class="join">
           <label class="field">
             <span>Have a room code?</span>
@@ -144,10 +158,51 @@
       </div>
       <p class="hint">A punch · B kick · C block · D aim head · E aim tummy · ← → move<span class="ring-only"> · ↑ ↓ move</span><span class="side-only"> · Space jump</span> · M sound</p>
     </section>
+
+    <section id="adventure" class="screen">
+      <div class="stage">
+        <canvas id="adv-canvas" width="1000" height="560" aria-label="Adventure"></canvas>
+        <div id="adv-result" class="result" hidden>
+          <h2 id="adv-result-title"></h2>
+          <p id="adv-score" class="adv-score"></p>
+          <table class="stats">
+            <thead><tr id="adv-stat-head"></tr></thead>
+            <tbody id="adv-stat-body"></tbody>
+          </table>
+          <p id="adv-note" class="note"></p>
+          <div class="actions">
+            <button id="adv-again" class="btn btn-primary">Play again</button>
+            <button id="adv-leave" class="btn">Leave</button>
+          </div>
+        </div>
+        <div id="adv-kb" class="kb" hidden aria-label="Cheat code keyboard"></div>
+        <div id="adv-notice" class="notice" hidden>
+          <p id="adv-notice-text"></p>
+          <button id="adv-notice-ok" class="btn btn-primary">Back to lobby</button>
+        </div>
+      </div>
+      <div class="touch" aria-hidden="true">
+        <div class="pad">
+          <button data-adv-hold="left" aria-label="Move left">◀</button>
+          <button data-adv-hold="right" aria-label="Move right">▶</button>
+          <button data-adv-hold="down" aria-label="Down">▼</button>
+          <button data-adv-hold="block">Block</button>
+          <button id="adv-kb-toggle" class="kb-toggle" aria-label="Keyboard for cheat codes">⌨</button>
+        </div>
+        <div class="pad">
+          <button data-adv-act="punch">Punch</button>
+          <button data-adv-act="kick">Kick</button>
+          <button data-adv-act="jump" data-adv-hold="jump">Jump</button>
+        </div>
+      </div>
+      <p class="hint">← → move · Space or ↑ jump · A punch · B kick · C block · ↓ + jump drop through · type a cheat code · M sound</p>
+    </section>
   </main>
 
   <script src="game.js"></script>
   <script src="client.js"></script>
+  <script src="adventure.js"></script>
+  <script src="adventure-client.js"></script>
   <script>
     // Lets players install The Boxer on their phone or desktop (see sw.js).
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js');

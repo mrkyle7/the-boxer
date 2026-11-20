@@ -36,7 +36,19 @@ body {
 
 .screen { display: none; flex: 1; align-items: center; justify-content: center; padding: 24px 16px; }
 .screen.active { display: flex; }
-#fight.active { flex-direction: column; gap: 12px; padding-top: 12px; }
+#fight.active, #adventure.active { flex-direction: column; gap: 12px; padding-top: 12px; }
+.bot-pick.adventure-pick > span { color: var(--gold); font-weight: 600; }
+.btn-adventure { background: #23471f; border-color: #3f7d36; }
+.btn-adventure:hover { background: #2d5a27; border-color: #57a14b; }
+.adv-levels { display: flex; gap: 6px; margin-top: 8px; }
+.adv-levels button {
+  flex: 1 1 0; min-width: 0; font: inherit; font-weight: 700; font-size: 14px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 4px; cursor: pointer;
+}
+.adv-levels button span { display: block; font-weight: 400; font-size: 12px; }
+.adv-levels button.on { color: var(--text); background: #23471f; border-color: #57a14b; }
+.adv-levels button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.adv-score { font-family: var(--display); font-size: 26px; color: var(--gold); margin: 0 0 12px; letter-spacing: 0.04em; }
 
 .poster {
   position: relative;
@@ -294,6 +306,33 @@ body.ring .side-only { display: none !important; }
   #fight .touch button { min-width: 64px; height: 46px; padding: 0 8px; font-size: 14px; }
   /* In the ring there are two more buttons: two columns each side. */
   body.ring #fight .pad { display: grid; grid-template-columns: repeat(2, auto); }
+}
+
+/* The same for adventure mode, with two columns of buttons each side. */
+@media (pointer: coarse) and (orientation: landscape) {
+  #adventure.active {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    height: 100vh;
+    height: 100dvh;
+    padding: 6px max(6px, env(safe-area-inset-right)) 6px max(6px, env(safe-area-inset-left));
+  }
+  #adventure .touch { display: contents; }
+  #adventure .pad { flex-direction: column; flex-wrap: nowrap; justify-content: center; gap: 6px; }
+  #adventure .pad:first-child { grid-column: 1; grid-row: 1; }
+  #adventure .stage { grid-column: 2; grid-row: 1; justify-self: center; width: auto; max-width: 100%; }
+  #adventure .pad:last-child { grid-column: 3; grid-row: 1; }
+  #adventure .hint { display: none; }
+  #adventure canvas {
+    width: auto;
+    max-width: 100%;
+    max-height: calc(100vh - 12px);
+    max-height: calc(100dvh - 12px);
+  }
+  #adventure .pad { display: grid; grid-template-columns: repeat(2, auto); }
+  #adventure .touch button { min-width: 64px; height: 46px; padding: 0 8px; font-size: 14px; }
 }
 
 /* Buy me a coffee: the same badge on every game (see ADDING_A_GAME.md in mrkyle7/cheetahmoongames). */

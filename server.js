@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const { WebSocketServer } = require('ws');
 const Game = require('./public/game.js');
+const Adventure = require('./public/adventure.js');
 const { createAuth } = require('./auth');
 const Bot = require('./bot');
 
@@ -52,6 +53,10 @@ function serveStatic(req, res) {
 // public/game.js). Bots (bot.js) can fill corners: one straight from the
 // lobby for a fight against the computer, or added by the host of a room.
 // A bot takes a seat like anyone else, but has no connection.
+//
+// An adventure room (kind 'adventure') is the platformer in
+// public/adventure.js instead: one to four people play it together, and
+// there are no bots.
 
 const MAX_PLAYERS = Game.MAX_FIGHTERS;
 const rooms = new Map();
@@ -83,10 +88,11 @@ function makeBot(room, level) {
   return { isBot: true, name, level: bot.level, bot, room, seat: null };
 }
 
-function createRoom(isPublic) {
+function createRoom(isPublic, kind = 'fight') {
   const room = {
     code: makeCode(),
     isPublic,
+    kind,
     // Everyone in the room, in the order they came. The first is the host.
     players: [],
     // Who's fighting in the current match; their index is their fighter.
@@ -105,7 +111,13 @@ function addPlayer(room, ws) {
   ws.seat = null;
 }
 
-const fighting = (room) => Boolean(room.game) && room.game.phase !== 'matchEnd';
+const adventure = (room) => room.kind === 'adventure';
+/** Which simulation the room runs. */
+const simOf = (room) => (adventure(room) ? Adventure : Game);
+const isOver = (room) => (adventure(room) ? room.game.over : room.game.phase === 'matchEnd');
+const fighting = (room) => Boolean(room.game) && !isOver(room);
+/** The fewest it takes to start (or play again). */
+const minPlayers = (room) => (adventure(room) ? 1 : 2);
 
 /** Tells everyone in a private room who's there, before the fight. */
 function sendRoom(room) {
@@ -113,11 +125,36 @@ function sendRoom(room) {
   const bots = room.players.map((p) => (p.isBot ? p.level : null));
   const host = room.players.indexOf(hostOf(room));
   room.players.forEach((p, i) => send(p, {
-    t: 'room', code: room.code, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
+    t: 'room', code: room.code, kind: room.kind, level: room.level, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
   }));
 }
 
+function startAdventure(room) {
+  room.fighters = humans(room).slice(0, MAX_PLAYERS);
+  const names = room.fighters.map((p) => p.name);
+  room.game = Adventure.createGame(names, { level: room.level, seed: Math.floor(Math.random() * 2 ** 31) });
+  room.rematch = new Set();
+  room.fighters.forEach((p, i) => {
+    p.seat = i;
+    send(p, { t: 'start', you: i, names, code: room.code, mode: 'adventure' });
+  });
+  stopLoop(room);
+  let n = 0;
+  room.loop = setInterval(() => {
+    Adventure.step(room.game);
+    if (++n % BROADCAST_EVERY !== 0 && !room.game.over) return;
+    const msg = JSON.stringify({ t: 'state', s: Adventure.snapshot(room.game), e: room.game.events });
+    room.game.events = [];
+    for (const p of room.fighters) if (p && p.readyState === p.OPEN) p.send(msg);
+    if (room.game.over) {
+      stopLoop(room);
+      for (const p of room.fighters) send(p, { t: 'adventureOver', won: room.game.won });
+    }
+  }, 1000 / Adventure.TICK_RATE);
+}
+
 function startMatch(room) {
+  if (adventure(room)) return startAdventure(room);
   room.fighters = room.players.slice(0, MAX_PLAYERS);
   const names = room.fighters.map((p) => p.name);
   room.game = Game.createGame(names, { fists: true });
@@ -168,6 +205,12 @@ function leaveRoom(ws) {
     // One on one, the fight can't go on. In the ring the others fight on
     // while at least two are left.
     const left = room.fighters.filter(Boolean);
+    if (adventure(room) && left.length >= 1) {
+      // The rest carry on without them.
+      Adventure.removePlayer(room.game, seat);
+      left.forEach((p) => send(p, { t: 'playerLeft', name: ws.name }));
+      return;
+    }
     if (room.game.mode === 'ring' && left.length >= 2) {
       Game.removeFighter(room.game, seat);
       left.forEach((p) => send(p, { t: 'playerLeft', name: ws.name }));
@@ -178,8 +221,8 @@ function leaveRoom(ws) {
   }
 
   if (room.game) {
-    // After a match: a rematch needs two.
-    if (others.length < 2) {
+    // After a match: a rematch needs two (an adventure, one).
+    if (others.length < minPlayers(room)) {
       others.forEach((p) => { send(p, { t: 'opponentLeft', name: ws.name }); p.room = null; });
       return closeRoom(room);
     }
@@ -194,7 +237,7 @@ function leaveRoom(ws) {
 
 function maybeRematch(room) {
   const present = room.players;
-  if (present.length >= 2 && present.every((p) => p.isBot || room.rematch.has(p))) startMatch(room);
+  if (present.length >= minPlayers(room) && present.every((p) => p.isBot || room.rematch.has(p))) startMatch(room);
 }
 
 // ---- Messages --------------------------------------------------------------
@@ -230,7 +273,7 @@ const handlers = {
   start(ws) {
     const room = ws.room;
     if (!room || room.isPublic || room.game || hostOf(room) !== ws) return;
-    if (room.players.length < 2) return send(ws, { t: 'error', msg: 'You need at least one opponent.' });
+    if (room.players.length < minPlayers(room)) return send(ws, { t: 'error', msg: 'You need at least one opponent.' });
     startMatch(room);
   },
   /** A fight against the computer, straight from the lobby. */
@@ -241,10 +284,20 @@ const handlers = {
     room.players.push(makeBot(room, msg.level));
     startMatch(room);
   },
+  /** An adventure: on your own (solo) or a room for friends to join. */
+  adventure(ws, msg) {
+    leaveRoom(ws);
+    const room = createRoom(false, 'adventure');
+    // Which level to start on (all four can be picked from the lobby).
+    room.level = Math.max(0, Math.min(Adventure.LEVELS.length - 1, Math.floor(Number(msg.level)) || 0));
+    addPlayer(room, ws);
+    if (msg.solo) startMatch(room);
+    else sendRoom(room);
+  },
   /** The host fills a corner with a bot. */
   addBot(ws, msg) {
     const room = ws.room;
-    if (!room || room.isPublic || room.game || hostOf(room) !== ws) return;
+    if (!room || room.isPublic || room.game || hostOf(room) !== ws || adventure(room)) return;
     if (room.players.length >= MAX_PLAYERS) return;
     room.players.push(makeBot(room, msg.level));
     sendRoom(room);
@@ -274,19 +327,19 @@ const handlers = {
   },
   input(ws, msg) {
     if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
-    Game.setHeld(ws.room.game, ws.seat, msg);
+    simOf(ws.room).setHeld(ws.room.game, ws.seat, msg);
   },
   action(ws, msg) {
     if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
-    Game.pressAction(ws.room.game, ws.seat, msg.a);
+    simOf(ws.room).pressAction(ws.room.game, ws.seat, msg.a);
   },
   type(ws, msg) {
     if (!ws.room || !ws.room.game || typeof ws.seat !== 'number') return;
-    Game.typeKey(ws.room.game, ws.seat, msg.k);
+    simOf(ws.room).typeKey(ws.room.game, ws.seat, msg.k);
   },
   rematch(ws) {
     const room = ws.room;
-    if (!room || !room.game || room.game.phase !== 'matchEnd') return;
+    if (!room || !room.game || !isOver(room)) return;
     room.rematch.add(ws);
     const waitingFor = humans(room).filter((p) => !room.rematch.has(p)).map((p) => p.name);
     room.players.forEach((p) => {
@@ -345,7 +398,7 @@ function createServer({ auth = createAuth() } = {}) {
         handler(ws, msg);
         // A guest starting to play: tell the owner (auth.js keeps it to
         // one report per name every few minutes).
-        if (!ws.account && !ws.guestReported && ['quick', 'create', 'join', 'bot'].includes(msg.t)) {
+        if (!ws.account && !ws.guestReported && ['quick', 'create', 'join', 'bot', 'adventure'].includes(msg.t)) {
           ws.guestReported = true;
           auth.guestSeen(ws.name);
         }
