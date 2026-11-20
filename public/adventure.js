@@ -198,11 +198,22 @@
 
   const LEVEL_END = 7200;
 
+  // Secrets: each level hides a secret room (off to the side of the level,
+  // where the camera never goes otherwise) behind a door somewhere, and a
+  // stair of invisible platforms that only show once someone stands on one.
+  const ROOM_X = LEVEL_END + 1500;
+  const ROCK_HITS = 3; // to break a cracked rock
+  const IDLE_TICKS = 12 * TICK_RATE;
+  const GOLD_DAMAGE = 1.25; // all four golden gloves
+
   function makeLevel(info, build) {
     const solids = [];
     const platforms = [];
     const spawns = [];
     const pickups = [];
+    const rocks = [];
+    const doors = [];
+    const rooms = [];
     const h = {
       ground: (x0, x1, y = GROUND_Y) => solids.push({ x: x0, y, w: x1 - x0, h: VIEW_H + 300 - y }),
       plat: (x, y, w) => platforms.push({ x, y, w }),
@@ -216,11 +227,31 @@
       heart: (x, y) => pickups.push({ type: 'heart', x, y }),
       life: (x, y) => pickups.push({ type: 'life', x, y }),
       enemy: (type, x, y) => spawns.push({ type, x, y }),
+      hiddenPlat: (x, y, w) => platforms.push({ x, y, w, hidden: true }),
+      rock: (x, kind) => rocks.push({ id: rocks.length, x, kind }) - 1,
+      door: (x, kind, room, rock = null) => doors.push({ x, kind, room, rock }),
+      room: (npc) => {
+        const x0 = ROOM_X;
+        h.ground(x0 - 200, x0 + VIEW_W + 200);
+        h.plat(x0 + 280, 380, 150);
+        h.plat(x0 + 520, 290, 150);
+        h.coins(x0 + 120, 440, 4);
+        h.coins(x0 + 300, 340, 4);
+        h.coinArc(x0 + 40, 380, 5);
+        pickups.push({ type: 'golden', x: x0 + 595, y: 236 });
+        h.heart(x0 + 860, 440);
+        rooms.push({ x0, npc });
+        doors.push({ x: x0 + 920, kind: 'exit', room: rooms.length - 1, exit: true });
+        return rooms.length - 1;
+      },
     };
     build(h);
     spawns.sort((a, b) => a.x - b.x);
     pickups.forEach((p, k) => { p.id = k; });
-    return { ...info, solids, platforms, spawns, pickups, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
+    const L = { ...info, solids, platforms, spawns, pickups, rocks, doors, rooms, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
+    for (const d of doors) d.y = surfaceBelow(L, d.x, -100);
+    for (const r of rocks) r.y = surfaceBelow(L, r.x, -100);
+    return L;
   }
 
   const meadow = makeLevel({ name: 'Sunny Meadow', theme: 'meadow', boss: 'rhino' }, (L) => {
@@ -284,6 +315,12 @@
     L.enemy('slime', 6020);
     L.enemy('hedgehog', 6150);
     L.heart(6100, 430);
+
+    L.door(1150, 'burrow', L.room('bunny'), L.rock(1150, 'rock'));
+    L.hiddenPlat(3260, 210, 90);
+    L.hiddenPlat(3420, 140, 100);
+    L.coins(3430, 100, 3, 36);
+    L.heart(3470, 60);
   });
 
   const forest = makeLevel({ name: 'Spooky Forest', theme: 'forest', boss: 'owl' }, (L) => {
@@ -346,6 +383,12 @@
     L.enemy('mushroom', 6000);
     L.enemy('goo', 6120);
     L.heart(6150, 430);
+
+    L.door(2110, 'tree', L.room('ghost'));
+    L.hiddenPlat(3290, 130, 90);
+    L.hiddenPlat(3450, 90, 90);
+    L.coins(3460, 54, 3, 32);
+    L.heart(3335, 95);
   });
 
   const snow = makeLevel({ name: 'Frosty Peaks', theme: 'snow', boss: 'yeti', ice: true }, (L) => {
@@ -400,6 +443,12 @@
     L.enemy('snowman', 6000);
     L.enemy('penguin', 6150);
     L.heart(6100, 430);
+
+    L.door(4560, 'cave', L.room('penguin'), L.rock(4560, 'ice'));
+    L.hiddenPlat(3150, 220, 90);
+    L.hiddenPlat(3300, 150, 90);
+    L.coins(3310, 110, 3, 32);
+    L.heart(3195, 185);
   });
 
   const volcano = makeLevel({ name: 'Volcano', theme: 'volcano', boss: 'gorilla', lava: true }, (L) => {
@@ -460,6 +509,12 @@
     L.enemy('crab', 6050);
     L.enemy('lavablob', 6150);
     L.heart(6100, 430);
+
+    L.door(2650, 'tube', L.room('dragon'), L.rock(2650, 'rock'));
+    L.hiddenPlat(3190, 200, 90);
+    L.hiddenPlat(3340, 130, 90);
+    L.coins(3350, 90, 3, 32);
+    L.heart(3235, 165);
   });
 
   const LEVELS = [meadow, forest, snow, volcano];
@@ -555,6 +610,8 @@
       lives: LIVES_EACH * n,
       score: 0,
       seed: opts.seed === undefined ? 1 : opts.seed | 0,
+      golden: [], // the levels whose golden glove has been found
+      secrets: 0, // secret rooms and hidden stairs found
       players: names.map((name) => makePlayer(name)),
       over: false,
       won: false,
@@ -585,6 +642,12 @@
     g.themeT = 0;
     g.flood = 0;
     g.stopped = 0;
+    g.broken = [];
+    g.rockHits = {};
+    g.revealed = [];
+    g.inRoom = null;
+    g.stash = null;
+    g.foundHere = [];
     const live = g.players.filter((p) => !p.left);
     live.forEach((p, k) => {
       Object.assign(p, noPowers(), {
@@ -772,6 +835,18 @@
     if (p.onGround) {
       p.coyote = COYOTE;
       if (footing(L, p.x - PLAYER_HW, p.y) && footing(L, p.x + PLAYER_HW, p.y)) p.safeX = p.x;
+      revealUnder(g, p);
+    }
+    // Down at a door goes through it.
+    const downPress = h.down && !p.downWas;
+    p.downWas = h.down;
+    if (downPress && p.onGround && !frozen && g.phase === 'run') tryDoor(g, p, i);
+    // Standing about doing nothing for a while...
+    const still = p.onGround && p.state === 'idle' && !h.left && !h.right && !h.jump && !h.block && !h.down && !busy(p);
+    p.idle = still ? (p.idle || 0) + 1 : 0;
+    if (p.idle >= IDLE_TICKS) {
+      p.idle = -18 * TICK_RATE;
+      g.events.push({ type: 'idle', i, x: p.x, y: p.y });
     }
 
     // Everyone stays on screen.
@@ -850,6 +925,7 @@
 
   function damageOf(p, m) {
     let d = m.damage;
+    if (p.gold) d *= GOLD_DAMAGE;
     if (p.giant > 0) d *= GIANT_DAMAGE;
     if (p.vampire > 0) d *= 0.5;
     if ((p.lion > 0 || p.sword > 0) && p.move === 'punch') d *= 1.5;
@@ -956,6 +1032,94 @@
       g.phase = 'lost';
       g.phaseT = 0;
       g.events.push({ type: 'gameOver' });
+    }
+  }
+
+  // ---- Secrets -------------------------------------------------------------
+
+  /** A hidden platform shows itself once someone stands on it. */
+  function revealUnder(g, p) {
+    g.L.platforms.forEach((pl, k) => {
+      if (!pl.hidden || g.revealed.includes(k)) return;
+      if (Math.abs(pl.y - p.y) < 1 && spans(pl, p.x - PLAYER_HW, p.x + PLAYER_HW)) {
+        g.revealed.push(k);
+        g.events.push({ type: 'reveal', x: pl.x + pl.w / 2, y: pl.y });
+        found(g, 'stair');
+      }
+    });
+  }
+
+  /** Counts each secret once per level. */
+  function found(g, what) {
+    if (g.foundHere.includes(what)) return;
+    g.foundHere.push(what);
+    g.secrets++;
+    g.events.push({ type: 'secret', what });
+  }
+
+  const doorOpen = (g, d) => d.rock === null || d.rock === undefined || g.broken.includes(d.rock);
+
+  function tryDoor(g, p, i) {
+    const d = g.L.doors.find((q) => Math.abs(q.x - p.x) < 34 && Math.abs(q.y - p.y) < 4 && doorOpen(g, q));
+    if (!d) return;
+    if (d.exit) leaveRoom(g, i);
+    else enterRoom(g, d, i);
+  }
+
+  /** Through the door: the whole team goes into the secret room. */
+  function enterRoom(g, d, i) {
+    if (g.inRoom) return;
+    const room = g.L.rooms[d.room];
+    g.inRoom = { room: d.room, camX: g.camX, x: d.x, y: d.y };
+    g.stash = { enemies: g.enemies, projectiles: g.projectiles, fists: g.fists };
+    g.enemies = [];
+    g.projectiles = [];
+    g.fists = [];
+    g.camX = room.x0;
+    teleportTeam(g, room.x0 + 100, GROUND_Y);
+    found(g, 'room');
+    g.events.push({ type: 'enterRoom', i, npc: room.npc });
+  }
+
+  function leaveRoom(g, i) {
+    if (!g.inRoom) return;
+    const back = g.inRoom;
+    g.inRoom = null;
+    g.camX = back.camX;
+    if (g.stash) {
+      g.enemies = g.stash.enemies;
+      g.projectiles = g.stash.projectiles;
+      g.fists = g.stash.fists;
+      g.stash = null;
+    }
+    teleportTeam(g, back.x, back.y);
+    g.events.push({ type: 'leaveRoom', i });
+  }
+
+  function teleportTeam(g, x, y) {
+    let k = 0;
+    for (const p of g.players) {
+      if (p.out) continue;
+      const px = Math.max(g.camX + 40, Math.min(g.camX + VIEW_W - 40, x + (k++ - 0.5) * 40));
+      Object.assign(p, { x: px, y, vx: 0, vy: 0, onGround: true, car: 0, dash: 0 });
+      if (p.state === 'ko') continue;
+      setState(p, 'idle');
+    }
+  }
+
+  /** A cracked rock: a few good hits and it breaks open. */
+  function hitRocks(g, p, i, box) {
+    for (const r of g.L.rocks) {
+      if (g.broken.includes(r.id) || p.hits.includes(`r${r.id}`)) continue;
+      if (!overlap(box.x0, box.y0, box.x1, box.y1, r.x - 30, r.y - 56, r.x + 30, r.y)) continue;
+      p.hits.push(`r${r.id}`);
+      g.rockHits[r.id] = (g.rockHits[r.id] || 0) + 1;
+      if (g.rockHits[r.id] >= ROCK_HITS) {
+        g.broken.push(r.id);
+        g.events.push({ type: 'rockBreak', x: r.x, y: r.y - 28, kind: r.kind });
+      } else {
+        g.events.push({ type: 'rockHit', x: r.x, y: r.y - 28, kind: r.kind });
+      }
     }
   }
 
@@ -1837,6 +2001,7 @@
       const px1 = p.x + PLAYER_HW;
       const py0 = p.y - PLAYER_H;
       const stopped = g.stopped > 0;
+      if (box) hitRocks(g, p, i, box);
 
       for (const e of g.enemies) {
         if (e.dead) continue;
@@ -1945,6 +2110,13 @@
       p.stats.coins++;
     } else if (pk.type === 'heart') {
       p.hp = Math.min(MAX_HP, p.hp + HEART_HEAL);
+    } else if (pk.type === 'golden') {
+      if (!g.golden.includes(g.level)) g.golden.push(g.level);
+      g.events.push({ type: 'golden', i, count: g.golden.length });
+      if (g.golden.length === LEVELS.length) {
+        for (const q of g.players) q.gold = true;
+        g.events.push({ type: 'goldenAll' });
+      }
     } else if (pk.type === 'life') {
       g.lives++;
       // Anyone already out comes straight back in with it.
@@ -2046,6 +2218,7 @@
   // ---- The camera ------------------------------------------------------------
 
   function updateCamera(g) {
+    if (g.inRoom) { g.camX = g.L.rooms[g.inRoom.room].x0; return; }
     if (g.boss) { g.camX = g.L.arenaX; return; }
     const alive = g.players.filter((p) => !down(p) && p.y > 0);
     if (!alive.length) return;
@@ -2065,6 +2238,7 @@
   }
 
   function spawnAhead(g) {
+    if (g.inRoom) return;
     const spawns = g.L.spawns;
     while (g.nextSpawn < spawns.length && spawns[g.nextSpawn].x < g.camX + VIEW_W + 80) {
       spawnEnemy(g, spawns[g.nextSpawn++]);
@@ -2135,13 +2309,19 @@
       theme: g.theme,
       flood: g.flood,
       stopped: g.stopped,
+      broken: g.broken,
+      rockHits: g.rockHits,
+      revealed: g.revealed,
+      inRoom: g.inRoom ? g.inRoom.room : null,
+      golden: g.golden.length,
+      secrets: g.secrets,
       players: g.players.map((p) => ({
         name: p.name, x: r1(p.x), y: r1(p.y), vy: r1(p.vy), facing: p.facing, state: p.state, move: p.move, t: p.t,
         hp: Math.max(0, p.hp), invuln: p.invuln, onGround: p.onGround, out: p.out, left: p.left, fell: p.fell,
         typing: p.typing, giant: p.giant, invisible: p.invisible, turbo: p.turbo, shoes: p.shoes, spiky: p.spiky,
         vampire: p.vampire, lion: p.lion, sword: p.sword, piece: p.piece, chess: p.chess, dragon: p.dragon,
         love: p.love, hug: p.hugging > 0, moustache: p.moustache, nap: p.nap, invincible: p.invincible,
-        dash: p.dash, dashKind: p.dashKind, car: p.car, clown: p.clown, piano: p.piano, boat: p.boat, swim: p.swim,
+        gold: !!p.gold, dash: p.dash, dashKind: p.dashKind, car: p.car, clown: p.clown, piano: p.piano, boat: p.boat, swim: p.swim,
         stats: p.stats,
       })),
       enemies: g.enemies.map((e) => ({
@@ -2166,6 +2346,7 @@
     CHARGE_DAMAGE, WAVE_DAMAGE, BOULDER_DAMAGE, SHOT_DAMAGE, BLOCK_SHARE, DROP_EVERY,
     CODES, POWER_TICKS, FIST_WARN, FIST_DAMAGE, CAR_DAMAGE, RUGBY_DAMAGE, FREEZE_TICKS, PIANO_TICKS, JUGGLE_TICKS,
     SNACK_HEAL, CUDDLE_STEAL, LOVE_RADIUS, PIE_DAMAGE, POISON_DAMAGE, POISON_EVERY, STOP_TICKS, FLOOD_TICKS, CHESS, PIECES,
+    ROCK_HITS, IDLE_TICKS, GOLD_DAMAGE, ROOM_X,
     createGame, loadLevel, step, setHeld, pressAction, typeKey, cheat, removePlayer, snapshot, surfaceBelow,
     spawnEnemy, spawnBoss, hurtEnemy, hurtPlayer, attackBox, sizeOf,
   };

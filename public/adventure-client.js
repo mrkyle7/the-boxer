@@ -265,6 +265,44 @@
       case 'nap':
         floatAbove(e.i, 'Zzz\u2026', '#cfe0ff');
         break;
+      case 'reveal':
+        sparks(e.x, e.y, '#fff6c8', 16, 3);
+        play('tinkle');
+        break;
+      case 'secret':
+        announce('Secret found!', null, '#ffd23f', 80);
+        play('fanfare');
+        break;
+      case 'rockHit':
+        sparks(e.x, e.y, e.kind === 'ice' ? '#dff2ff' : '#b8b0a4', 8, 3);
+        play('clang');
+        break;
+      case 'rockBreak':
+        sparks(e.x, e.y, e.kind === 'ice' ? '#dff2ff' : '#b8b0a4', 26, 6);
+        dust(e.x, e.y + 28, 10);
+        shake = Math.max(shake, 8);
+        play('slam');
+        break;
+      case 'enterRoom':
+      case 'leaveRoom':
+        cam = snap ? snap.camX : cam;
+        pdisp.length = 0;
+        edisp.clear();
+        prdisp.clear();
+        play('poof');
+        break;
+      case 'golden':
+        announce('Golden glove!', `${e.count} of ${A.LEVELS.length}`, '#ffd23f', 120);
+        play('fanfare');
+        break;
+      case 'goldenAll':
+        setTimeout(() => announce('All four golden gloves!', 'Golden gloves for everyone: your hits do more', '#ffd23f', 180), 2100);
+        break;
+      case 'idle': {
+        const lines = ['Hello? Anyone there?', 'Shall we go then?', '\u266A Dum de dum\u2026', 'Is it lunchtime yet?'];
+        floatText(e.x, e.y - A.PLAYER_H - 30, lines[Math.floor(Math.random() * lines.length)], '#ffffff', 22);
+        break;
+      }
       case 'promote':
         floatAbove(e.i, 'Queen!', '#ffd23f');
         play('fanfare');
@@ -311,6 +349,10 @@
     $('adv-score').textContent = won
       ? `All four bosses down \u00B7 Score ${snap.score}`
       : `Reached level ${snap.level + 1}: ${A.LEVELS[snap.level].name} \u00B7 Score ${snap.score}`;
+    // Secrets only get a mention once you've found some.
+    if (snap.secrets || snap.golden) {
+      $('adv-score').textContent += ` \u00B7 Secrets ${snap.secrets}${snap.golden ? ` \u00B7 Golden gloves ${snap.golden}/${A.LEVELS.length}` : ''}`;
+    }
     const ps = snap.players;
     const head = $('adv-stat-head');
     head.textContent = '';
@@ -592,6 +634,8 @@
   const CLOUDS = Array.from({ length: 40 }, (_, k) => ({ x: k * 330 + hash(k) * 200, y: 50 + hash(k + 9) * 140, s: 0.6 + hash(k + 3) * 0.8 }));
 
   function drawSky(clock) {
+    const room = roomNow();
+    if (room) { drawRoomBack(room, clock); return; }
     const T = theme();
     const L = lvl();
     // The meadow turns to sunset as you near the boss.
@@ -798,8 +842,16 @@
       if (s.x >= x0) ctx.fillRect(s.x, s.y, 6, H - s.y);
       if (s.x + s.w <= x1) ctx.fillRect(s.x + s.w - 6, s.y, 6, H - s.y);
     }
-    for (const p of L.platforms) {
-      if (p.x + p.w < cam - 20 || p.x > cam + W + 20) continue;
+    L.platforms.forEach((p, k) => {
+      if (p.x + p.w < cam - 20 || p.x > cam + W + 20) return;
+      if (p.hidden && !(snap && snap.revealed.includes(k))) return;
+      if (p.hidden) {
+        // A hidden step, found: a little cloud, sparkling.
+        for (let x = p.x + 12; x < p.x + p.w; x += 22) ellipse(x, p.y + 6 + Math.sin(x) * 2, 18, 11, 'rgba(255,255,255,0.92)');
+        const t = performance.now() / 1000;
+        for (let n = 0; n < 3; n++) drawStar(p.x + ((t * 30 + n * 37) % p.w), p.y - 4 + Math.sin(t * 3 + n) * 4, 3, '#fff6c8');
+        return;
+      }
       ctx.fillStyle = T.plank;
       ctx.fillRect(p.x, p.y, p.w, 16);
       ctx.fillStyle = T.plankDark;
@@ -821,7 +873,7 @@
         ctx.fillRect(p.x + 8, p.y + 17, 6, 22);
         ctx.fillRect(p.x + p.w - 14, p.y + 17, 6, 22);
       }
-    }
+    });
     drawSigns();
   }
 
@@ -888,9 +940,281 @@
     });
   }
 
+  // ---- Secrets -------------------------------------------------------------
+
+  const ROOM_LOOK = {
+    bunny: { wall: '#4a3020', wall2: '#5e3d28', floor: '#7a4a24', top: '#3f9b3a', glow: 'rgba(255,200,120,0.18)', say: 'Shh! This is my secret burrow.' },
+    ghost: { wall: '#140a28', wall2: '#22123e', floor: '#2a1d3e', top: '#7a4aff', glow: 'rgba(180,120,255,0.15)', say: 'Wooo… welcome to the ghost disco!' },
+    penguin: { wall: '#5a86b0', wall2: '#7aa4cc', floor: '#9cc2e2', top: '#e9f2fb', glow: 'rgba(255,255,255,0.15)', say: 'Ahh, the hot tub. Don’t tell the yeti.' },
+    dragon: { wall: '#2a1210', wall2: '#3a1a14', floor: '#463632', top: '#c9971a', glow: 'rgba(255,170,60,0.18)', say: 'Zzz…' },
+  };
+  const roomNow = () => (snap && snap.inRoom !== null && snap.inRoom !== undefined ? lvl().rooms[snap.inRoom] : null);
+
+  /** Inside a secret room: its own walls instead of the sky. */
+  function drawRoomBack(room, clock) {
+    const R = ROOM_LOOK[room.npc];
+    ctx.fillStyle = R.wall;
+    ctx.fillRect(0, 0, W, H);
+    for (let k = 0; k < 40; k++) {
+      const x = hash(k) * W;
+      const y = hash(k + 20) * 420;
+      ellipse(x, y, 30 + hash(k + 3) * 50, 18 + hash(k + 5) * 30, R.wall2);
+    }
+    if (room.npc === 'bunny') {
+      // Roots hanging down, and lanterns.
+      ctx.strokeStyle = '#2f1e12';
+      ctx.lineWidth = 4;
+      for (let x = 40; x < W; x += 90) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.quadraticCurveTo(x + 20, 40 + hash(x) * 40, x + 6, 70 + hash(x + 1) * 60);
+        ctx.stroke();
+      }
+      for (const x of [200, 500, 800]) {
+        ctx.strokeStyle = '#2f1e12';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, 90);
+        ctx.stroke();
+        ellipse(x, 100, 40, 40, R.glow);
+        ellipse(x, 100, 10, 13, '#ffcf6a');
+      }
+    } else if (room.npc === 'ghost') {
+      // A disco ball, and coloured lights sweeping about.
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(500, 0);
+      ctx.lineTo(500, 60);
+      ctx.stroke();
+      ellipse(500, 90, 30, 30, '#cfd6e0');
+      for (let k = 0; k < 16; k++) {
+        const a = (k / 16) * Math.PI * 2 + clock;
+        ellipse(500 + Math.cos(a) * 18, 90 + Math.sin(a) * 18, 4, 4, k % 2 ? '#ffffff' : '#9aa4b0');
+      }
+      ['255,80,160', '80,200,255', '255,220,80', '140,255,120'].forEach((c, k) => {
+        const a = clock * (0.8 + k * 0.2) + k * 1.6;
+        ctx.fillStyle = `rgba(${c},0.12)`;
+        ctx.beginPath();
+        ctx.moveTo(500, 90);
+        ctx.lineTo(500 + Math.cos(a) * 700 - 80, 560);
+        ctx.lineTo(500 + Math.cos(a) * 700 + 80, 560);
+        ctx.fill();
+      });
+    } else if (room.npc === 'penguin') {
+      for (let x = 20; x < W; x += 50) {
+        ctx.fillStyle = '#d6ecff';
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x + 10, 30 + hash(x) * 40);
+        ctx.lineTo(x + 20, 0);
+        ctx.fill();
+      }
+    } else if (room.npc === 'dragon') {
+      for (let k = 0; k < 12; k++) {
+        const x = hash(k + 40) * W;
+        const y = 100 + hash(k + 41) * 280;
+        ellipse(x, y, 4, 4, `rgba(255,200,80,${0.4 + 0.4 * Math.sin(clock * 2 + k)})`);
+      }
+    }
+  }
+
+  /** The room's resident, and what it has to say when you come close. */
+  function drawRoomNpc(room, clock) {
+    const R = ROOM_LOOK[room.npc];
+    const x = room.x0 + 760;
+    const y = A.GROUND_Y;
+    ctx.save();
+    ctx.translate(x, y);
+    if (room.npc === 'bunny') {
+      const hop = Math.abs(Math.sin(clock * 3)) * 8;
+      ctx.translate(0, -hop);
+      ellipse(0, -22, 20, 22, '#f2ece4');
+      ellipse(-8, -58, 6, 20, '#f2ece4', -0.2);
+      ellipse(8, -58, 6, 20, '#f2ece4', 0.2);
+      ellipse(-8, -58, 3, 14, '#ffb8c8', -0.2);
+      ellipse(8, -58, 3, 14, '#ffb8c8', 0.2);
+      ellipse(0, -38, 15, 13, '#f2ece4');
+      eye(-6, -40, 3.5, -1);
+      eye(6, -40, 3.5, -1);
+      ellipse(0, -33, 3, 2, '#ff8aa8');
+      glove(-18, -22, 0.8, '#e03a3e');
+      glove(16, -24, -0.8, '#e03a3e');
+    } else if (room.npc === 'ghost') {
+      for (let k = 0; k < 3; k++) {
+        const gx = (k - 1) * 70 + Math.sin(clock * 2 + k) * 14;
+        const gy = -50 - Math.abs(Math.sin(clock * 4 + k * 2)) * 20;
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#f4f0ff';
+        ctx.beginPath();
+        ctx.arc(gx, gy, 20, Math.PI, 0);
+        for (let j = 0; j <= 4; j++) ctx.lineTo(gx + 20 - j * 10, gy + 24 + (j % 2 ? -6 : 0));
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ellipse(gx - 7, gy - 2, 3, 4, '#222');
+        ellipse(gx + 7, gy - 2, 3, 4, '#222');
+        ellipse(gx, gy + 8, 4, 3 + Math.sin(clock * 6 + k), '#222');
+      }
+    } else if (room.npc === 'penguin') {
+      // A steaming hot tub, and a penguin taking it easy.
+      ellipse(0, -10, 80, 22, '#8a5a2a');
+      ellipse(0, -16, 70, 14, '#5ac8e8');
+      for (let k = 0; k < 4; k++) {
+        const u = (clock * 0.5 + k / 4) % 1;
+        ellipse(-40 + k * 26, -30 - u * 60, 10 + u * 10, 6 + u * 6, `rgba(255,255,255,${0.5 * (1 - u)})`);
+      }
+      ellipse(10, -30, 16, 18, '#1f2430');
+      ellipse(14, -28, 10, 12, '#ffffff');
+      eye(18, -38, 3, 1);
+      ctx.fillStyle = '#ff9a2a';
+      ctx.beginPath();
+      ctx.moveTo(24, -36);
+      ctx.lineTo(32, -34);
+      ctx.lineTo(24, -32);
+      ctx.fill();
+      ctx.fillStyle = '#ff5a8a';
+      ctx.fillRect(-30, -40, 4, 18);
+      ellipse(-28, -42, 6, 4, '#ffd23f');
+    } else if (room.npc === 'dragon') {
+      // A baby dragon asleep on a pile of gold.
+      for (let k = 0; k < 30; k++) ellipse(-70 + hash(k) * 140, -4 - hash(k + 9) * 26 * (1 - Math.abs(hash(k) - 0.5)), 7, 4, k % 3 ? '#ffd23f' : '#e0a400');
+      const breathe = Math.sin(clock * 2) * 2;
+      ellipse(0, -36 - breathe, 30, 18 + breathe, '#3fae4a');
+      ellipse(28, -44, 14, 11, '#3fae4a');
+      ctx.strokeStyle = '#2b7a34';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(22, -46);
+      ctx.lineTo(30, -46);
+      ctx.stroke();
+      ctx.fillStyle = '#2b7a34';
+      ctx.beginPath();
+      ctx.moveTo(-10, -50);
+      ctx.lineTo(-24, -70 - breathe);
+      ctx.lineTo(6, -52);
+      ctx.fill();
+    }
+    ctx.restore();
+    // A speech bubble when someone's close.
+    const close = snap.players.some((p) => !p.out && Math.abs(p.x - x) < 220);
+    if (close) {
+      const text = R.say;
+      ctx.font = '16px Barlow, system-ui, sans-serif';
+      const w = ctx.measureText(text).width + 24;
+      const bx = x - w / 2;
+      const by = y - 150;
+      ctx.fillStyle = '#ffffff';
+      roundRect(bx, by, w, 34, 10);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(x - 8, by + 34);
+      ctx.lineTo(x, by + 46);
+      ctx.lineTo(x + 8, by + 34);
+      ctx.fill();
+      ctx.fillStyle = '#1a1a1a';
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, by + 23);
+    }
+  }
+
+  /** Cracked rocks, and the doors (open or hidden behind a rock). */
+  function drawDoorsAndRocks(clock) {
+    const L = lvl();
+    for (const d of L.doors) {
+      if (d.x < cam - 100 || d.x > cam + W + 100) continue;
+      const open = d.rock === null || d.rock === undefined || snap.broken.includes(d.rock);
+      drawDoor(d, open, clock);
+    }
+    for (const r of L.rocks) {
+      if (r.x < cam - 100 || r.x > cam + W + 100 || snap.broken.includes(r.id)) continue;
+      drawRock(r, (snap.rockHits && snap.rockHits[r.id]) || 0);
+    }
+  }
+
+  function drawDoor(d, open, clock) {
+    const { x, y } = d;
+    if (d.kind === 'tree') {
+      // A big old tree with a dark hollow at the bottom (eyes blink in it).
+      ctx.fillStyle = '#3a2a1e';
+      ctx.fillRect(x - 34, y - 220, 68, 220);
+      ellipse(x, y - 250, 80, 60, '#1c3324');
+      ellipse(x - 50, y - 210, 50, 36, '#1c3324');
+      ellipse(x + 50, y - 214, 50, 36, '#1c3324');
+      ellipse(x, y - 34, 20, 34, '#120a06');
+      if (Math.sin(clock * 0.9) > -0.85) {
+        ellipse(x - 6, y - 44, 3, 3, '#ffd23f');
+        ellipse(x + 6, y - 44, 3, 3, '#ffd23f');
+      }
+    } else if (d.kind === 'exit') {
+      ctx.fillStyle = '#6a4424';
+      roundRect(x - 26, y - 76, 52, 76, 18);
+      ctx.fill();
+      ctx.fillStyle = '#ffd23f';
+      ellipse(x + 14, y - 38, 4, 4, '#ffd23f');
+      ctx.font = '14px Bangers, Anton, Impact, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('WAY OUT', x, y - 84);
+    } else if (open) {
+      // A hole in the ground: a burrow, an ice cave or a lava tube.
+      const c = d.kind === 'cave' ? '#2a4a6a' : d.kind === 'tube' ? '#2a0e08' : '#1a0e06';
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 32, 46, 0, Math.PI, 0);
+      ctx.fill();
+      if (d.kind === 'tube') ellipse(x, y - 4, 22, 8, `rgba(255,120,30,${0.4 + 0.2 * Math.sin(clock * 3)})`);
+    }
+    // When it's open and someone's standing at it: press down.
+    if (open && snap.players.some((p) => !p.out && Math.abs(p.x - x) < 40 && Math.abs(p.y - y) < 4)) {
+      const bob = Math.sin(clock * 6) * 4;
+      ctx.fillStyle = '#ffd23f';
+      ctx.beginPath();
+      ctx.moveTo(x - 10, y - 150 + bob);
+      ctx.lineTo(x + 10, y - 150 + bob);
+      ctx.lineTo(x, y - 136 + bob);
+      ctx.fill();
+    }
+  }
+
+  function drawRock(r, hits) {
+    const ice = r.kind === 'ice';
+    const { x, y } = r;
+    ctx.fillStyle = ice ? '#bfe0f6' : '#8a847b';
+    ctx.beginPath();
+    ctx.moveTo(x - 34, y);
+    ctx.lineTo(x - 30, y - 40);
+    ctx.lineTo(x - 12, y - 58);
+    ctx.lineTo(x + 14, y - 56);
+    ctx.lineTo(x + 32, y - 36);
+    ctx.lineTo(x + 34, y);
+    ctx.fill();
+    ellipse(x - 12, y - 42, 8, 5, ice ? 'rgba(255,255,255,0.7)' : '#a49e94');
+    // Cracks: one to start with, more with every hit.
+    ctx.strokeStyle = ice ? '#7aa8cc' : '#4e4a44';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x - 4, y - 56);
+    ctx.lineTo(x + 2, y - 40);
+    ctx.lineTo(x - 6, y - 28);
+    if (hits >= 1) { ctx.moveTo(x + 2, y - 40); ctx.lineTo(x + 18, y - 30); ctx.lineTo(x + 22, y - 14); }
+    if (hits >= 2) { ctx.moveTo(x - 6, y - 28); ctx.lineTo(x - 20, y - 16); ctx.moveTo(x - 6, y - 28); ctx.lineTo(x, y - 6); }
+    ctx.stroke();
+  }
+
+  function drawGoldenGlove(x, y, clock) {
+    const bob = Math.sin(clock * 3) * 5;
+    ellipse(x, y + bob, 30 + Math.sin(clock * 5) * 3, 30 + Math.sin(clock * 5) * 3, 'rgba(255,210,63,0.3)');
+    glove(x, y + bob, 1.4, '#ffd23f');
+    for (let k = 0; k < 3; k++) {
+      const a = clock * 2 + (k * Math.PI * 2) / 3;
+      drawStar(x + Math.cos(a) * 26, y + bob + Math.sin(a) * 26, 4, '#fff6c8');
+    }
+  }
+
   // ---- Pickups ---------------------------------------------------------------
 
   function drawPickup(pk, clock) {
+    if (pk.type === 'golden') { drawGoldenGlove(pk.x, pk.y, clock); return; }
     const bob = Math.sin(clock * 3 + pk.x * 0.05) * 4;
     if (pk.type === 'coin') {
       const w = Math.abs(Math.cos(clock * 4 + pk.x * 0.02)) * 12 + 1.5;
@@ -2170,7 +2494,7 @@
       // On the ground, punches and kicks go in low, at creature height.
       state, move: p.move, facing: p.facing, aim: p.onGround ? 'body' : 'head', x, hitHeight: 'head', noShadow: true,
       // How the cheat codes make you look (drawn by client.js).
-      vampire: p.vampire, lion: p.lion, sword: p.sword, piece: p.piece, chess: p.chess, dragon: p.dragon,
+      gold: p.gold, vampire: p.vampire, lion: p.lion, sword: p.sword, piece: p.piece, chess: p.chess, dragon: p.dragon,
       shoes: p.shoes, love: p.love, hug: p.hug, moustache: p.moustache, nap: p.nap, invincible: p.invincible,
       invisible: p.invisible, turbo: p.turbo, rugby: p.dash > 0 && p.dashKind === 'rugby', charge: p.dash > 0 && p.dashKind === 'charge',
     };
@@ -2397,8 +2721,13 @@
       ctx.fillText('Last life!', W - 16, 62);
     }
 
-    // How far to the boss.
-    if (!s.boss) {
+    // How far to the boss (or, in a secret room, where you are).
+    if (roomNow()) {
+      ctx.font = '22px Bangers, Anton, Impact, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#ffd23f';
+      ctx.fillText('SECRET ROOM', s.players.length > 2 ? 160 : W / 2, s.players.length > 2 ? 86 : 32);
+    } else if (!s.boss) {
       const k = clamp01(s.camX / lvl().arenaX);
       // Top middle, or under the player cards when there are three or four.
       const bx = s.players.length > 2 ? 12 : W / 2 - 150;
@@ -2511,6 +2840,8 @@
     ctx.translate(-Math.round(cam), 0);
     drawArenaBack(clock);
     drawGround(clock);
+    drawDoorsAndRocks(clock);
+    if (roomNow()) drawRoomNpc(roomNow(), clock);
     for (const sn of s.snacks) drawSnack(sn, clock);
 
     for (const id of s.pickups) drawPickup(lvl().pickups[id], clock);
@@ -2572,7 +2903,7 @@
     }
     ctx.globalAlpha = 1;
     ctx.restore();
-    drawWeather(clock);
+    if (!roomNow()) drawWeather(clock);
     if (s.stopped > 0) {
       // Edward: the clock has stopped.
       ctx.fillStyle = 'rgba(120,100,70,0.22)';

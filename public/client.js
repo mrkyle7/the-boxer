@@ -1696,7 +1696,8 @@
   }
 
   function drawFighter(i, f, x, t, clock, opponentX, echo) {
-    const c = PALETTE[i];
+    // f.gold: golden gloves (adventure mode).
+    const c = f.gold ? { ...PALETTE[i], glove: '#ffd23f', gloveDark: '#c9971a' } : PALETTE[i];
     const dist = Math.abs(opponentX - x);
     const reach = Math.max(60, Math.min(140, dist - 36));
     const kickReach = Math.max(70, Math.min(170, dist - 40));
