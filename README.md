@@ -6,6 +6,32 @@ No one to fight? Pick **Easy**, **Medium** or **Hard** under "Fight the computer
 
 Two fighters box side on. Three or four fight a free-for-all in the ring, seen from above: everyone always faces the nearest opponent, an attack lands on whoever is in front of it and in reach, and a guard only covers the front, so you can be caught from the side. The last one standing takes the round; at the bell, the healthiest fighter still standing does. Anyone who leaves mid-fight is out, and the rest fight on.
 
+## Adventure mode
+
+Fancy a change from boxing? **Adventure** is a side-scrolling platformer where you are the boxer. Pick **Play solo**, or **Team up** to open a room for up to four and send friends the link (anyone can start it on their own, too). You all play together, co-op, on the same screen: the camera follows whoever is out in front but never leaves anyone behind.
+
+Punch and kick your way past a meadow full of creatures:
+
+- **Slimes** hop at you. Squash them.
+- **Bees** buzz about, then stop with a "!" and dive at you. Punch them out of the air.
+- **Hedgehogs** curl into a spiky ball and roll at you. Punches bounce off and landing on one hurts, so jump it and hit them once they uncurl.
+- **Frogs** hop about and spit bubbles. Block them, punch them, or jump over.
+
+Jump on most creatures' heads to squash them (hold jump to bounce higher). Grab coins for points and hearts for health; every sixth creature down drops a heart, and there's a 1UP hidden high up in the frog pond. The team shares a pool of lives, three each: fall down a hole or run out of health and you lose one, and drop back in a moment later. Lose the last and you're out; when everyone's out it's game over.
+
+At the end, in his own ring: **Big Horn**, the boxing rhino. He paws the ground and charges (get out of the way, or over him), crashes into the ropes and is left dizzy (that's when your hits do 50% more), and stomps to send shockwaves along the floor (a guard won't stop those: jump them). Get him to half health and he gets angry: faster, and he starts throwing boulders (punch them out of the air). More players, more health for him.
+
+| Key | Action |
+| --- | --- |
+| `←` `→` | Move |
+| `Space` or `↑` | Jump (hold for higher) |
+| `A` | Punch |
+| `B` | Kick: slower, reaches further, hits harder |
+| `C` (hold) | Block |
+| `↓` + jump | Drop down through a platform |
+
+Phones get on-screen buttons. Cheat codes are for the ring only.
+
 ## Run it
 
 ```sh
@@ -107,6 +133,7 @@ The service is capped at **one instance**: rooms live in memory, so both fighter
 - `public/game.js`: the fight simulation (punch/kick frame data, head/tummy aim, stamina, blocking, counters, rounds). Pure and deterministic, shared by server and browser.
 - `public/game.js` has two modes: `side` for two fighters (one dimension, as it always was) and `ring` for three or four (two dimensions, facing the nearest opponent, hits in a forward arc, guards only from the front, last one standing). The moves, frame data, aiming and blocking are shared.
 - `server.js`: serves the page and runs one authoritative 60 Hz simulation per room over WebSockets, broadcasting snapshots at 30 Hz. Clients only send held keys and button presses, so nobody can cheat by editing their client. Quick matches pair two strangers; private rooms hold up to four and the first one in (the host) starts the fight.
+- `public/adventure.js`: adventure mode's simulation, shared by server and browser the same way: the level (ground, platforms, pits, pickups and where creatures appear), platform physics, the creatures, Big Horn, the forward-only camera and the team's lives. The server runs it in rooms of kind `adventure` (no bots, one to four players). `public/adventure-client.js` draws it on its own screen, borrowing the boxers from `client.js` (`window.BoxerArt`) so they look the same as in the ring.
 - `bot.js`: the computer fighters. A bot plays through the same controls as a person (held keys, button presses and typed letters), deciding what to do every few ticks; the three levels differ in reaction time, how often they block and read the right height, how keen they are to attack, and how often they type a cheat code.
 - `public/client.js`: lobby, the room screen, input, and two canvas renderers that animate the fighters from the server state: side on for two, from above for three or four.
 - `auth.js`: who's signed in to Cheetah Moon (the same file as `scripts/game-template/auth.js` in mrkyle7/cheetahmoongames). The WebSocket upgrade carries the shared login cookie, so signed-in players fight under their account name and can't be renamed; guests still type a name in the lobby, and a guest who starts playing is reported with `auth.guestSeen(name)` for the owner's login alerts. `/api/me` tells the lobby which to show. Locally, start with `ACCOUNTS_URL=http://localhost:8080` and sign in on the home page running there.

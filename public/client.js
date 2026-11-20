@@ -14,7 +14,8 @@
 
   const $ = (id) => document.getElementById(id);
   const canvas = $('canvas');
-  const ctx = canvas.getContext('2d');
+  // Swapped for the adventure canvas while it borrows drawFighter (BoxerArt).
+  let ctx = canvas.getContext('2d');
 
   const PALETTE = [
     { glove: '#e03a3e', gloveDark: '#9e1e24', trunks: '#c9262c', trim: '#ffffff', skin: '#e0ac86', skinDark: '#b98262', hair: '#2a1a12', name: '#ff6f73' },
@@ -65,7 +66,10 @@
     ws.addEventListener('close', () => {
       const inFight = $('fight').classList.contains('active');
       const waiting = $('waiting').classList.contains('active');
-      if (inFight || waiting) {
+      const AV = window.BoxerAdventureView;
+      if (AV && AV.active()) {
+        AV.showNotice('Lost connection to the server.');
+      } else if (inFight || waiting) {
         show('fight');
         showNotice('Lost connection to the server.');
       } else {
@@ -100,6 +104,10 @@
   let roomCode = '';
 
   function onMessage(msg) {
+    // Adventure mode has its own screen (adventure-client.js).
+    if (msg.t === 'start' && msg.mode === 'adventure') { snap = null; display = null; showKeyboard(false); }
+    const AV = window.BoxerAdventureView;
+    if (AV && AV.handle(msg)) return;
     switch (msg.t) {
       case 'waiting': {
         roomCode = msg.code;
@@ -217,12 +225,25 @@
         }
       } else {
         li.className = 'empty';
-        li.textContent = 'Open corner';
+        li.textContent = msg.kind === 'adventure' ? 'Open spot' : 'Open corner';
       }
       list.append(li);
     }
     list.hidden = false;
     const n = msg.players.length;
+    if (msg.kind === 'adventure') {
+      $('waiting-title').textContent = msg.host ? 'Your adventure is ready' : `${host}'s adventure`;
+      $('room-note').textContent = msg.host
+        ? 'Send the link to up to three friends to play together. Start when everyone is in.'
+        : `${n} in the team. Waiting for ${host} to start.`;
+      $('start').textContent = 'Start the adventure';
+      $('start').hidden = !msg.host;
+      $('start').disabled = false;
+      $('add-bot').hidden = true;
+      show('waiting');
+      return;
+    }
+    $('start').textContent = 'Start the fight';
     const view = n > 2 ? `${n} fighters: free-for-all in the ring.` : n === 2 ? 'Two fighters: one on one.' : '';
     if (msg.host) {
       $('room-note').textContent = n < 2
@@ -1391,6 +1412,8 @@
   document.querySelectorAll('[data-add-bot]').forEach((b) => b.addEventListener('click', () => {
     send({ t: 'addBot', level: b.dataset.addBot });
   }));
+  $('adventure-solo').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure', solo: true }); });
+  $('adventure-team').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'adventure' }); });
   $('join-form').addEventListener('submit', (e) => {
     e.preventDefault();
     beforeMatchmaking();
@@ -1700,11 +1723,13 @@
       ctx.translate(Math.sin(clock * 37) * 2, 0);
     }
 
-    // Shadow stays on the floor.
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.beginPath();
-    ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Shadow stays on the floor (adventure mode draws its own).
+    if (!f.noShadow) {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.beginPath();
+      ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Farting: turned round, back to them.
     ctx.scale(f.state === 'attack' && f.move === 'fart' ? -f.facing : f.facing, 1);
@@ -5216,6 +5241,31 @@
 
     requestAnimationFrame(frame);
   }
+
+  // ---- Shared with adventure mode (adventure-client.js) ------------------------
+  // It draws its boxers with drawFighter, on its own canvas: feet at (x, y),
+  // scaled down to fit the platforms.
+  const artDisplay = [{}, {}, {}, {}];
+  window.BoxerArt = {
+    PALETTE, sound, send, show, listNames,
+    drawBoxer(target, i, f, t, clock, x, y, scale) {
+      const savedCtx = ctx;
+      const savedDisplay = display;
+      ctx = target;
+      display = artDisplay;
+      ctx.save();
+      try {
+        ctx.translate(x, y);
+        ctx.scale(scale, scale);
+        ctx.translate(0, -FLOOR);
+        drawFighter(i, f, 0, t, clock, 150);
+      } finally {
+        ctx.restore();
+        ctx = savedCtx;
+        display = savedDisplay;
+      }
+    },
+  };
 
   connect();
   requestAnimationFrame(frame);
