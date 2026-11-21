@@ -144,7 +144,7 @@ function botTick(game, i, bot) {
 
   // On another level (ledges, one on one): get up to them, or drop down.
   const dz = (o.z || 0) - (f.z || 0);
-  if (!ring && game.platforms.length && Math.abs(dz) > Game.HIT_Z - 10) {
+  if (game.platforms.length && Math.abs(dz) > Game.HIT_Z - 10) {
     const mine = game.platforms.find((p) => p.h === f.z && f.x >= p.x0 && f.x <= p.x1);
     if (dz > 0) {
       // A ledge above me I can reach, and the nearest of those.

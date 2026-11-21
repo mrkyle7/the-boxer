@@ -1,10 +1,12 @@
 // Fight settings: the plain ring, or one of the adventure's four landscapes
-// (meadow, forest, snowy peaks, volcano) with its platforms and scenery. This
-// only paints the backdrop behind the fighters; the fighting is the same.
+// (meadow, forest, snowy peaks, volcano) with its platforms and scenery. It
+// paints the backdrop behind the fighters; the platforms drawn are the ones the
+// fight really has (Game.PLATFORMS).
 //
-//   drawSide(ctx, W, H, venue, clock, floorY, platforms)  one on one, side on;
-//     the platforms are the ones the fight stands on (Game.PLATFORMS)
-//   drawRing(ctx, W, H, venue, clock, view, toScreen)  three or four, from above
+//   drawSide(ctx, W, H, venue, clock, geo, platforms)
+//     geo: { backY, frontY, sBack, sFront }: where the feet are at the back and
+//     front of the floor, and how much fighters are scaled there (one on one
+//     the two are the same; on a stage the floor has some depth).
 (function (root) {
   'use strict';
 
@@ -133,19 +135,23 @@
     }
   }
 
-  /** A floating wooden ledge with the level's ground on top. */
-  function ledge(ctx, x, y, w, T) {
+  /**
+   * A platform: a slab whose top is the floor you stand on, from the back
+   * edge (topBack) to the front (topFront), and a plank face below.
+   */
+  function ledge(ctx, x, topBack, topFront, w, T) {
+    const depth = topFront - topBack;
     ctx.fillStyle = 'rgba(0,0,0,0.18)';
-    ctx.fillRect(x + 6, y + 14, w, 16);
+    ctx.fillRect(x + 6, topFront + 12, w, 14);
     ctx.fillStyle = T.plank;
-    ctx.fillRect(x, y, w, 16);
+    ctx.fillRect(x, topFront, w, 14);
     ctx.fillStyle = T.plankDark;
-    for (let px = x + 18; px < x + w - 4; px += 36) ctx.fillRect(px, y + 2, 2, 12);
-    ctx.fillRect(x, y + 14, w, 3);
+    for (let px = x + 18; px < x + w - 4; px += 36) ctx.fillRect(px, topFront + 2, 2, 10);
+    ctx.fillRect(x, topFront + 12, w, 3);
     ctx.fillStyle = T.top;
-    ctx.fillRect(x - 3, y - 6, w + 6, 8);
+    ctx.fillRect(x - 3, topBack - 5, w + 6, depth + 8);
     ctx.fillStyle = T.topLight;
-    ctx.fillRect(x - 3, y - 6, w + 6, 3);
+    ctx.fillRect(x - 3, topBack - 5, w + 6, 3);
   }
 
   function lavaGlow(ctx, W, y0, y1, clock) {
@@ -161,9 +167,10 @@
     }
   }
 
-  function drawSide(ctx, W, H, venue, clock, floorY, platforms) {
+  function drawSide(ctx, W, H, venue, clock, geo, platforms) {
     const T = THEMES[venue] || THEMES.meadow;
     sky(ctx, W, H, T, venue, clock);
+    const floorY = geo.backY; // the back of the floor
     const base = floorY - 40;
     // Far scenery.
     const peaky = venue === 'snow' || venue === 'volcano';
@@ -193,7 +200,7 @@
     }
     ridge(ctx, W, floorY - 8, T.hills2, 9, 50, false, false);
     // Platforms behind the fighters.
-    for (const p of platforms || []) ledge(ctx, p.x0, floorY - p.h, p.x1 - p.x0, T);
+    for (const p of platforms || []) ledge(ctx, p.x0, geo.backY - p.h * geo.sBack, geo.frontY - p.h * geo.sFront, p.x1 - p.x0, T);
     // Flowers, mushrooms, snow lumps or embers on the ledges.
     const r = rng(33);
     if (venue === 'meadow') {
@@ -251,102 +258,7 @@
     ctx.fillRect(0, 0, W, H);
   }
 
-  /** Top-down: the ground, scattered platforms, then a fence round the edge. */
-  function drawRing(ctx, W, H, venue, clock, view, toScreen) {
-    const T = THEMES[venue] || THEMES.meadow;
-    ctx.fillStyle = T.sky[0] === '#070b24' || venue === 'volcano' ? T.hills2 : T.far;
-    ctx.fillRect(0, 0, W, H);
-    // Scenery all round the outside.
-    const r = rng(41);
-    for (let k = 0; k < 70; k++) {
-      const x = r() * W;
-      const y = r() * H;
-      const p = toScreen(500, 500);
-      const inside = Math.abs(x - p.x) < view.size * 0.55 && Math.abs(y - p.y) < view.size * 0.55;
-      if (inside) continue;
-      if (venue === 'meadow') ellipse(ctx, x, y, 9, 9, k % 2 ? '#4fae4a' : '#6fc46a');
-      else if (venue === 'forest') ellipse(ctx, x, y, 14, 14, k % 2 ? '#0f2a1a' : '#173a24');
-      else if (venue === 'snow') ellipse(ctx, x, y, 12, 8, k % 2 ? '#ffffff' : '#dbe9f5');
-      else ellipse(ctx, x, y, 12, 9, k % 2 ? '#2a1210' : '#5e1f12');
-    }
-    if (venue === 'volcano') {
-      // Lava flows past the outside edges.
-      const a = toScreen(0, 0);
-      const b = toScreen(1000, 1000);
-      ctx.fillStyle = '#d6481a';
-      ctx.fillRect(a.x - 22, a.y - 22, b.x - a.x + 44, b.y - a.y + 44);
-      ctx.fillStyle = `rgba(255,220,120,${0.35 + 0.15 * Math.sin(clock * 3)})`;
-      for (let k = 0; k < 16; k++) ctx.fillRect(a.x - 22 + ((k * 97 + clock * 20) % (b.x - a.x + 44)), a.y - 22 + (k % 2 ? 0 : b.y - a.y + 36), 30, 4);
-    }
-    // The floor inside the fence.
-    const m0 = toScreen(60, 60);
-    const m1 = toScreen(940, 940);
-    const fl = ctx.createRadialGradient(view.cx, view.cy, 20, view.cx, view.cy, view.size * 0.7);
-    fl.addColorStop(0, T.floorLight);
-    fl.addColorStop(1, T.floor);
-    ctx.fillStyle = fl;
-    ctx.fillRect(m0.x, m0.y, m1.x - m0.x, m1.y - m0.y);
-    // Platforms: raised pads and stepping stones, away from the middle.
-    const pads = [[150, 150, 130, 70], [720, 790, 130, 70], [720, 150, 130, 70], [150, 790, 130, 70], [440, 440, 120, 120]];
-    for (const [px, py, pw, ph] of pads) {
-      const p0 = toScreen(px, py);
-      const p1 = toScreen(px + pw, py + ph);
-      const w = p1.x - p0.x;
-      const h = p1.y - p0.y;
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(p0.x + 4, p0.y + 6, w, h);
-      ctx.fillStyle = T.plank;
-      ctx.fillRect(p0.x, p0.y, w, h);
-      ctx.fillStyle = T.top;
-      ctx.fillRect(p0.x + 3, p0.y + 3, w - 6, h - 6);
-      ctx.fillStyle = T.topLight;
-      ctx.fillRect(p0.x + 3, p0.y + 3, w - 6, 4);
-      ctx.strokeStyle = T.plankDark;
-      ctx.lineWidth = 1;
-      ctx.strokeRect(p0.x + 0.5, p0.y + 0.5, w - 1, h - 1);
-    }
-    // Fence: posts joined by a rail in the level's colours.
-    T.rope.forEach((color, k) => {
-      const inset = 60 + k * 5;
-      const r0 = toScreen(inset, inset);
-      const r1 = toScreen(1000 - inset, 1000 - inset);
-      ctx.strokeStyle = color;
-      ctx.lineWidth = 3;
-      ctx.strokeRect(r0.x, r0.y, r1.x - r0.x, r1.y - r0.y);
-    });
-    [[60, 60], [940, 940], [940, 60], [60, 940]].forEach(([x, y]) => {
-      const p = toScreen(x, y);
-      ctx.fillStyle = T.post;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = T.topLight;
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-      ctx.fill();
-    });
-    if (venue === 'snow') {
-      for (let k = 0; k < 50; k++) {
-        const sx = (r() * W + Math.sin(clock + k) * 20 + W) % W;
-        const sy = (r() * H + clock * (40 + (k % 5) * 14)) % H;
-        ellipse(ctx, sx, sy, 2, 2, 'rgba(255,255,255,0.8)');
-      }
-    }
-    if (venue === 'forest') {
-      for (let k = 0; k < 14; k++) {
-        const fx = (r() * W + clock * 8 * (k % 2 ? 1 : -1) + W) % W;
-        const fy = (r() * H + Math.sin(clock * 1.5 + k) * 10 + H) % H;
-        ellipse(ctx, fx, fy, 2.5, 2.5, `rgba(255,240,140,${0.5 + 0.4 * Math.sin(clock * 3 + k)})`);
-      }
-    }
-    const sp = ctx.createRadialGradient(view.cx, view.cy, 60, view.cx, view.cy, 420);
-    sp.addColorStop(0, 'rgba(255,255,255,0.05)');
-    sp.addColorStop(1, 'rgba(0,0,0,0.3)');
-    ctx.fillStyle = sp;
-    ctx.fillRect(0, 0, W, H);
-  }
-
-  const api = { NAMES, drawSide, drawRing };
+  const api = { NAMES, drawSide };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.BoxerVenues = api;
 })(typeof self !== 'undefined' ? self : this);

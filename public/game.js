@@ -178,6 +178,15 @@
     4: [[250, 250], [750, 750], [750, 250], [250, 750]],
   };
 
+  // On platforms the ring is a stage seen side on: a long, shallow strip
+  // (everyone fights along it, with a little room to step in and out).
+  const STAGE_MIN = 400;
+  const STAGE_MAX = 600;
+  const STAGE_STARTS = {
+    3: [[200, 460], [500, 540], [800, 460]],
+    4: [[150, 460], [383, 540], [617, 460], [850, 540]],
+  };
+
   // Frame data. Range is measured centre-to-centre between fighters.
   // Every attack goes to the head or the tummy, whichever the attacker is
   // aiming at when it starts. A guard only covers the height it is held at.
@@ -465,7 +474,7 @@
     body: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
   };
 
-  // Platforms (one on one, in an adventure setting only): ledges to jump up
+  // Platforms (in an adventure setting only; the ring has none): ledges to jump up
   // onto and stand on. h is the height of the top above the floor. A jump
   // goes up about 180, so the low ledges are a jump from the floor and the
   // high one a jump from a low ledge. You can steer in the air, walk off an
@@ -491,9 +500,9 @@
 
   const DEFAULT_NAMES = ['Red', 'Blue', 'Green', 'Gold'];
 
-  function createFighter(index, name, count) {
+  function createFighter(index, name, count, stage) {
     const ring = count > 2;
-    const start = ring ? RING_STARTS[count][index] : null;
+    const start = ring ? (stage ? STAGE_STARTS : RING_STARTS)[count][index] : null;
     return {
       z: 0, // height above the floor (platforms)
       vz: 0,
@@ -583,7 +592,7 @@
       phaseT: 0,
       round: 1,
       timer: ROUND_TICKS,
-      fighters: Array.from({ length: count }, (_, i) => createFighter(i, names && names[i], count)),
+      fighters: Array.from({ length: count }, (_, i) => createFighter(i, names && names[i], count, !!(options.venue && options.venue !== 'ring'))),
       inputs: Array.from({ length: count }, createInput),
       events: [],
       roundWinner: null,
@@ -591,7 +600,7 @@
       tick: 0,
       fists: !!options.fists,
       // Ledges to stand on, for a one on one in an adventure setting.
-      platforms: count === 2 && options.venue && options.venue !== 'ring' ? PLATFORMS : [],
+      platforms: options.venue && options.venue !== 'ring' ? PLATFORMS : [],
       random: options.random || Math.random,
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
@@ -612,7 +621,7 @@
   function resetFightersForRound(game) {
     const count = game.fighters.length;
     game.fighters.forEach((f, i) => {
-      const fresh = createFighter(i, f.name, count);
+      const fresh = createFighter(i, f.name, count, game.platforms.length > 0);
       fresh.roundsWon = f.roundsWon;
       fresh.stats = f.stats;
       // Poison lasts the whole match.
@@ -645,7 +654,7 @@
 
   function pressAction(game, index, action) {
     if (!ACTIONS.includes(action)) return;
-    if (action === 'jump' && game.mode === 'ring') return; // one on one only
+    if (action === 'jump' && game.mode === 'ring' && !game.platforms.length) return; // one on one, or on platforms
     if (action === 'kick' && game.fighters[index] && game.fighters[index].lion > 0) return; // lions swipe, they don't kick
     if (action === 'kick' && game.fighters[index] && game.fighters[index].sword > 0) return; // sword in hand: slash, don't kick
     const input = game.inputs[index];
@@ -1610,6 +1619,7 @@
   }
 
   function applyRingPhysics(game) {
+    if (game.platforms.length) applyHeights(game);
     for (const f of game.fighters) {
       f.x += f.vx;
       f.y += f.vy;
@@ -1627,7 +1637,7 @@
         for (let j = i + 1; j < inRing.length; j++) {
           const a = inRing[i];
           const b = inRing[j];
-          if (!standing(a) || !standing(b) || untouchable(a) || untouchable(b)) continue;
+          if (!standing(a) || !standing(b) || untouchable(a) || untouchable(b) || Math.abs(a.z - b.z) > HIT_Z) continue;
           if (a.invisible > 0 || b.invisible > 0) continue; // Kyle walks straight through
           let dx = b.x - a.x;
           let dy = b.y - a.y;
@@ -1641,9 +1651,11 @@
           b.y += (dy / d) * push;
         }
       }
+      const lo = game.platforms.length ? STAGE_MIN : RING_MIN;
+      const hi = game.platforms.length ? STAGE_MAX : RING_MAX;
       for (const f of inRing) {
         f.x = Math.max(RING_MIN, Math.min(RING_MAX, f.x));
-        f.y = Math.max(RING_MIN, Math.min(RING_MAX, f.y));
+        f.y = Math.max(lo, Math.min(hi, f.y));
       }
     }
   }
@@ -1658,6 +1670,7 @@
       let bestD = Infinity;
       game.fighters.forEach((o, j) => {
         if (j === i || !standing(o) || shielded(o)) return;
+        if (Math.abs(o.z - att.z) > HIT_Z) return; // on another level
         const d = distance(att, o);
         if (d > reach(att, m) || d >= bestD) return;
         // The flip lands on whoever is nearest, whichever way they are.
@@ -1691,6 +1704,7 @@
       if (jumping && f.t > JUMP_CROUCH && !f.flipStep && (f.z > 0 || f.vz !== 0)) {
         const input = game.inputs[i];
         f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
+        if (game.mode === 'ring') f.y += ((input.down ? 1 : 0) - (input.up ? 1 : 0)) * WALK_SPEED;
       }
       const before = f.z;
       if (f.vz > 0 || f.z > supportAt(platforms, f.x, f.z)) {
@@ -2476,7 +2490,7 @@
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
-    PLATFORMS, GRAVITY, JUMP_V, HIT_Z, supportAt,
+    PLATFORMS, STAGE_MIN, STAGE_MAX, GRAVITY, JUMP_V, HIT_Z, supportAt,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
     DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, JUGGLE_TICKS, PIES, PIE_EVERY, CLOWN_TICKS, PIE_SPEED, PIE_DAMAGE, PIE_FACE_TICKS, PIE_FLAVOURS, SUPER_ROUNDS, PIANO_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,

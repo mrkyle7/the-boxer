@@ -10,10 +10,30 @@ function fight(venue) {
   return g;
 }
 
-test('no platforms in the plain ring or the free-for-all', () => {
+test('platforms in a setting, none in the plain ring', () => {
   assert.strictEqual(fight('ring').platforms.length, 0);
-  assert.strictEqual(Game.createGame(['A', 'B', 'C'], { venue: 'snow' }).platforms.length, 0);
+  assert.strictEqual(Game.createGame(['A', 'B', 'C'], { venue: 'ring' }).platforms.length, 0);
+  assert.strictEqual(Game.createGame(['A', 'B', 'C'], { venue: 'snow' }).platforms.length, 3);
   assert.strictEqual(fight('meadow').platforms.length, 3);
+});
+
+test('three or four fight on the same stage, and can jump up to the ledges', () => {
+  const g = Game.createGame(['A', 'B', 'C', 'D'], { venue: 'forest' });
+  assert.strictEqual(g.mode, 'ring');
+  g.fighters.forEach((f) => assert.ok(f.y >= Game.STAGE_MIN && f.y <= Game.STAGE_MAX));
+  while (g.phase === 'countdown') Game.step(g);
+  const a = g.fighters[0];
+  const p = Game.PLATFORMS[0];
+  a.x = p.x1 + 20; a.y = 500;
+  g.fighters.forEach((f, i) => { if (i) { f.x = 800 + i * 20; f.y = 450 + i * 30; } });
+  Game.pressAction(g, 0, 'jump');
+  Game.setHeld(g, 0, { aim: 'head', left: true });
+  for (let i = 0; i < 60; i++) Game.step(g);
+  assert.strictEqual(a.z, p.h);
+  // Keeps to the stage.
+  Game.setHeld(g, 0, { aim: 'head', down: true });
+  for (let i = 0; i < 200; i++) Game.step(g);
+  assert.ok(a.y <= Game.STAGE_MAX);
 });
 
 test('a jump from the floor lands on a low ledge, and walking off drops you', () => {

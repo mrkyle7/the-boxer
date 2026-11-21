@@ -372,3 +372,5 @@ body.ring .side-only { display: none !important; }
     max-height: calc(100dvh - 118px);
   }
 }
+
+body.ring.flat .side-only { display: inline-flex !important; align-items: center; justify-content: center; }

@@ -8,7 +8,9 @@ Two fighters box side on. Three or four fight a free-for-all in the ring, seen f
 
 Fights can be set somewhere other than the ring: pick **Ring**, **Meadow**, **Forest**, **Peaks** or **Volcano** in the lobby (for bot fights and private fights; the host can change it while waiting). Each is one of the adventure's landscapes.
 
-One on one, the setting has **platforms** you can jump up onto (`Space`). Steer in the air, stand on a ledge to fight from it, and walk off the edge to drop. A jump from the floor reaches the two low ledges, and from a low ledge you can reach the high one in the middle. Attacks only land on someone at about your height, so fight from above, or come down after them. With three or four fighters the setting is scenery only.
+The setting has **platforms** you can jump up onto (`Space`). Steer in the air, stand on a ledge to fight from it, and walk off the edge to drop. A jump from the floor reaches the two low ledges, and from a low ledge you can reach the high one in the middle. Attacks only land on someone at about your height, so fight from above, or come down after them.
+
+Fighters are smaller in a setting. Three or four fight on the same scene, side on, on a shallow stage you can step in and out of (`↑` `↓`), instead of from above as in the ring. The plain **Ring** is unchanged.
 
 ## Adventure mode
 
