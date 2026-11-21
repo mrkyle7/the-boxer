@@ -2,7 +2,8 @@
 // (meadow, forest, snowy peaks, volcano) with its platforms and scenery. This
 // only paints the backdrop behind the fighters; the fighting is the same.
 //
-//   drawSide(ctx, W, H, venue, clock, floorY)      one on one, seen side on
+//   drawSide(ctx, W, H, venue, clock, floorY, platforms)  one on one, side on;
+//     the platforms are the ones the fight stands on (Game.PLATFORMS)
 //   drawRing(ctx, W, H, venue, clock, view, toScreen)  three or four, from above
 (function (root) {
   'use strict';
@@ -160,7 +161,7 @@
     }
   }
 
-  function drawSide(ctx, W, H, venue, clock, floorY) {
+  function drawSide(ctx, W, H, venue, clock, floorY, platforms) {
     const T = THEMES[venue] || THEMES.meadow;
     sky(ctx, W, H, T, venue, clock);
     const base = floorY - 40;
@@ -192,9 +193,7 @@
     }
     ridge(ctx, W, floorY - 8, T.hills2, 9, 50, false, false);
     // Platforms behind the fighters.
-    ledge(ctx, 70, 330, 190, T);
-    ledge(ctx, W - 260, 330, 190, T);
-    ledge(ctx, W / 2 - 110, 235, 220, T);
+    for (const p of platforms || []) ledge(ctx, p.x0, floorY - p.h, p.x1 - p.x0, T);
     // Flowers, mushrooms, snow lumps or embers on the ledges.
     const r = rng(33);
     if (venue === 'meadow') {

@@ -275,7 +275,7 @@
     snap = s;
     snapAt = performance.now();
     if (!display) {
-      display = s.fighters.map((f) => ({ x: f.x, y: f.y || 0, angle: f.angle || 0, hpTrail: f.hp }));
+      display = s.fighters.map((f) => ({ x: f.x, y: f.y || 0, z: f.z || 0, angle: f.angle || 0, hpTrail: f.hp }));
     }
     for (const e of events) onEvent(e);
     if (s.phase !== lastPhase) {
@@ -350,7 +350,8 @@
       return { x: p.x, y: p.y - (height === 'body' ? 4 : 12) };
     }
     const x = display ? display[i].x : f.x;
-    return { x: x + f.facing * 6, y: FLOOR - (height === 'body' ? 150 : 222) };
+    const z = display ? display[i].z || 0 : 0;
+    return { x: x + f.facing * 6, y: FLOOR - z - (height === 'body' ? 150 : 222) };
   }
 
   function sparks(x, y, color, count, speed) {
@@ -1717,7 +1718,8 @@
     }
     const q = clamp01((t - G.JUMP_CROUCH) / (m.startup - G.JUMP_CROUCH));
     P.spin = 0;
-    P.lift = Math.sin(q * Math.PI) * 150;
+    // With ledges, the height is real (the fighter's z), not part of the pose.
+    P.lift = snap && snap.fighters[0].z !== undefined ? 0 : Math.sin(q * Math.PI) * 150;
     P.crouch = 24;
     P.front = { x: 40, y: -200 };
     P.back = { x: 26, y: -192 };
@@ -1754,7 +1756,8 @@
     }
 
     ctx.save();
-    ctx.translate(x, FLOOR);
+    const z = d.z || 0;
+    ctx.translate(x, FLOOR - z);
     const size = d.size || 1;
     if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
     if (f.spelling && !echo) spellBubble(0, -125 * size, 150 * size, clock);
@@ -1772,7 +1775,8 @@
     if (!f.noShadow) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath();
-      ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
+      const sh = z ? G.supportAt(G.PLATFORMS, x, z) : 0; // the ledge or floor below
+      ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4 + z - sh, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -2185,7 +2189,7 @@
 
   function drawScene(clock) {
     if (scenery !== 'ring' && window.BoxerVenues) {
-      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, FLOOR);
+      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, FLOOR, G.PLATFORMS);
       return;
     }
     const bg = ctx.createLinearGradient(0, 0, 0, H);
@@ -5160,6 +5164,7 @@
       if (Math.abs(f.x - d.x) > 200 || Math.abs((f.y || 0) - d.y) > 200) { d.x = f.x; d.y = f.y || 0; }
       d.x += (f.x - d.x) * k;
       d.y += ((f.y || 0) - d.y) * k;
+      d.z = (d.z || 0) + ((f.z || 0) - (d.z || 0)) * Math.min(1, dt * 30);
       // Turn the short way round.
       let turn = (f.angle || 0) - d.angle;
       while (turn > Math.PI) turn -= Math.PI * 2;

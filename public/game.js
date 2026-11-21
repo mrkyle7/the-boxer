@@ -465,6 +465,27 @@
     body: { damage: 0, hitstun: 0, knockback: 0, winded: 0 },
   };
 
+  // Platforms (one on one, in an adventure setting only): ledges to jump up
+  // onto and stand on. h is the height of the top above the floor. A jump
+  // goes up about 180, so the low ledges are a jump from the floor and the
+  // high one a jump from a low ledge. You can steer in the air, walk off an
+  // edge to drop, and only hit (or be hit by) someone at about your height.
+  const PLATFORMS = [
+    { x0: 70, x1: 260, h: 156 },
+    { x0: 740, x1: 930, h: 156 },
+    { x0: 390, x1: 610, h: 251 },
+  ];
+  const GRAVITY = 1;
+  const JUMP_V = 19; // up and down again in the jump's 38 airborne ticks
+  const HIT_Z = 80; // further apart in height than this, attacks miss
+
+  /** The height of what you'd land on at x, falling from height z. */
+  function supportAt(platforms, x, z) {
+    let best = 0;
+    for (const p of platforms) if (x >= p.x0 && x <= p.x1 && p.h <= z + 1 && p.h > best) best = p.h;
+    return best;
+  }
+
   const AIMS = ['head', 'body'];
   const ACTIONS = ['punch', 'kick', 'jump'];
 
@@ -474,6 +495,8 @@
     const ring = count > 2;
     const start = ring ? RING_STARTS[count][index] : null;
     return {
+      z: 0, // height above the floor (platforms)
+      vz: 0,
       name: name || DEFAULT_NAMES[index],
       luna: isLuna(name),
       giant: 0, // ticks of Jemini left
@@ -567,6 +590,8 @@
       winner: null,
       tick: 0,
       fists: !!options.fists,
+      // Ledges to stand on, for a one on one in an adventure setting.
+      platforms: count === 2 && options.venue && options.venue !== 'ring' ? PLATFORMS : [],
       random: options.random || Math.random,
       // Ticks until the next shadow, and the shadow when there is one.
       fist: { next: 0, warn: null },
@@ -1656,7 +1681,31 @@
     });
   }
 
+  /** Jumping up onto ledges and falling off them. */
+  function applyHeights(game) {
+    const platforms = game.platforms;
+    game.fighters.forEach((f, i) => {
+      const jumping = f.state === 'attack' && f.move === 'jump';
+      if (jumping && f.t === JUMP_CROUCH && f.vz === 0 && f.z <= supportAt(platforms, f.x, f.z) + 0.5) f.vz = JUMP_V;
+      // Steer a jump in the air (a leapfrog already has somewhere to go).
+      if (jumping && f.t > JUMP_CROUCH && !f.flipStep && (f.z > 0 || f.vz !== 0)) {
+        const input = game.inputs[i];
+        f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
+      }
+      const before = f.z;
+      if (f.vz > 0 || f.z > supportAt(platforms, f.x, f.z)) {
+        f.vz -= GRAVITY;
+        f.z += f.vz;
+      }
+      if (f.vz <= 0) {
+        const s = supportAt(platforms, f.x, before);
+        if (f.z <= s) { f.z = s; f.vz = 0; }
+      }
+    });
+  }
+
   function applyPhysics(game) {
+    if (game.platforms.length) applyHeights(game);
     const [a, b] = game.fighters;
     for (const f of game.fighters) {
       f.x += f.vx;
@@ -1669,7 +1718,7 @@
     const right = left === a ? b : a;
     const gap = right.x - left.x;
     // Someone in the air goes over the other, not into them.
-    const over = untouchable(a) || untouchable(b) || a.invisible > 0 || b.invisible > 0;
+    const over = untouchable(a) || untouchable(b) || a.invisible > 0 || b.invisible > 0 || Math.abs(a.z - b.z) > HIT_Z;
     if (gap < MIN_SEPARATION && !over) {
       const push = (MIN_SEPARATION - gap) / 2;
       left.x -= push;
@@ -1704,6 +1753,7 @@
       const def = game.fighters[1 - i];
       const m = MOVES[att.move];
       if (Math.abs(def.x - att.x) > reach(att, m)) return;
+      if (Math.abs(def.z - att.z) > HIT_Z) return; // on another level
       // Nobody turns to face Kyle: once he's walked through you, you swing the wrong way.
       if (def.invisible > 0 && def.x !== att.x && Math.sign(def.x - att.x) !== att.facing) return;
       if (def.state === 'ko' || shielded(def)) return;
@@ -2404,6 +2454,7 @@
         ...(f.shree ? { shree: { x: Math.round(f.shree.x), y: Math.round(f.shree.y), drop: f.shree.drop } } : {}),
         ...(f.car ? { car: { dx: Math.round(f.car.dx * 1000) / 1000, dy: Math.round(f.car.dy * 1000) / 1000, rev: f.car.t <= CAR_REV_TICKS } } : {}),
         x: Math.round(f.x * 10) / 10,
+        ...(game.platforms.length ? { z: Math.round(f.z) } : {}),
         ...(ring ? { y: Math.round(f.y * 10) / 10, angle: Math.round(f.angle * 1000) / 1000, left: f.left } : {}),
         facing: f.facing,
         hp: f.hp,
@@ -2425,6 +2476,7 @@
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
+    PLATFORMS, GRAVITY, JUMP_V, HIT_Z, supportAt,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
     DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, JUGGLE_TICKS, PIES, PIE_EVERY, CLOWN_TICKS, PIE_SPEED, PIE_DAMAGE, PIE_FACE_TICKS, PIE_FLAVOURS, SUPER_ROUNDS, PIANO_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,
