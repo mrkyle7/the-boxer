@@ -59,6 +59,10 @@ function serveStatic(req, res) {
 // there are no bots.
 
 const MAX_PLAYERS = Game.MAX_FIGHTERS;
+// Where a fight happens: the plain ring, or one of the adventure's settings
+// (with its platforms and scenery). Only the look changes, not the fighting.
+const VENUES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
+const cleanVenue = (v) => (VENUES.includes(v) ? v : 'ring');
 const rooms = new Map();
 let quickQueue = null; // a room waiting for a random opponent
 
@@ -93,6 +97,7 @@ function createRoom(isPublic, kind = 'fight') {
     code: makeCode(),
     isPublic,
     kind,
+    venue: 'ring',
     // Everyone in the room, in the order they came. The first is the host.
     players: [],
     // Who's fighting in the current match; their index is their fighter.
@@ -125,7 +130,7 @@ function sendRoom(room) {
   const bots = room.players.map((p) => (p.isBot ? p.level : null));
   const host = room.players.indexOf(hostOf(room));
   room.players.forEach((p, i) => send(p, {
-    t: 'room', code: room.code, kind: room.kind, level: room.level, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
+    t: 'room', code: room.code, kind: room.kind, level: room.level, venue: room.venue, players: names, bots, hostIndex: host, you: i, host: i === host, max: MAX_PLAYERS,
   }));
 }
 
@@ -162,7 +167,7 @@ function startMatch(room) {
   room.fighters.forEach((p, i) => {
     p.seat = i;
     if (p.isBot) p.bot = Bot.createBot(p.level); // fresh for each match
-    send(p, { t: 'start', you: i, names, code: room.code, mode: room.game.mode });
+    send(p, { t: 'start', you: i, names, code: room.code, mode: room.game.mode, venue: room.venue });
   });
   stopLoop(room);
   let n = 0;
@@ -253,9 +258,10 @@ const handlers = {
     if (!ws.account) ws.name = cleanName(msg.name);
     if (ws.room && !ws.room.isPublic && !ws.room.game) sendRoom(ws.room);
   },
-  create(ws) {
+  create(ws, msg) {
     leaveRoom(ws);
     const room = createRoom(false);
+    room.venue = cleanVenue(msg.venue);
     addPlayer(room, ws);
     sendRoom(room);
   },
@@ -280,6 +286,7 @@ const handlers = {
   bot(ws, msg) {
     leaveRoom(ws);
     const room = createRoom(false);
+    room.venue = cleanVenue(msg.venue);
     addPlayer(room, ws);
     room.players.push(makeBot(room, msg.level));
     startMatch(room);
@@ -293,6 +300,13 @@ const handlers = {
     addPlayer(room, ws);
     if (msg.solo) startMatch(room);
     else sendRoom(room);
+  },
+  /** The host picks where the fight happens. */
+  venue(ws, msg) {
+    const room = ws.room;
+    if (!room || room.isPublic || room.game || hostOf(room) !== ws || adventure(room)) return;
+    room.venue = cleanVenue(msg.venue);
+    sendRoom(room);
   },
   /** The host fills a corner with a bot. */
   addBot(ws, msg) {

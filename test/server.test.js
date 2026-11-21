@@ -360,3 +360,35 @@ test('the host adds and removes bots in a private room; bots never host', async 
     assert.deepStrictEqual(start.names, ['Rookie Bot 2', 'Pal']);
   });
 });
+
+test('the host picks where a private fight happens, and everyone is told', async () => {
+  await withServer(async (port, connect) => {
+    const a = await connect();
+    const b = await connect();
+    a.send({ t: 'hello', name: 'Ann' });
+    a.send({ t: 'create', venue: 'snow' });
+    const room = await a.next((m) => m.t === 'room');
+    assert.strictEqual(room.venue, 'snow');
+    b.send({ t: 'hello', name: 'Bob' });
+    b.send({ t: 'join', code: room.code });
+    await b.next((m) => m.t === 'room' && m.venue === 'snow');
+    b.send({ t: 'venue', venue: 'volcano' }); // not the host: ignored
+    a.send({ t: 'venue', venue: 'nonsense' }); // not a venue: back to the ring
+    await a.next((m) => m.t === 'room' && m.venue === 'ring');
+    a.send({ t: 'venue', venue: 'forest' });
+    await b.next((m) => m.t === 'room' && m.venue === 'forest');
+    a.send({ t: 'start' });
+    const start = await b.next((m) => m.t === 'start');
+    assert.strictEqual(start.venue, 'forest');
+  });
+});
+
+test('a fight against the computer can be in an adventure setting', async () => {
+  await withServer(async (port, connect) => {
+    const a = await connect();
+    a.send({ t: 'hello', name: 'Ann' });
+    a.send({ t: 'bot', level: 'easy', venue: 'meadow' });
+    const start = await a.next((m) => m.t === 'start');
+    assert.strictEqual(start.venue, 'meadow');
+  });
+});

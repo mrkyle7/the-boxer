@@ -97,6 +97,7 @@
   let names = ['', ''];
   // 'side' for two fighters, 'ring' (seen from above) for three or four.
   let mode = 'side';
+  let scenery = 'ring'; // where this fight is: 'ring' or an adventure setting (venues.js)
   let snap = null;
   let snapAt = 0;
   let display = null;
@@ -117,6 +118,7 @@
         $('room-note').textContent = '';
         $('start').hidden = true;
         $('add-bot').hidden = true;
+        $('venue-room').hidden = true;
         show('waiting');
         break;
       }
@@ -127,6 +129,8 @@
         me = msg.you;
         names = msg.names;
         mode = msg.mode === 'ring' ? 'ring' : 'side';
+        scenery = VENUE_NAMES.includes(msg.venue) ? msg.venue : 'ring';
+        setVenueButtons(venue);
         document.body.classList.toggle('ring', mode === 'ring');
         roomCode = msg.code;
         snap = null;
@@ -231,6 +235,13 @@
     }
     list.hidden = false;
     const n = msg.players.length;
+    const adv = msg.kind === 'adventure';
+    $('venue-room').hidden = adv;
+    if (!adv) {
+      $('venues-room').classList.toggle('locked', !msg.host);
+      $('venues-room').querySelectorAll('button').forEach((b) => { b.disabled = !msg.host; });
+      setVenueButtons(msg.venue || 'ring');
+    }
     if (msg.kind === 'adventure') {
       $('waiting-title').textContent = msg.host ? 'Your adventure is ready' : `${host}'s adventure`;
       const LV = window.BoxerAdventure && window.BoxerAdventure.LEVELS[msg.level || 0];
@@ -1404,12 +1415,41 @@
     send({ t: 'hello', name: playerName() });
   }
 
+  // Where the fight happens: the plain ring or an adventure setting. Picked in
+  // the lobby; in a private room the host can change it while waiting.
+  const VENUE_NAMES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
+  let venue = 'ring';
+  function setVenueButtons(v) {
+    for (const group of [$('venues'), $('venues-room')]) {
+      group.querySelectorAll('[data-venue]').forEach((b) => {
+        const on = b.dataset.venue === v;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+    }
+  }
+  const savedVenue = load('boxer-venue');
+  if (VENUE_NAMES.includes(savedVenue)) venue = savedVenue;
+  setVenueButtons(venue);
+  $('venues').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-venue]');
+    if (!b) return;
+    venue = b.dataset.venue;
+    save('boxer-venue', venue);
+    setVenueButtons(venue);
+  });
+  $('venues-room').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-venue]');
+    if (!b) return;
+    send({ t: 'venue', venue: b.dataset.venue });
+  });
+
   $('quick').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'quick' }); });
-  $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create' }); });
+  $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create', venue }); });
   $('start').addEventListener('click', () => { sound.unlock(); send({ t: 'start' }); });
   document.querySelectorAll('[data-bot]').forEach((b) => b.addEventListener('click', () => {
     beforeMatchmaking();
-    send({ t: 'bot', level: b.dataset.bot });
+    send({ t: 'bot', level: b.dataset.bot, venue });
   }));
   document.querySelectorAll('[data-add-bot]').forEach((b) => b.addEventListener('click', () => {
     send({ t: 'addBot', level: b.dataset.addBot });
@@ -2144,6 +2184,10 @@
   const flashes = [];
 
   function drawScene(clock) {
+    if (scenery !== 'ring' && window.BoxerVenues) {
+      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, FLOOR);
+      return;
+    }
     const bg = ctx.createLinearGradient(0, 0, 0, H);
     bg.addColorStop(0, '#05070b');
     bg.addColorStop(0.55, '#0f1520');
@@ -2313,6 +2357,10 @@
   let ringCrowd = makeRingCrowd();
 
   function drawRingScene(clock) {
+    if (scenery !== 'ring' && window.BoxerVenues) {
+      window.BoxerVenues.drawRing(ctx, W, H, scenery, clock, VIEW, toScreen);
+      return;
+    }
     ctx.fillStyle = '#07090e';
     ctx.fillRect(0, 0, W, H);
     for (const h of ringCrowd) {
@@ -5194,7 +5242,7 @@
       if (p.life <= 0) effects.splice(i, 1);
     }
     ctx.globalAlpha = 1;
-    if (!ring) drawFrontRopes();
+    if (!ring && scenery === 'ring') drawFrontRopes();
     drawFistOver();
     drawSurprisesOver(clock);
     drawHotdogs(clock);

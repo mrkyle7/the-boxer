@@ -31,6 +31,17 @@
         </label>
         <p class="account" id="account" aria-live="polite"></p>
 
+        <div class="bot-pick venue-pick">
+          <span>Where to fight (not for random opponents)</span>
+          <div class="venues" id="venues" role="radiogroup" aria-label="Where to fight">
+            <button data-venue="ring" role="radio">Ring</button>
+            <button data-venue="meadow" role="radio">Meadow</button>
+            <button data-venue="forest" role="radio">Forest</button>
+            <button data-venue="snow" role="radio">Peaks</button>
+            <button data-venue="volcano" role="radio">Volcano</button>
+          </div>
+        </div>
+
         <div class="actions">
           <button id="quick" class="btn btn-primary">Find an opponent</button>
           <button id="create" class="btn">Private fight <span class="sub">2–4 players</span></button>
@@ -96,6 +107,16 @@
         <h2 id="waiting-title">Waiting for an opponent</h2>
         <ul id="room-players" class="room-players" hidden></ul>
         <p id="room-note" class="room-note"></p>
+        <div id="venue-room" class="bot-pick" hidden>
+          <span>Where to fight</span>
+          <div class="venues" id="venues-room" role="radiogroup" aria-label="Where to fight">
+            <button data-venue="ring" role="radio">Ring</button>
+            <button data-venue="meadow" role="radio">Meadow</button>
+            <button data-venue="forest" role="radio">Forest</button>
+            <button data-venue="snow" role="radio">Peaks</button>
+            <button data-venue="volcano" role="radio">Volcano</button>
+          </div>
+        </div>
         <div id="add-bot" class="bot-pick" role="group" aria-labelledby="add-bot-label" hidden>
           <span id="add-bot-label">Add a bot</span>
           <div class="bot-levels">
@@ -200,6 +221,7 @@
   </main>
 
   <script src="game.js"></script>
+  <script src="venues.js"></script>
   <script src="client.js"></script>
   <script src="adventure.js"></script>
   <script src="adventure-client.js"></script>

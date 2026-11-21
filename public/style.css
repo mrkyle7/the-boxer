@@ -48,6 +48,15 @@ body {
 .adv-levels button span { display: block; font-weight: 400; font-size: 12px; }
 .adv-levels button.on { color: var(--text); background: #23471f; border-color: #57a14b; }
 .adv-levels button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.venues { display: flex; gap: 6px; margin-top: 8px; }
+.venues button {
+  flex: 1 1 0; min-width: 0; font: inherit; font-weight: 700; font-size: 13px; color: var(--muted);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 7px 2px; cursor: pointer;
+}
+.venues button.on { color: var(--text); background: #1d3a57; border-color: #4d8cc4; }
+.venues button:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.venues.locked button { cursor: default; }
+.venue-pick > span { color: var(--muted); }
 .adv-score { font-family: var(--display); font-size: 26px; color: var(--gold); margin: 0 0 12px; letter-spacing: 0.04em; }
 
 .poster {
