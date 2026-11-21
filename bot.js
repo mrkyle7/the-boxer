@@ -142,6 +142,30 @@ function botTick(game, i, bot) {
     }
   }
 
+  // On another level (ledges, one on one): get up to them, or drop down.
+  const dz = (o.z || 0) - (f.z || 0);
+  if (game.platforms.length && Math.abs(dz) > Game.HIT_Z - 10) {
+    const mine = game.platforms.find((p) => p.h === f.z && f.x >= p.x0 && f.x <= p.x1);
+    if (dz > 0) {
+      // A ledge above me I can reach, and the nearest of those.
+      const ledges = game.platforms.filter((p) => p.h > f.z + 10 && p.h <= f.z + 150)
+        .sort((a, b) => Math.abs((a.x0 + a.x1) / 2 - f.x) - Math.abs((b.x0 + b.x1) / 2 - f.x));
+      const p = ledges[0];
+      if (p) {
+        const mid = (p.x0 + p.x1) / 2;
+        const under = f.x >= p.x0 - 10 && f.x <= p.x1 + 10;
+        if (under && f.z === (mine ? mine.h : 0) && f.state !== 'attack') Game.pressAction(game, i, 'jump');
+        hold(toward(mid - f.x, 0));
+        return;
+      }
+    } else if (mine) {
+      // Walk off the nearer edge towards them.
+      const edge = dx < 0 ? mine.x0 - 12 : mine.x1 + 12;
+      hold(toward(Math.abs(dx) > 40 ? dx : edge - f.x, 0));
+      return;
+    }
+  }
+
   // Something coming at me: guard it (at the right height, if I read it).
   const theirs = o.state === 'attack' && Game.MOVES[o.move];
   const phase = Game.movePhase(o);

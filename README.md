@@ -6,6 +6,12 @@ No one to fight? Pick **Easy**, **Medium** or **Hard** under "Fight the computer
 
 Two fighters box side on. Three or four fight a free-for-all in the ring, seen from above: everyone always faces the nearest opponent, an attack lands on whoever is in front of it and in reach, and a guard only covers the front, so you can be caught from the side. The last one standing takes the round; at the bell, the healthiest fighter still standing does. Anyone who leaves mid-fight is out, and the rest fight on.
 
+Fights can be set somewhere other than the ring: pick **Ring**, **Meadow**, **Forest**, **Peaks** or **Volcano** in the lobby (for bot fights and private fights; the host can change it while waiting). Each is one of the adventure's landscapes.
+
+The setting has **platforms** you can jump up onto (`Space`). Steer in the air, stand on a ledge to fight from it, and walk off the edge to drop. A jump from the floor reaches the two low ledges, and from a low ledge you can reach the high one in the middle. Attacks only land on someone at about your height, so fight from above, or come down after them.
+
+Fighters are smaller in a setting. Three or four fight on the same scene, side on, on a shallow stage you can step in and out of (`↑` `↓`), instead of from above as in the ring. The plain **Ring** is unchanged.
+
 ## Adventure mode
 
 Fancy a change from boxing? **Adventure** is a side-scrolling platformer where you are the boxer. Pick **Play solo**, or **Team up** to open a room for up to four and send friends the link (anyone can start it on their own, too). You all play together, co-op, on the same screen: the camera follows whoever is out in front but never leaves anyone behind.

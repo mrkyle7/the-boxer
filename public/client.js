@@ -97,6 +97,7 @@
   let names = ['', ''];
   // 'side' for two fighters, 'ring' (seen from above) for three or four.
   let mode = 'side';
+  let scenery = 'ring'; // where this fight is: 'ring' or an adventure setting (venues.js)
   let snap = null;
   let snapAt = 0;
   let display = null;
@@ -117,6 +118,7 @@
         $('room-note').textContent = '';
         $('start').hidden = true;
         $('add-bot').hidden = true;
+        $('venue-room').hidden = true;
         show('waiting');
         break;
       }
@@ -127,7 +129,10 @@
         me = msg.you;
         names = msg.names;
         mode = msg.mode === 'ring' ? 'ring' : 'side';
+        scenery = VENUE_NAMES.includes(msg.venue) ? msg.venue : 'ring';
+        setVenueButtons(venue);
         document.body.classList.toggle('ring', mode === 'ring');
+        document.body.classList.toggle('flat', mode === 'ring' && scenery !== 'ring');
         roomCode = msg.code;
         snap = null;
         display = null;
@@ -231,6 +236,13 @@
     }
     list.hidden = false;
     const n = msg.players.length;
+    const adv = msg.kind === 'adventure';
+    $('venue-room').hidden = adv;
+    if (!adv) {
+      $('venues-room').classList.toggle('locked', !msg.host);
+      $('venues-room').querySelectorAll('button').forEach((b) => { b.disabled = !msg.host; });
+      setVenueButtons(msg.venue || 'ring');
+    }
     if (msg.kind === 'adventure') {
       $('waiting-title').textContent = msg.host ? 'Your adventure is ready' : `${host}'s adventure`;
       const LV = window.BoxerAdventure && window.BoxerAdventure.LEVELS[msg.level || 0];
@@ -264,7 +276,7 @@
     snap = s;
     snapAt = performance.now();
     if (!display) {
-      display = s.fighters.map((f) => ({ x: f.x, y: f.y || 0, angle: f.angle || 0, hpTrail: f.hp }));
+      display = s.fighters.map((f) => ({ x: f.x, y: f.y || 0, z: f.z || 0, angle: f.angle || 0, hpTrail: f.hp }));
     }
     for (const e of events) onEvent(e);
     if (s.phase !== lastPhase) {
@@ -333,13 +345,19 @@
 
   function targetPos(i, height) {
     const f = snap.fighters[i];
+    if (flatScene()) {
+      const d = display ? display[i] : f;
+      const g = groundOf(d);
+      return { x: g.x + facingOf(f, d) * 6 * g.s, y: g.y - ((d.z || 0) + (height === 'body' ? 150 : 222)) * g.s };
+    }
     if (mode === 'ring') {
       const d = display ? display[i] : f;
       const p = toScreen(d.x, d.y);
       return { x: p.x, y: p.y - (height === 'body' ? 4 : 12) };
     }
     const x = display ? display[i].x : f.x;
-    return { x: x + f.facing * 6, y: FLOOR - (height === 'body' ? 150 : 222) };
+    const z = display ? display[i].z || 0 : 0;
+    return { x: x + f.facing * 6, y: FLOOR - z - (height === 'body' ? 150 : 222) };
   }
 
   function sparks(x, y, color, count, speed) {
@@ -1295,7 +1313,7 @@
     // Space: jump (one on one: over a car, say).
     if (e.code === 'Space') {
       e.preventDefault();
-      if (!e.repeat && mode !== 'ring') send({ t: 'action', a: 'jump' });
+      if (!e.repeat && (mode !== 'ring' || scenery !== 'ring')) send({ t: 'action', a: 'jump' });
     }
   });
   window.addEventListener('keyup', (e) => {
@@ -1404,12 +1422,41 @@
     send({ t: 'hello', name: playerName() });
   }
 
+  // Where the fight happens: the plain ring or an adventure setting. Picked in
+  // the lobby; in a private room the host can change it while waiting.
+  const VENUE_NAMES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
+  let venue = 'ring';
+  function setVenueButtons(v) {
+    for (const group of [$('venues'), $('venues-room')]) {
+      group.querySelectorAll('[data-venue]').forEach((b) => {
+        const on = b.dataset.venue === v;
+        b.classList.toggle('on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+    }
+  }
+  const savedVenue = load('boxer-venue');
+  if (VENUE_NAMES.includes(savedVenue)) venue = savedVenue;
+  setVenueButtons(venue);
+  $('venues').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-venue]');
+    if (!b) return;
+    venue = b.dataset.venue;
+    save('boxer-venue', venue);
+    setVenueButtons(venue);
+  });
+  $('venues-room').addEventListener('click', (e) => {
+    const b = e.target.closest('[data-venue]');
+    if (!b) return;
+    send({ t: 'venue', venue: b.dataset.venue });
+  });
+
   $('quick').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'quick' }); });
-  $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create' }); });
+  $('create').addEventListener('click', () => { beforeMatchmaking(); send({ t: 'create', venue }); });
   $('start').addEventListener('click', () => { sound.unlock(); send({ t: 'start' }); });
   document.querySelectorAll('[data-bot]').forEach((b) => b.addEventListener('click', () => {
     beforeMatchmaking();
-    send({ t: 'bot', level: b.dataset.bot });
+    send({ t: 'bot', level: b.dataset.bot, venue });
   }));
   document.querySelectorAll('[data-add-bot]').forEach((b) => b.addEventListener('click', () => {
     send({ t: 'addBot', level: b.dataset.addBot });
@@ -1677,7 +1724,8 @@
     }
     const q = clamp01((t - G.JUMP_CROUCH) / (m.startup - G.JUMP_CROUCH));
     P.spin = 0;
-    P.lift = Math.sin(q * Math.PI) * 150;
+    // With ledges, the height is real (the fighter's z), not part of the pose.
+    P.lift = snap && snap.fighters[0].z !== undefined ? 0 : Math.sin(q * Math.PI) * 150;
     P.crouch = 24;
     P.front = { x: 40, y: -200 };
     P.back = { x: 26, y: -192 };
@@ -1714,7 +1762,8 @@
     }
 
     ctx.save();
-    ctx.translate(x, FLOOR);
+    const z = d.z || 0;
+    ctx.translate(x, FLOOR - z);
     const size = d.size || 1;
     if (size > 1.01 && !echo) giantAura(0, -130 * size, 170 * size, clock, true);
     if (f.spelling && !echo) spellBubble(0, -125 * size, 150 * size, clock);
@@ -1732,7 +1781,8 @@
     if (!f.noShadow) {
       ctx.fillStyle = 'rgba(0,0,0,0.35)';
       ctx.beginPath();
-      ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
+      const sh = z ? G.supportAt(G.PLATFORMS, d.x === undefined ? x : d.x, z) : 0; // the ledge or floor below
+      ctx.ellipse(P.fall ? -f.facing * 70 * P.fall : 0, 4 + z - sh, 58 + P.fall * 60, 10, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
@@ -2143,7 +2193,76 @@
   })();
   const flashes = [];
 
+  // ---- Adventure settings --------------------------------------------------
+  // In a landscape everyone fights side on, smaller than in the ring. One on
+  // one it's a single floor; with three or four, the simulation's ring is a
+  // shallow stage: x goes across, y is depth (further back is higher up the
+  // screen and a little smaller).
+  const STAGE_DEPTH = 64; // screen pixels from the back of the stage to the front
+  const SCALE_BACK = 0.6;
+  const SCALE_FRONT = 0.74;
+  const SCALE_FLAT = 0.68;
+  const flatScene = () => scenery !== 'ring' && !!window.BoxerVenues;
+  const stageFrac = (y) => Math.max(0, Math.min(1, (y - G.STAGE_MIN) / (G.STAGE_MAX - G.STAGE_MIN)));
+  /** Where a fighter's feet are on screen, and how much they're scaled. */
+  function groundOf(d) {
+    if (mode !== 'ring') return { x: d.x, y: FLOOR, s: SCALE_FLAT };
+    const k = stageFrac(d.y);
+    return { x: d.x, y: FLOOR - STAGE_DEPTH + k * STAGE_DEPTH, s: SCALE_BACK + (SCALE_FRONT - SCALE_BACK) * k };
+  }
+  const sceneGeo = () => (mode === 'ring'
+    ? { backY: FLOOR - STAGE_DEPTH, frontY: FLOOR, sBack: SCALE_BACK, sFront: SCALE_FRONT }
+    : { backY: FLOOR, frontY: FLOOR, sBack: SCALE_FLAT, sFront: SCALE_FLAT });
+
+  /** Which way a fighter faces on the side-on stage. */
+  function facingOf(f, d) {
+    return mode === 'ring' ? (Math.cos(d.angle === undefined ? f.angle || 0 : d.angle) >= 0 ? 1 : -1) : f.facing;
+  }
+
+  /** The fighter someone is squaring up to (for how far to reach). */
+  function foeOf(i) {
+    if (mode !== 'ring') return display[1 - i];
+    let best = null;
+    snap.fighters.forEach((o, j) => {
+      if (j === i || o.left || o.state === 'ko') return;
+      const dd = Math.hypot(display[j].x - display[i].x, display[j].y - display[i].y);
+      if (!best || dd < best.dd) best = { d: display[j], dd };
+    });
+    return best ? best.d : display[i];
+  }
+
+  /** One fighter on a side-on landscape, scaled to their place on the stage. */
+  function drawFlatFighter(i, f, t, clock) {
+    const d = display[i];
+    const g = groundOf(d);
+    const ff = { ...f, facing: facingOf(f, d) };
+    const foe = foeOf(i);
+    const rel = foe.x - d.x;
+    const size = d.size || 1;
+    ctx.save();
+    ctx.translate(g.x, g.y);
+    ctx.scale(g.s, g.s);
+    ctx.translate(0, -FLOOR);
+    if (f.giant) {
+      // Jemini: a see-through twin a step behind, a beat behind.
+      ctx.save();
+      ctx.globalAlpha = 0.22;
+      const lag = 26 + Math.sin(clock * 4) * 8;
+      drawFighter(i, ff, -ff.facing * lag, t - 4, clock - 0.12, rel, true);
+      ctx.restore();
+      giantGlitter(0, FLOOR - ((d.z || 0) + 140 * size), 120);
+    }
+    drawFighter(i, ff, 0, t, clock, rel);
+    ctx.restore();
+    if (f.spiky) drawSpikes(i, f, clock);
+    if (mode === 'ring') drawRingName(i, f, { x: g.x, y: g.y - ((d.z || 0) + 250) * g.s - 36 });
+  }
+
   function drawScene(clock) {
+    if (flatScene()) {
+      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, sceneGeo(), G.PLATFORMS);
+      return;
+    }
     const bg = ctx.createLinearGradient(0, 0, 0, H);
     bg.addColorStop(0, '#05070b');
     bg.addColorStop(0.55, '#0f1520');
@@ -2273,8 +2392,9 @@
   let VK = VIEW.size / (VIEW.to - VIEW.from);
   // Fighters drawn a bit bigger than life, so they read at this size, and
   // bigger still when the ring is.
-  const fighterScale = () => 1.25 * (VK / (VIEWS.wide.size / (VIEWS.wide.to - VIEWS.wide.from)));
+  const fighterScale = () => (flatScene() ? 0.9 : 1.25 * (VK / (VIEWS.wide.size / (VIEWS.wide.to - VIEWS.wide.from))));
   function toScreen(x, y) {
+    if (flatScene()) return { x, y: groundOf({ x, y }).y };
     return { x: VIEW.cx + (x - 500) * VK, y: VIEW.cy + (y - 500) * VK };
   }
 
@@ -2284,7 +2404,8 @@
   function chooseLayout() {
     const portrait = window.innerHeight > window.innerWidth * 1.1;
     let next = 'wide';
-    if (mode === 'ring' && portrait) next = 'tall';
+    if (flatScene()) next = 'wide';
+    else if (mode === 'ring' && portrait) next = 'tall';
     else if (mode === 'ring' && touchScreen.matches) next = 'short';
     if (next === layout) return;
     layout = next;
@@ -2785,14 +2906,17 @@
     // status on a line of its own.
     const short = layout === 'short';
     // Tall: a compact 2 x 2 block across the top, with the timer between.
-    const cardW = tall ? 222 : short ? 128 : 214;
-    const cardH = tall ? 92 : short ? 116 : 118;
+    // On a landscape: a compact row of cards across the top, clear of the stage.
+    const flat = flatScene();
+    const n = s.fighters.length;
+    const cardW = flat ? Math.min(236, (W - 24 - (n - 1) * 8) / n) : tall ? 222 : short ? 128 : 214;
+    const cardH = tall || flat ? 92 : short ? 116 : 118;
     s.fighters.forEach((f, i) => {
       const c = PALETTE[i];
       const edge = tall || short ? 4 : 14;
-      const x0 = i % 2 === 0 ? edge : W - edge - cardW;
+      const x0 = flat ? 12 + i * (cardW + 8) : i % 2 === 0 ? edge : W - edge - cardW;
       const row = Math.floor(i / 2);
-      const y0 = tall ? 4 + row * (cardH + 6) : short ? 62 + row * (cardH + 10) : 70 + row * (cardH + 28);
+      const y0 = flat ? 58 : tall ? 4 + row * (cardH + 6) : short ? 62 + row * (cardH + 10) : 70 + row * (cardH + 28);
       const out = f.left;
       ctx.globalAlpha = out ? 0.45 : 1;
       ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -2810,9 +2934,9 @@
       let name = f.name.toUpperCase() + (i === me ? (short ? ' (YOU)' : '  (YOU)') : '');
       if (name.length > 18) name = name.slice(0, 17) + '…';
       while (short && name.length > 2 && ctx.measureText(name).width > cardW - 22) name = name.slice(0, -2) + '…';
-      const ny = tall || short ? 24 : 28;
+      const ny = tall || short || flat ? 24 : 28;
       ctx.fillText(name, x0 + 14, y0 + ny);
-      const dy = tall || short ? -8 : 0; // everything below the name moves up a little
+      const dy = tall || short || flat ? -8 : 0; // everything below the name moves up a little
 
       // Health, with the trail of what was just lost.
       const barX = x0 + 14;
@@ -2834,7 +2958,7 @@
       // Rounds won, and what's going on.
       for (let r = 0; r < G.ROUNDS_TO_WIN; r++) {
         ctx.beginPath();
-        ctx.arc(barX + 7 + r * 20, y0 + (tall || short ? 74 : 88), 6, 0, Math.PI * 2);
+        ctx.arc(barX + 7 + r * 20, y0 + (tall || short || flat ? 74 : 88), 6, 0, Math.PI * 2);
         ctx.fillStyle = r < f.roundsWon ? '#f4c542' : 'rgba(255,255,255,0.15)';
         ctx.fill();
       }
@@ -2852,7 +2976,7 @@
         ctx.fillStyle = powers[0].color;
       }
       if (short) ctx.fillText(status, barX, y0 + 102);
-      else ctx.fillText(status, x0 + cardW - 14, y0 + (tall ? 79 : 93));
+      else ctx.fillText(status, x0 + cardW - 14, y0 + (tall || flat ? 79 : 93));
       ctx.globalAlpha = 1;
     });
 
@@ -5112,6 +5236,7 @@
       if (Math.abs(f.x - d.x) > 200 || Math.abs((f.y || 0) - d.y) > 200) { d.x = f.x; d.y = f.y || 0; }
       d.x += (f.x - d.x) * k;
       d.y += ((f.y || 0) - d.y) * k;
+      d.z = (d.z || 0) + ((f.z || 0) - (d.z || 0)) * Math.min(1, dt * 30);
       // Turn the short way round.
       let turn = (f.angle || 0) - d.angle;
       while (turn > Math.PI) turn -= Math.PI * 2;
@@ -5140,7 +5265,23 @@
       shake *= 0.86;
     }
     const ring = snap.mode === 'ring';
-    if (ring) {
+    if (ring && flatScene()) {
+      drawScene(clock);
+      drawUsa(clock);
+      drawHotdogShadows();
+      drawFistUnder();
+      drawSurprisesUnder(clock);
+      // Furthest back first; those down underneath.
+      const order = snap.fighters.map((f, i) => i)
+        .filter((i) => !snap.fighters[i].left)
+        .sort((a, b) => (display[a].y - display[b].y) || (rank(snap.fighters[a]) - rank(snap.fighters[b])));
+      for (const i of order) {
+        const f = snap.fighters[i];
+        if (hiddenFrom(i, f)) continue;
+        if (f.car) { drawCar(i, f, clock); continue; }
+        drawFlatFighter(i, f, f.t + ticksSince, clock);
+      }
+    } else if (ring) {
       drawRingScene(clock);
       drawUsa(clock);
       drawHotdogShadows();
@@ -5171,6 +5312,7 @@
         const f = snap.fighters[i];
         if (hiddenFrom(i, f)) continue;
         if (f.car) { drawCar(i, f, clock); continue; }
+        if (scenery !== 'ring') { drawFlatFighter(i, f, f.t + ticksSince, clock); continue; }
         if (f.giant) {
           // Jemini: a see-through twin a step behind, a beat behind.
           ctx.save();
@@ -5194,7 +5336,7 @@
       if (p.life <= 0) effects.splice(i, 1);
     }
     ctx.globalAlpha = 1;
-    if (!ring) drawFrontRopes();
+    if (!ring && !flatScene()) drawFrontRopes();
     drawFistOver();
     drawSurprisesOver(clock);
     drawHotdogs(clock);
