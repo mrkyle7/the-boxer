@@ -130,7 +130,6 @@
         names = msg.names;
         mode = msg.mode === 'ring' ? 'ring' : 'side';
         scenery = VENUE_NAMES.includes(msg.venue) ? msg.venue : 'ring';
-        setVenueButtons(venue);
         document.body.classList.toggle('ring', mode === 'ring');
         document.body.classList.toggle('flat', mode === 'ring' && scenery !== 'ring');
         roomCode = msg.code;
@@ -241,7 +240,7 @@
     if (!adv) {
       $('venues-room').classList.toggle('locked', !msg.host);
       $('venues-room').querySelectorAll('button').forEach((b) => { b.disabled = !msg.host; });
-      setVenueButtons(msg.venue || 'ring');
+      setVenueButtons(msg.venue || 'ring', 'venues-room');
     }
     if (msg.kind === 'adventure') {
       $('waiting-title').textContent = msg.host ? 'Your adventure is ready' : `${host}'s adventure`;
@@ -1426,14 +1425,13 @@
   // the lobby; in a private room the host can change it while waiting.
   const VENUE_NAMES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
   let venue = 'ring';
-  function setVenueButtons(v) {
-    for (const group of [$('venues'), $('venues-room')]) {
-      group.querySelectorAll('[data-venue]').forEach((b) => {
-        const on = b.dataset.venue === v;
-        b.classList.toggle('on', on);
-        b.setAttribute('aria-checked', String(on));
-      });
-    }
+  /** Lights up one group of venue buttons: the lobby's ('venues') or a room's ('venues-room'). */
+  function setVenueButtons(v, id = 'venues') {
+    $(id).querySelectorAll('[data-venue]').forEach((b) => {
+      const on = b.dataset.venue === v;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-checked', String(on));
+    });
   }
   const savedVenue = load('boxer-venue');
   if (VENUE_NAMES.includes(savedVenue)) venue = savedVenue;
@@ -1725,7 +1723,7 @@
     const q = clamp01((t - G.JUMP_CROUCH) / (m.startup - G.JUMP_CROUCH));
     P.spin = 0;
     // With ledges, the height is real (the fighter's z), not part of the pose.
-    P.lift = snap && snap.fighters[0].z !== undefined ? 0 : Math.sin(q * Math.PI) * 150;
+    P.lift = snap && snap.fighters && snap.fighters[0].z !== undefined ? 0 : Math.sin(q * Math.PI) * 150;
     P.crouch = 24;
     P.front = { x: 40, y: -200 };
     P.back = { x: 26, y: -192 };
