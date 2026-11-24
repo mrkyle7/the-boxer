@@ -1694,18 +1694,24 @@
     });
   }
 
+  /**
+   * Run and jump: steer a jump in the air (a leapfrog already has somewhere
+   * to go). Held left and right carry on through the jump at walking speed.
+   */
+  function steerJump(game, f, i) {
+    if (f.state !== 'attack' || f.move !== 'jump' || f.t <= JUMP_CROUCH || f.flipStep) return;
+    const input = game.inputs[i];
+    f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
+    if (game.mode === 'ring') f.y += ((input.down ? 1 : 0) - (input.up ? 1 : 0)) * WALK_SPEED;
+  }
+
   /** Jumping up onto ledges and falling off them. */
   function applyHeights(game) {
     const platforms = game.platforms;
     game.fighters.forEach((f, i) => {
       const jumping = f.state === 'attack' && f.move === 'jump';
       if (jumping && f.t === JUMP_CROUCH && f.vz === 0 && f.z <= supportAt(platforms, f.x, f.z) + 0.5) f.vz = JUMP_V;
-      // Steer a jump in the air (a leapfrog already has somewhere to go).
-      if (jumping && f.t > JUMP_CROUCH && !f.flipStep && (f.z > 0 || f.vz !== 0)) {
-        const input = game.inputs[i];
-        f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
-        if (game.mode === 'ring') f.y += ((input.down ? 1 : 0) - (input.up ? 1 : 0)) * WALK_SPEED;
-      }
+      if (jumping && (f.z > 0 || f.vz !== 0)) steerJump(game, f, i);
       const before = f.z;
       if (f.vz > 0 || f.z > supportAt(platforms, f.x, f.z)) {
         f.vz -= GRAVITY;
@@ -1720,6 +1726,7 @@
 
   function applyPhysics(game) {
     if (game.platforms.length) applyHeights(game);
+    else game.fighters.forEach((f, i) => steerJump(game, f, i)); // the plain ring: jump while running
     const [a, b] = game.fighters;
     for (const f of game.fighters) {
       f.x += f.vx;

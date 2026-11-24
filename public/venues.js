@@ -3,7 +3,7 @@
 // paints the backdrop behind the fighters; the platforms drawn are the ones the
 // fight really has (Game.PLATFORMS).
 //
-//   drawSide(ctx, W, H, venue, clock, geo, platforms)
+//   drawSide(ctx, W, H, venue, clock, geo, platforms, dpr)
 //     geo: { backY, frontY, sBack, sFront }: where the feet are at the back and
 //     front of the floor, and how much fighters are scaled there (one on one
 //     the two are the same; on a stage the floor has some depth).
@@ -48,31 +48,42 @@
     ctx.fill();
   }
 
-  function sky(ctx, W, H, T, venue, clock) {
+  /** The sky that never changes: the gradient, sun, moon and glow. */
+  function skyStatic(ctx, W, H, T, venue) {
     const g = ctx.createLinearGradient(0, 0, 0, H);
     g.addColorStop(0, T.sky[0]);
     g.addColorStop(0.65, T.sky[1]);
     g.addColorStop(1, T.sky[2]);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, W, H);
-    const r = rng(7);
     if (venue === 'forest') {
-      for (let k = 0; k < 50; k++) {
-        ellipse(ctx, r() * W, r() * H * 0.5, 1.2, 1.2, `rgba(255,255,255,${0.4 + 0.4 * Math.sin(clock * 2 + k)})`);
-      }
       ellipse(ctx, W * 0.78, 90, 56, 56, 'rgba(230,230,255,0.14)');
       ellipse(ctx, W * 0.78, 90, 36, 36, '#eceeff');
     } else if (venue === 'meadow' || venue === 'snow') {
       ellipse(ctx, W * 0.82, 80, 70, 70, 'rgba(255,240,180,0.25)');
       ellipse(ctx, W * 0.82, 80, 42, 42, '#fff6c8');
+    } else if (venue === 'volcano') {
+      ellipse(ctx, W * 0.5, 190, 150, 120, 'rgba(255,120,40,0.18)');
+    }
+  }
+
+  /** Twinkling stars and drifting clouds, over the sky and under the hills. */
+  function skyLive(ctx, W, H, venue, clock) {
+    const r = rng(7);
+    if (venue === 'forest') {
+      for (let k = 0; k < 50; k++) {
+        ellipse(ctx, r() * W, r() * H * 0.5, 1.2, 1.2, `rgba(255,255,255,${0.4 + 0.4 * Math.sin(clock * 2 + k)})`);
+      }
+    } else if (venue === 'meadow' || venue === 'snow') {
+      ctx.fillStyle = 'rgba(255,255,255,0.8)';
       for (let k = 0; k < 5; k++) {
         const cx = ((r() * W * 1.4 + clock * (4 + k * 1.5)) % (W + 240)) - 120;
         const cy = 40 + r() * 130;
-        ellipse(ctx, cx, cy, 60, 18, 'rgba(255,255,255,0.8)');
-        ellipse(ctx, cx + 30, cy - 10, 36, 16, 'rgba(255,255,255,0.8)');
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 60, 18, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + 30, cy - 10, 36, 16, 0, 0, Math.PI * 2);
+        ctx.fill();
       }
-    } else if (venue === 'volcano') {
-      ellipse(ctx, W * 0.5, 190, 150, 120, 'rgba(255,120,40,0.18)');
     }
   }
 
@@ -154,22 +165,16 @@
     ctx.fillRect(x - 3, topBack - 5, w + 6, 3);
   }
 
-  function lavaGlow(ctx, W, y0, y1, clock) {
+  function lavaGlow(ctx, W, y0, y1) {
     const g = ctx.createLinearGradient(0, y0, 0, y1);
     g.addColorStop(0, '#ff8a2a');
     g.addColorStop(1, '#b8260f');
     ctx.fillStyle = g;
     ctx.fillRect(0, y0, W, y1 - y0);
-    ctx.fillStyle = 'rgba(255,230,140,0.55)';
-    for (let k = 0; k < 9; k++) {
-      const bx = (k * 130 + Math.sin(clock * 1.4 + k) * 20 + 40) % W;
-      ctx.fillRect(bx, y0 + 4 + (k % 3) * 7, 50, 3);
-    }
   }
 
-  function drawSide(ctx, W, H, venue, clock, geo, platforms) {
+  function buildScene(ctx, W, H, venue, geo, platforms) {
     const T = THEMES[venue] || THEMES.meadow;
-    sky(ctx, W, H, T, venue, clock);
     const floorY = geo.backY; // the back of the floor
     const base = floorY - 40;
     // Far scenery.
@@ -187,10 +192,6 @@
       ctx.closePath();
       ctx.fill();
       ellipse(ctx, W * 0.46, 150, 38, 9, '#ff8a2a');
-      for (let k = 0; k < 14; k++) {
-        const t = (clock * 0.35 + k / 14) % 1;
-        ellipse(ctx, W * 0.46 + Math.sin(k * 3 + clock) * 30, 150 - t * 130, 3, 3, `rgba(255,170,60,${1 - t})`);
-      }
     }
     // Trees.
     if (venue !== 'volcano') {
@@ -209,23 +210,11 @@
         ctx.fillStyle = ['#ff6b8a', '#ffd23f', '#ffffff'][k % 3];
         ctx.fillRect(fx, floorY - 12 - r() * 6, 4, 4);
       }
-    } else if (venue === 'forest') {
-      for (let k = 0; k < 16; k++) {
-        const fx = (r() * W + clock * 8 * (k % 2 ? 1 : -1) + W) % W;
-        const fy = 150 + r() * 330 + Math.sin(clock * 1.5 + k) * 10;
-        ellipse(ctx, fx, fy, 2.5, 2.5, `rgba(255,240,140,${0.5 + 0.4 * Math.sin(clock * 3 + k)})`);
-      }
-    } else if (venue === 'snow') {
-      for (let k = 0; k < 60; k++) {
-        const sx = (r() * W + Math.sin(clock + k) * 20 + W) % W;
-        const sy = (r() * H + clock * (40 + (k % 5) * 14)) % H;
-        ellipse(ctx, sx, sy, 2, 2, 'rgba(255,255,255,0.85)');
-      }
     }
     // The floor, with its ground on top.
     const g = ctx.createLinearGradient(0, floorY - 14, 0, H);
     if (venue === 'volcano') {
-      lavaGlow(ctx, W, floorY - 22, floorY + 6, clock);
+      lavaGlow(ctx, W, floorY - 22, floorY + 6);
       g.addColorStop(0, T.top);
       g.addColorStop(0.15, T.dirt);
       g.addColorStop(1, T.stone);
@@ -256,6 +245,69 @@
     v.addColorStop(1, 'rgba(0,0,0,0.28)');
     ctx.fillStyle = v;
     ctx.fillRect(0, 0, W, H);
+  }
+
+  /** What moves in front of the scenery: embers, fireflies, snow, glints of lava. */
+  function sceneLive(ctx, W, H, venue, clock, geo) {
+    const floorY = geo.backY;
+    if (venue === 'volcano') {
+      ctx.fillStyle = 'rgba(255,230,140,0.55)';
+      for (let k = 0; k < 9; k++) {
+        const bx = (k * 130 + Math.sin(clock * 1.4 + k) * 20 + 40) % W;
+        ctx.fillRect(bx, floorY - 22 + 4 + (k % 3) * 7, 50, 3);
+      }
+      for (let k = 0; k < 14; k++) {
+        const t = (clock * 0.35 + k / 14) % 1;
+        ellipse(ctx, W * 0.46 + Math.sin(k * 3 + clock) * 30, 150 - t * 130, 3, 3, `rgba(255,170,60,${1 - t})`);
+      }
+    } else if (venue === 'forest') {
+      const r = rng(33);
+      for (let k = 0; k < 16; k++) {
+        const fx = (r() * W + clock * 8 * (k % 2 ? 1 : -1) + W) % W;
+        const fy = 150 + r() * 330 + Math.sin(clock * 1.5 + k) * 10;
+        ellipse(ctx, fx, fy, 2.5, 2.5, `rgba(255,240,140,${0.5 + 0.4 * Math.sin(clock * 3 + k)})`);
+      }
+    } else if (venue === 'snow') {
+      const r = rng(33);
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      for (let k = 0; k < 60; k++) {
+        const sx = (r() * W + Math.sin(clock + k) * 20 + W) % W;
+        const sy = (r() * H + clock * (40 + (k % 5) * 14)) % H;
+        ctx.fillRect(sx - 1, sy - 1, 2, 2);
+      }
+    }
+  }
+
+  // The scenery is drawn once, into two layers (the sky, and everything in
+  // front of it), then just copied each frame: the big gradients are what
+  // slow an old machine down. Only the moving bits are drawn live.
+  let cached = null;
+  function layers(W, H, venue, geo, platforms, dpr) {
+    const key = [venue, W, H, dpr, geo.backY, geo.frontY, geo.sBack, geo.sFront, (platforms || []).length].join('|');
+    if (cached && cached.key === key) return cached;
+    const make = () => {
+      const c = document.createElement('canvas');
+      c.width = Math.round(W * dpr);
+      c.height = Math.round(H * dpr);
+      const x = c.getContext('2d');
+      x.scale(dpr, dpr);
+      return { c, x };
+    };
+    const T = THEMES[venue] || THEMES.meadow;
+    const sky = make();
+    skyStatic(sky.x, W, H, T, venue);
+    const scene = make();
+    buildScene(scene.x, W, H, venue, geo, platforms);
+    cached = { key, sky: sky.c, scene: scene.c };
+    return cached;
+  }
+
+  function drawSide(ctx, W, H, venue, clock, geo, platforms, dpr) {
+    const L = layers(W, H, venue, geo, platforms, dpr || 1);
+    ctx.drawImage(L.sky, 0, 0, W, H);
+    skyLive(ctx, W, H, venue, clock);
+    ctx.drawImage(L.scene, 0, 0, W, H);
+    sceneLive(ctx, W, H, venue, clock, geo);
   }
 
   const api = { NAMES, drawSide };

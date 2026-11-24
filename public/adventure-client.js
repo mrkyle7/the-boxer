@@ -2794,10 +2794,10 @@
   let lastFrame = performance.now();
 
   function resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
+    const dpr = window.BoxerPerf ? window.BoxerPerf.ratio(window.devicePixelRatio) : Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
     }
     return dpr;
   }
@@ -2817,6 +2817,7 @@
     const dt = Math.min(0.05, (now - lastFrame) / 1000);
     lastFrame = now;
     const clock = now / 1000;
+    if (window.BoxerPerf) window.BoxerPerf.frame(now);
     const dpr = resize();
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     if (!snap) {

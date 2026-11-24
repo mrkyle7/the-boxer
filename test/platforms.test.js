@@ -75,3 +75,15 @@ test('attacks miss someone on another level', () => {
   for (let i = 0; i < 12; i++) { b.z = 250; Game.step(g); }
   assert.strictEqual(b.hp, 100);
 });
+
+test('run and jump: holding a direction carries you across through the jump', () => {
+  for (const venue of ['ring', 'meadow']) {
+    const g = fight(venue);
+    const a = g.fighters[0];
+    a.x = 300; g.fighters[1].x = 900;
+    Game.setHeld(g, 0, { aim: 'head', right: true });
+    Game.pressAction(g, 0, 'jump');
+    for (let i = 0; i < 40; i++) Game.step(g);
+    assert.ok(a.x > 300 + 4.2 * 25, `${venue}: carried on (${a.x})`);
+  }
+});

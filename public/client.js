@@ -2193,6 +2193,29 @@
   })();
   const flashes = [];
 
+  /**
+   * Scenery that doesn't move is drawn once into an offscreen canvas and then
+   * copied each frame: big gradients and hundreds of shapes are what make an
+   * old machine stutter. Redrawn only when the size or pixel ratio changes.
+   */
+  const layerCache = {};
+  function layer(name, key, draw) {
+    const full = `${key}|${W}|${H}|${curDpr}`;
+    let L = layerCache[name];
+    if (!L || L.key !== full) {
+      const c = document.createElement('canvas');
+      c.width = Math.round(W * curDpr);
+      c.height = Math.round(H * curDpr);
+      const x = c.getContext('2d');
+      x.scale(curDpr, curDpr);
+      const saved = ctx;
+      ctx = x;
+      try { draw(); } finally { ctx = saved; }
+      L = layerCache[name] = { key: full, c };
+    }
+    ctx.drawImage(L.c, 0, 0, W, H);
+  }
+
   // ---- Adventure settings --------------------------------------------------
   // In a landscape everyone fights side on, smaller than in the ring. One on
   // one it's a single floor; with three or four, the simulation's ring is a
@@ -2260,9 +2283,15 @@
 
   function drawScene(clock) {
     if (flatScene()) {
-      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, sceneGeo(), G.PLATFORMS);
+      window.BoxerVenues.drawSide(ctx, W, H, scenery, clock, sceneGeo(), G.PLATFORMS, curDpr);
       return;
     }
+    layer('sideBack', '', drawSideBack);
+    drawSideCrowd(clock);
+    layer('sideFront', '', drawSideFront);
+  }
+
+  function drawSideBack() {
     const bg = ctx.createLinearGradient(0, 0, 0, H);
     bg.addColorStop(0, '#05070b');
     bg.addColorStop(0.55, '#0f1520');
@@ -2280,15 +2309,38 @@
       ctx.fillRect(lx - 90, 0, 180, 120);
     }
 
-    // Crowd
-    for (const h of crowd) {
-      const bounce = Math.max(0, Math.sin(clock * 3 + h.phase)) * (crowdHype * 6);
-      ctx.fillStyle = `rgb(${h.shade},${h.shade + 3},${h.shade + 10})`;
-      ctx.beginPath();
-      ctx.arc(h.x, h.y - bounce, h.r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillRect(h.x - h.r - 3, h.y + h.r * 0.6 - bounce, h.r * 2 + 6, 40);
+  }
+
+  // The crowd's heads, a few shades apiece, so each shade is one path (not
+  // hundreds of separate ones) when they bounce.
+  let crowdGroups = null;
+  function paintSideCrowd(clock) {
+    if (!crowdGroups) {
+      const by = new Map();
+      for (const h of crowd) {
+        const key = Math.round(h.shade / 6);
+        if (!by.has(key)) by.set(key, { color: `rgb(${key * 6},${key * 6 + 3},${key * 6 + 10})`, heads: [] });
+        by.get(key).heads.push(h);
+      }
+      crowdGroups = [...by.values()];
     }
+    for (const g of crowdGroups) {
+      ctx.fillStyle = g.color;
+      ctx.beginPath();
+      for (const h of g.heads) {
+        const bounce = Math.max(0, Math.sin(clock * 3 + h.phase)) * (crowdHype * 6);
+        ctx.moveTo(h.x + h.r, h.y - bounce);
+        ctx.arc(h.x, h.y - bounce, h.r, 0, Math.PI * 2);
+        ctx.rect(h.x - h.r - 3, h.y + h.r * 0.6 - bounce, h.r * 2 + 6, 40);
+      }
+      ctx.fill();
+    }
+  }
+
+  function drawSideCrowd(clock) {
+    // Sitting still (the usual) it's a picture; it only moves when they cheer.
+    if (crowdHype < 0.01) layer('sideCrowd', '', () => paintSideCrowd(0));
+    else paintSideCrowd(clock);
     if (Math.random() < 0.08 + crowdHype * 0.3) {
       flashes.push({ x: Math.random() * W, y: 140 + Math.random() * 150, life: 6 });
     }
@@ -2301,6 +2353,9 @@
       if (--fl.life <= 0) flashes.splice(i, 1);
     }
 
+  }
+
+  function drawSideFront() {
     // Mat
     const matTop = 392;
     ctx.fillStyle = '#1b4f6b';
@@ -2434,15 +2489,23 @@
   let ringCrowd = makeRingCrowd();
 
   function drawRingScene(clock) {
-    ctx.fillStyle = '#07090e';
-    ctx.fillRect(0, 0, W, H);
-    for (const h of ringCrowd) {
-      const bounce = Math.max(0, Math.sin(clock * 3 + h.phase)) * crowdHype * 2;
-      ctx.fillStyle = `rgb(${h.shade},${h.shade + 3},${h.shade + 10})`;
-      ctx.beginPath();
-      ctx.arc(h.x, h.y - bounce, h.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
+    const paintCrowd = () => {
+      ctx.fillStyle = '#07090e';
+      ctx.fillRect(0, 0, W, H);
+      for (const h of ringCrowd) {
+        const bounce = Math.max(0, Math.sin(clock * 3 + h.phase)) * crowdHype * 2;
+        ctx.fillStyle = `rgb(${h.shade},${h.shade + 3},${h.shade + 10})`;
+        ctx.beginPath();
+        ctx.arc(h.x, h.y - bounce, h.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    };
+    if (crowdHype < 0.01) layer('ringBack', layout, paintCrowd);
+    else paintCrowd();
+    layer('ringFront', layout, drawRingFront);
+  }
+
+  function drawRingFront() {
     // Apron, then the mat inside the ropes.
     const a = toScreen(VIEW.from, VIEW.from);
     const b = toScreen(VIEW.to, VIEW.to);
@@ -5202,11 +5265,13 @@
   let crowdHype = 0;
   let lastFrame = performance.now();
 
+  let curDpr = 1; // the pixel ratio this frame is drawn at
+
   function resize() {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (canvas.width !== W * dpr || canvas.height !== H * dpr) {
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
+    const dpr = window.BoxerPerf ? window.BoxerPerf.ratio(window.devicePixelRatio) : Math.min(2, window.devicePixelRatio || 1);
+    if (canvas.width !== Math.round(W * dpr) || canvas.height !== Math.round(H * dpr)) {
+      canvas.width = Math.round(W * dpr);
+      canvas.height = Math.round(H * dpr);
     }
     return dpr;
   }
@@ -5218,7 +5283,9 @@
     lastFrame = now;
     const clock = now / 1000;
     chooseLayout();
+    if (window.BoxerPerf && fighting()) window.BoxerPerf.frame(now);
     const dpr = resize();
+    curDpr = dpr;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     if (!snap || !display) {
@@ -5229,14 +5296,14 @@
     }
 
     // Paused: no guessing ahead, everyone holds still.
-    const ticksSince = Math.min(3, ((now - snapAt) / 1000) * G.TICK_RATE);
+    const ticksSince = Math.min(2, ((now - snapAt) / 1000) * G.TICK_RATE);
     snap.fighters.forEach((f, i) => {
       const d = display[i];
-      const k = Math.min(1, dt * 22);
+      const k = 1 - Math.exp(-dt * 30);
       if (Math.abs(f.x - d.x) > 200 || Math.abs((f.y || 0) - d.y) > 200) { d.x = f.x; d.y = f.y || 0; }
       d.x += (f.x - d.x) * k;
       d.y += ((f.y || 0) - d.y) * k;
-      d.z = (d.z || 0) + ((f.z || 0) - (d.z || 0)) * Math.min(1, dt * 30);
+      d.z = (d.z || 0) + ((f.z || 0) - (d.z || 0)) * k;
       // Turn the short way round.
       let turn = (f.angle || 0) - d.angle;
       while (turn > Math.PI) turn -= Math.PI * 2;
