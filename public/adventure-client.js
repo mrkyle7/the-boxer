@@ -2826,9 +2826,9 @@
       return;
     }
     const s = snap;
-    const k = Math.min(1, dt * 20);
-    cam += (s.camX - cam) * Math.min(1, dt * 12);
-    const ticksSince = Math.min(3, ((now - snapAt) / 1000) * A.TICK_RATE);
+    const k = 1 - Math.exp(-dt * 30);
+    cam += (s.camX - cam) * (1 - Math.exp(-dt * 12));
+    const ticksSince = Math.min(2, ((now - snapAt) / 1000) * A.TICK_RATE);
 
     ctx.save();
     if (shake > 0.3) {
