@@ -274,12 +274,12 @@ test('beating a boss clears the level: on to the next, everyone back in with ful
 });
 
 test('beating the last boss wins the game', () => {
-  const g = A.createGame(['A'], { level: 3 });
+  const g = A.createGame(['A'], { level: A.LEVELS.length - 1 });
   run(g, A.READY_TICKS + 1);
   g.players[0].x = g.L.arenaX + 500;
   g.camX = g.L.arenaX - 1;
   run(g, A.BOSS_INTRO_TICKS + 5);
-  assert.strictEqual(g.boss.type, 'gorilla');
+  assert.strictEqual(g.boss.type, 'robo');
   A.hurtEnemy(g, g.boss, 9999, 1, 0, 0);
   assert.strictEqual(g.phase, 'won');
   run(g, A.END_TICKS + 1);
