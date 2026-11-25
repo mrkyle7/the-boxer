@@ -13,8 +13,9 @@ function run(g, ticks, each) {
   }
 }
 
-function playing(names = ['A'], level = 0) {
+function playing(names = ['A'], level = 0, alt = 0) {
   const g = A.createGame(names, { level });
+  g.secretAlt = alt; // which way into the secret room this time
   run(g, A.READY_TICKS + 1);
   g.nextSpawn = g.L.spawns.length;
   g.enemies = [];
@@ -89,7 +90,7 @@ test('a hidden platform holds you up, and shows once someone stands on it', () =
 
 test('a door behind a cracked rock: closed until the rock is broken', () => {
   const g = playing(['A', 'B']);
-  const d = g.L.doors.find((q) => !q.exit);
+  const d = g.L.doors.find((q) => !q.exit && q.alt === g.secretAlt);
   assert.notStrictEqual(d.rock, null);
   goTo(g, d.x);
   pressDown(g);
@@ -110,7 +111,7 @@ test('a door behind a cracked rock: closed until the rock is broken', () => {
 
 test('in through the door: the whole team goes; the creatures wait outside for you', () => {
   const g = playing(['A', 'B'], 1); // the forest's needs no rock
-  const d = g.L.doors.find((q) => !q.exit);
+  const d = g.L.doors.find((q) => !q.exit && q.alt === g.secretAlt);
   goTo(g, d.x);
   const e = A.spawnEnemy(g, { type: 'goo', x: d.x + 400 });
   pressDown(g);
@@ -170,4 +171,53 @@ test('stand about doing nothing for long enough and something happens', () => {
   run(g, A.IDLE_TICKS + 2, () => { if (g.events.some((e) => e.type === 'idle')) saw = true; });
   saw = saw || g.events.some((e) => e.type === 'idle');
   assert.ok(saw);
+});
+
+test('the way into the secret room moves about from game to game', () => {
+  const seen = new Set();
+  for (let seed = 1; seed <= 30; seed++) seen.add(A.createGame(['A'], { seed }).secretAlt);
+  assert.strictEqual(seen.size, 3);
+});
+
+test("a door that isn't this game's way in doesn't open", () => {
+  const g = playing(['A'], 1, 2); // the forest's room is down a hole this time
+  for (const d of g.L.doors.filter((q) => !q.exit)) {
+    goTo(g, d.x);
+    pressDown(g);
+    assert.strictEqual(g.inRoom, null);
+  }
+});
+
+test('down the right hole: into the secret room, no life lost', () => {
+  const g = playing(['A'], 0, 1);
+  const pit = g.L.pits.find((q) => q.alt === 1);
+  const lives = g.lives;
+  goTo(g, pit.x0 - 40);
+  const p = g.players[0];
+  p.x = (pit.x0 + pit.x1) / 2;
+  p.y = A.GROUND_Y + 10;
+  p.onGround = false;
+  run(g, 40);
+  assert.ok(g.inRoom, 'in the room');
+  assert.strictEqual(g.lives, lives);
+  assert.strictEqual(g.secrets, 1);
+  // ...and the way out comes back up past the hole.
+  const exit = g.L.doors.find((q) => q.exit);
+  goTo(g, exit.x);
+  pressDown(g);
+  assert.strictEqual(g.inRoom, null);
+  assert.ok(g.players[0].x > pit.x1);
+});
+
+test('any other hole is still a hole', () => {
+  const g = playing(['A'], 0, 1);
+  const lives = g.lives;
+  goTo(g, 1360);
+  const p = g.players[0];
+  p.x = 1460; // the first gap, not the secret one
+  p.y = A.GROUND_Y + 10;
+  p.onGround = false;
+  run(g, 120);
+  assert.strictEqual(g.inRoom, null);
+  assert.ok(g.lives < lives || p.fell || p.state === 'ko');
 });

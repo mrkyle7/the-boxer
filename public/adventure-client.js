@@ -26,6 +26,7 @@
   let names = [];
   let snap = null;
   let snapAt = 0;
+  let blockSaidAt = 0; // 'Blocked!' only every so often, however hard you mash
   let cam = 0;
   const pdisp = [];
   const edisp = new Map();
@@ -151,6 +152,24 @@
       case 'boss':
         announce(e.name, e.title, '#ff5a3a', 150);
         play('horn');
+        break;
+      case 'bossGuard':
+        floatText(e.x, e.y - 20, 'Guard up!', '#ffd23f', 26);
+        play('clang');
+        break;
+      case 'bossBlock':
+        sparks(e.x, e.y, '#fff6c8', 6, 3);
+        if (!blockSaidAt || performance.now() - blockSaidAt > 500) {
+          blockSaidAt = performance.now();
+          floatText(e.x, e.y - 30, 'Blocked!', '#e0e0e0', 20);
+          play('clang');
+        }
+        break;
+      case 'shove':
+        shake = Math.max(shake, 14);
+        dust(e.x - 90, A.GROUND_Y, 12);
+        dust(e.x + 90, A.GROUND_Y, 12);
+        play('slam');
         break;
       case 'quake':
         shake = Math.max(shake, e.big || e.crash ? 18 : 12);
@@ -1121,13 +1140,15 @@
   /** Cracked rocks, and the doors (open or hidden behind a rock). */
   function drawDoorsAndRocks(clock) {
     const L = lvl();
+    // Only this game's way into the secret room (it moves about).
+    const inPlay = (x) => x.alt === undefined || x.alt === snap.secretAlt;
     for (const d of L.doors) {
-      if (d.x < cam - 100 || d.x > cam + W + 100) continue;
+      if (!inPlay(d) || d.x < cam - 100 || d.x > cam + W + 100) continue;
       const open = d.rock === null || d.rock === undefined || snap.broken.includes(d.rock);
       drawDoor(d, open, clock);
     }
     for (const r of L.rocks) {
-      if (r.x < cam - 100 || r.x > cam + W + 100 || snap.broken.includes(r.id)) continue;
+      if (!inPlay(r) || r.x < cam - 100 || r.x > cam + W + 100 || snap.broken.includes(r.id)) continue;
       drawRock(r, (snap.rockHits && snap.rockHits[r.id]) || 0);
     }
   }
@@ -1164,8 +1185,9 @@
       ctx.fill();
       if (d.kind === 'tube') ellipse(x, y - 4, 22, 8, `rgba(255,120,30,${0.4 + 0.2 * Math.sin(clock * 3)})`);
     }
-    // When it's open and someone's standing at it: press down.
-    if (open && snap.players.some((p) => !p.out && Math.abs(p.x - x) < 40 && Math.abs(p.y - y) < 4)) {
+    // The way out of a secret room: someone standing at it gets a nudge to
+    // press down. (The ways in get no such help: they're secrets.)
+    if (d.kind === 'exit' && snap.players.some((p) => !p.out && Math.abs(p.x - x) < 40 && Math.abs(p.y - y) < 4)) {
       const bob = Math.sin(clock * 6) * 4;
       ctx.fillStyle = '#ffd23f';
       ctx.beginPath();
@@ -1280,6 +1302,7 @@
       case 'gorilla': drawBrute(e, f, clock, flash, 'gorilla'); break;
     }
     ctx.restore();
+    if (boss && (e.state === 'guard' || e.state === 'shove')) drawBossGuard(e, x, y, sz, clock);
     if (!e.dead) drawStatus(e, x, y, sz, clock);
     // A health bar once it's been hit.
     if (!e.dead && !boss && e.hp < e.maxHp) {
@@ -1288,6 +1311,29 @@
       ctx.fillRect(x - bw / 2, y - sz.h - 14, bw, 5);
       ctx.fillStyle = '#ff5a5a';
       ctx.fillRect(x - bw / 2, y - sz.h - 14, bw * (e.hp / e.maxHp), 5);
+    }
+  }
+
+  /** A boss with its guard up (a shield of light), then the shove (a ring out along the ground). */
+  function drawBossGuard(e, x, y, sz, clock) {
+    if (e.state === 'guard') {
+      const k = 0.55 + 0.25 * Math.sin(clock * 18);
+      ctx.strokeStyle = `rgba(255,246,200,${k})`;
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.ellipse(x, y - sz.h / 2, sz.hw + 22, sz.h / 2 + 18, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd23f';
+      ctx.font = '34px Bangers, Anton, Impact, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('!', x, y - sz.h - 26);
+    } else {
+      const r = 40 + e.t * 9;
+      ctx.strokeStyle = `rgba(255,255,255,${Math.max(0, 0.7 - e.t / 30)})`;
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.ellipse(x, y - 6, r, r * 0.22, 0, 0, Math.PI * 2);
+      ctx.stroke();
     }
   }
 

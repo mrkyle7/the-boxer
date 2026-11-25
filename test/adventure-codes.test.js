@@ -477,3 +477,43 @@ test('the Frosty Peaks are slippery', () => {
   run(g, 3, () => A.setHeld(g, 0, {}));
   assert.ok(p.vx > 1, 'and to stop');
 });
+
+test('mashing punch on a boss: up goes its guard, then it shoves you off', () => {
+  const g = bossFight(0);
+  const rhino = g.boss;
+  const p = g.players[0];
+  // Wait till it's walking about, then stand right in front of it and mash.
+  run(g, 200, () => { p.invuln = 5; });
+  let guarded = false;
+  let shoved = false;
+  let hpAtGuard = null;
+  run(g, 240, (k) => {
+    if (rhino.state === 'guard' && hpAtGuard === null) { guarded = true; hpAtGuard = rhino.hp; }
+    if (rhino.state === 'shove') shoved = true;
+    if (rhino.state === 'guard' || rhino.state === 'shove') return; // let it shove
+    p.invuln = 5;
+    p.x = rhino.x - rhino.facing * 0 - 90;
+    p.y = A.GROUND_Y;
+    p.facing = 1;
+    if (k % 6 === 0) A.pressAction(g, 0, 'punch');
+    // keep the rhino from charging off so the test is about mashing
+    if (!['guard', 'shove'].includes(rhino.state)) { rhino.state = 'idle'; rhino.t = 1; rhino.x = g.L.arenaX + 600; }
+  });
+  assert.ok(guarded, 'guard went up');
+  assert.ok(shoved, 'then the shove');
+});
+
+test("a boss's guard blocks everything; dizzy, it never guards", () => {
+  const g = bossFight(0);
+  const rhino = g.boss;
+  rhino.state = 'guard';
+  rhino.t = 0;
+  const hp = rhino.hp;
+  A.hurtEnemy(g, rhino, 10, 1, 5, 0);
+  assert.strictEqual(rhino.hp, hp);
+  rhino.state = 'dizzy';
+  rhino.t = 0;
+  for (let k = 0; k < 8; k++) A.hurtEnemy(g, rhino, 10, 1, 5, 0);
+  assert.strictEqual(rhino.state, 'dizzy');
+  assert.ok(rhino.hp < hp);
+});
