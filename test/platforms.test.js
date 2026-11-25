@@ -75,3 +75,65 @@ test('attacks miss someone on another level', () => {
   for (let i = 0; i < 12; i++) { b.z = 250; Game.step(g); }
   assert.strictEqual(b.hp, 100);
 });
+
+test('run and jump: holding a direction carries you across through the jump', () => {
+  for (const venue of ['ring', 'meadow']) {
+    const g = fight(venue);
+    const a = g.fighters[0];
+    a.x = 300; g.fighters[1].x = 900;
+    Game.setHeld(g, 0, { aim: 'head', right: true });
+    Game.pressAction(g, 0, 'jump');
+    for (let i = 0; i < 40; i++) Game.step(g);
+    assert.ok(a.x > 300 + 4.2 * 25, `${venue}: carried on (${a.x})`);
+  }
+});
+
+const Bot = require('../bot.js');
+
+/** A hard bot chasing a sitting target up on a ledge: does it get there? */
+function botReaches(ledge, seed) {
+  let s = seed;
+  const random = () => ((s = (s * 16807) % 2147483647) / 2147483647);
+  const g = Game.createGame(['Target', 'Bot'], { venue: 'meadow', random });
+  while (g.phase === 'countdown') Game.step(g);
+  const t = g.fighters[0];
+  const b = g.fighters[1];
+  const bot = Bot.createBot('hard', random);
+  bot.nextCode = Infinity; // no cheat codes: just climbing
+  b.x = 700;
+  for (let i = 0; i < 20 * Game.TICK_RATE; i++) {
+    t.x = (ledge.x0 + ledge.x1) / 2; t.z = ledge.h; t.vz = 0; t.hp = 100;
+    Bot.botTick(g, 1, bot);
+    Game.step(g);
+    if (b.z === ledge.h) return true;
+  }
+  return false;
+}
+
+test('a bot jumps up to a low ledge after you', () => {
+  assert.ok(botReaches(Game.PLATFORMS[0], 7));
+});
+
+test('a bot climbs to the high ledge by way of a low one', () => {
+  assert.ok(botReaches(Game.PLATFORMS[2], 11));
+});
+
+test('a teleport takes you up to their level', () => {
+  const g = fight('meadow');
+  const [a, b] = g.fighters;
+  const p = Game.PLATFORMS[2];
+  b.x = 500; b.z = p.h;
+  a.x = 200;
+  Game.cheat(g, 0, 'luna');
+  for (let i = 0; i < 3; i++) Game.step(g);
+  assert.strictEqual(a.z, p.h);
+});
+
+test('on a stage, hotdogs fall where fighters can reach them', () => {
+  const g = Game.createGame(['A', 'B', 'C'], { venue: 'snow' });
+  while (g.phase === 'countdown') Game.step(g);
+  Game.cheat(g, 0, 'spreadbury');
+  for (let i = 0; i < 3; i++) Game.step(g);
+  assert.ok(g.hotdogs.length);
+  g.hotdogs.forEach((h) => assert.ok(h.y >= Game.STAGE_MIN && h.y <= Game.STAGE_MAX, `y ${h.y}`));
+});

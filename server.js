@@ -11,7 +11,11 @@ const Bot = require('./bot');
 
 const PORT = Number(process.env.PORT) || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
-const BROADCAST_EVERY = 2; // 60 Hz sim, 30 Hz snapshots
+// Snapshots go out every tick (60 Hz): about 2 KB each in an adventure, less
+// in a fight, so jumps and punches show with the least delay and older
+// machines still have little to parse.
+const ADVENTURE_BROADCAST_EVERY = 1;
+const FIGHT_BROADCAST_EVERY = 1; // fights: every tick (60 Hz), so jumps and punches show with the least delay
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 
 const MIME = {
@@ -147,7 +151,7 @@ function startAdventure(room) {
   let n = 0;
   room.loop = setInterval(() => {
     Adventure.step(room.game);
-    if (++n % BROADCAST_EVERY !== 0 && !room.game.over) return;
+    if (++n % ADVENTURE_BROADCAST_EVERY !== 0 && !room.game.over) return;
     const msg = JSON.stringify({ t: 'state', s: Adventure.snapshot(room.game), e: room.game.events });
     room.game.events = [];
     for (const p of room.fighters) if (p && p.readyState === p.OPEN) p.send(msg);
@@ -174,7 +178,7 @@ function startMatch(room) {
   room.loop = setInterval(() => {
     room.fighters.forEach((p, i) => { if (p && p.isBot) Bot.botTick(room.game, i, p.bot); });
     Game.step(room.game);
-    if (++n % BROADCAST_EVERY !== 0) return;
+    if (++n % FIGHT_BROADCAST_EVERY !== 0) return;
     const msg = JSON.stringify({ t: 'state', s: Game.snapshot(room.game), e: room.game.events });
     room.game.events = [];
     for (const p of room.fighters) if (p && !p.isBot && p.readyState === p.OPEN) p.send(msg);

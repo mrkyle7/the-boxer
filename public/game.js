@@ -482,11 +482,15 @@
   const PLATFORMS = [
     { x0: 70, x1: 260, h: 156 },
     { x0: 740, x1: 930, h: 156 },
-    { x0: 390, x1: 610, h: 251 },
+    { x0: 360, x1: 640, h: 251 },
   ];
   const GRAVITY = 1;
   const JUMP_V = 19; // up and down again in the jump's 38 airborne ticks
   const HIT_Z = 80; // further apart in height than this, attacks miss
+  // How high a jump goes: each tick it rises by what's left of JUMP_V.
+  const JUMP_PEAK = (JUMP_V * (JUMP_V - 1)) / 2;
+  /** Near enough the same height to touch (on the same ledge, say). */
+  const sameLevel = (a, b) => Math.abs((a.z || 0) - (b.z || 0)) <= HIT_Z;
 
   /** The height of what you'd land on at x, falling from height z. */
   function supportAt(platforms, x, z) {
@@ -714,7 +718,7 @@
       const ring = game.mode === 'ring';
       const spot = () => ({
         x: (ring ? RING_MIN : RING_LEFT) + 40 + game.random() * ((ring ? RING_MAX - RING_MIN : RING_RIGHT - RING_LEFT) - 80),
-        y: ring ? RING_MIN + 40 + game.random() * (RING_MAX - RING_MIN - 80) : 0,
+        y: ring ? (game.platforms.length ? STAGE_MIN + game.random() * (STAGE_MAX - STAGE_MIN) : RING_MIN + 40 + game.random() * (RING_MAX - RING_MIN - 80)) : 0,
       });
       game.hotdogs = [first, second].slice(0, HOTDOGS).map((at) => ({ ...spot(), at, t: -1, kind: treat }));
       game.usaT = 0;
@@ -861,7 +865,7 @@
       const dy = game.mode === 'ring' ? o.y - f.y : 0;
       const d = Math.hypot(dx, dy) || 1;
       // Thrown at where they are now: it doesn't follow them.
-      game.honey.push({ owner: index, x: f.x, y: f.y, dx: dx / d, dy: dy / d, dist: 0 });
+      game.honey.push({ owner: index, x: f.x, y: f.y, z: f.z, dx: dx / d, dy: dy / d, dist: 0 });
       if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
       game.events.push({ type: 'bear', attacker: index, target: game.fighters.indexOf(o) });
       return;
@@ -873,7 +877,7 @@
       const dy = game.mode === 'ring' ? o.y - f.y : 0;
       const d = Math.hypot(dx, dy) || 1;
       // Fired at where they are now: it flies straight, it doesn't follow them.
-      game.bolts.push({ owner: index, x: f.x, y: f.y, dx: dx / d, dy: dy / d, dist: 0 });
+      game.bolts.push({ owner: index, x: f.x, y: f.y, z: f.z, dx: dx / d, dy: dy / d, dist: 0 });
       if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
       game.events.push({ type: 'priya', attacker: index, target: game.fighters.indexOf(o) });
       return;
@@ -959,7 +963,7 @@
     const index = game.fighters.indexOf(f);
     game.fighters.forEach((o, i) => {
       if (o === f || c.hit.includes(i) || !standing(o) || shielded(o) || airborne(o)) return; // jumped over it
-      if (Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) > CAR_HIT_RADIUS) return;
+      if (Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) > CAR_HIT_RADIUS || !sameLevel(o, f)) return;
       c.hit.push(i);
       game.events.push({ type: 'carHit', attacker: index, target: i });
       hurt(game, f, o, CAR_DAMAGE, 40, CAR_KNOCKBACK);
@@ -1011,7 +1015,7 @@
     f.rugby = RUGBY_KIT_AFTER;
     setState(f, 'idle');
     const ring = game.mode === 'ring';
-    const close = o && standing(o) && Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) <= RUGBY_REACH;
+    const close = o && standing(o) && sameLevel(o, f) && Math.hypot(o.x - f.x, ring ? o.y - f.y : 0) <= RUGBY_REACH;
     if (!close || shielded(o) || airborne(o)) {
       game.events.push({ type: 'smashMiss', attacker: index });
       return;
@@ -1137,6 +1141,9 @@
     }
     f.vx = 0;
     f.vy = 0;
+    // Up (or down) to their level: on a ledge beside them, or falling if there's none.
+    f.z = o.z;
+    f.vz = 0;
     game.events.push({ type: 'teleport', attacker: game.fighters.indexOf(f), target: game.fighters.indexOf(o), from, to: { x: f.x, y: f.y } });
     // ...and straight into a kick.
     if (game.mode !== 'ring') f.facing = o.x >= f.x ? 1 : -1;
@@ -1694,18 +1701,25 @@
     });
   }
 
+  /**
+   * Run and jump: steer a jump in the air (a leapfrog already has somewhere
+   * to go). Held left and right carry on through the jump at walking speed.
+   */
+  function steerJump(game, f, i) {
+    if (f.state !== 'attack' || f.move !== 'jump' || f.t <= JUMP_CROUCH || f.flipStep) return;
+    const input = game.inputs[i];
+    f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
+    if (game.mode === 'ring') f.y += ((input.down ? 1 : 0) - (input.up ? 1 : 0)) * WALK_SPEED;
+  }
+
   /** Jumping up onto ledges and falling off them. */
   function applyHeights(game) {
     const platforms = game.platforms;
     game.fighters.forEach((f, i) => {
       const jumping = f.state === 'attack' && f.move === 'jump';
       if (jumping && f.t === JUMP_CROUCH && f.vz === 0 && f.z <= supportAt(platforms, f.x, f.z) + 0.5) f.vz = JUMP_V;
-      // Steer a jump in the air (a leapfrog already has somewhere to go).
-      if (jumping && f.t > JUMP_CROUCH && !f.flipStep && (f.z > 0 || f.vz !== 0)) {
-        const input = game.inputs[i];
-        f.x += ((input.right ? 1 : 0) - (input.left ? 1 : 0)) * WALK_SPEED;
-        if (game.mode === 'ring') f.y += ((input.down ? 1 : 0) - (input.up ? 1 : 0)) * WALK_SPEED;
-      }
+      const inAir = f.vz !== 0 || f.z > supportAt(platforms, f.x, f.z);
+      if (jumping && inAir) steerJump(game, f, i);
       const before = f.z;
       if (f.vz > 0 || f.z > supportAt(platforms, f.x, f.z)) {
         f.vz -= GRAVITY;
@@ -1713,13 +1727,19 @@
       }
       if (f.vz <= 0) {
         const s = supportAt(platforms, f.x, before);
-        if (f.z <= s) { f.z = s; f.vz = 0; }
+        if (f.z <= s) {
+          f.z = s;
+          f.vz = 0;
+          // Landed: the jump's over, so you can move (or jump again) straight away.
+          if (inAir && jumping && f.t > JUMP_CROUCH) setState(f, 'idle');
+        }
       }
     });
   }
 
   function applyPhysics(game) {
     if (game.platforms.length) applyHeights(game);
+    else game.fighters.forEach((f, i) => steerJump(game, f, i)); // no ledges (one on one in the ring): still run and jump
     const [a, b] = game.fighters;
     for (const f of game.fighters) {
       f.x += f.vx;
@@ -2015,7 +2035,7 @@
   function cornered(game, f) {
     if (game.mode === 'ring' || !standing(f)) return false;
     const o = opponentOf(game, f);
-    if (!o || !standing(o)) return false;
+    if (!o || !standing(o) || !sameLevel(o, f)) return false;
     const gap = Math.abs(o.x - f.x);
     if (gap > CORNER_CLOSE) return false;
     return o.x >= f.x ? f.x - RING_LEFT <= CORNER_ZONE : RING_RIGHT - f.x <= CORNER_ZONE;
@@ -2109,7 +2129,7 @@
       const d = Math.hypot(dx, dy) || 1;
       dir = { x: dx / d, y: dy / d };
     }
-    game.clouds.push({ owner: game.fighters.indexOf(f), x: f.x, y: f.y, dx: dir.x, dy: dir.y, dist: 0 });
+    game.clouds.push({ owner: game.fighters.indexOf(f), x: f.x, y: f.y, z: f.z, dx: dir.x, dy: dir.y, dist: 0 });
   }
 
   /** Fart clouds drift on; the first fighter they reach (not in the air) is poisoned. */
@@ -2120,7 +2140,7 @@
       c.y += c.dy * CLOUD_SPEED;
       c.dist += CLOUD_SPEED;
       const i = game.fighters.findIndex((o, j) => j !== c.owner && standing(o) && !shielded(o) && !airborne(o)
-        && Math.hypot(o.x - c.x, ring ? o.y - c.y : 0) <= CLOUD_HIT_RADIUS);
+        && Math.hypot(o.x - c.x, ring ? o.y - c.y : 0) <= CLOUD_HIT_RADIUS && sameLevel(o, c));
       if (i < 0) {
         if (c.dist < CLOUD_RANGE) return true;
         game.events.push({ type: 'cloudGone', x: c.x, y: c.y });
@@ -2194,7 +2214,7 @@
         const d = Math.hypot(dx, dy) || 1;
         const flavour = PIE_FLAVOURS[Math.min(PIE_FLAVOURS.length - 1, Math.floor(game.random() * PIE_FLAVOURS.length))];
         // Thrown at where they are now: it flies straight.
-        game.pies.push({ owner: index, x: f.x, y: f.y, dx: dx / d, dy: dy / d, dist: 0, flavour });
+        game.pies.push({ owner: index, x: f.x, y: f.y, z: f.z, dx: dx / d, dy: dy / d, dist: 0, flavour });
         if (game.mode === 'ring') f.angle = Math.atan2(dy, dx);
         else f.facing = dx >= 0 ? 1 : -1;
         game.events.push({ type: 'pieThrow', attacker: index, target: game.fighters.indexOf(o), flavour });
@@ -2214,7 +2234,7 @@
       p.y += p.dy * PIE_SPEED;
       p.dist += PIE_SPEED;
       const i = game.fighters.findIndex((o, j) => j !== p.owner && standing(o) && !shielded(o)
-        && Math.hypot(o.x - p.x, ring ? o.y - p.y : 0) <= PIE_HIT_RADIUS);
+        && Math.hypot(o.x - p.x, ring ? o.y - p.y : 0) <= PIE_HIT_RADIUS && sameLevel(o, p));
       if (i < 0) {
         const out = ring ? p.x < RING_MIN - 60 || p.x > RING_MAX + 60 || p.y < RING_MIN - 60 || p.y > RING_MAX + 60
           : p.x < RING_LEFT - 60 || p.x > RING_RIGHT + 60;
@@ -2248,7 +2268,7 @@
       h.dist += HONEY_SPEED;
       // Anyone up in the air (a jump, a flip) goes over it.
       const i = game.fighters.findIndex((o, j) => j !== h.owner && standing(o) && !shielded(o) && !airborne(o)
-        && Math.hypot(o.x - h.x, ring ? o.y - h.y : 0) <= HONEY_HIT_RADIUS);
+        && Math.hypot(o.x - h.x, ring ? o.y - h.y : 0) <= HONEY_HIT_RADIUS && sameLevel(o, h));
       if (i < 0) {
         if (h.dist < HONEY_RANGE) return true;
         game.events.push({ type: 'honeyMiss', x: h.x, y: h.y });
@@ -2267,7 +2287,7 @@
       b.y += b.dy * RAY_SPEED;
       b.dist += RAY_SPEED;
       const i = game.fighters.findIndex((o, j) => j !== b.owner && standing(o) && !shielded(o)
-        && Math.hypot(o.x - b.x, ring ? o.y - b.y : 0) <= RAY_HIT_RADIUS);
+        && Math.hypot(o.x - b.x, ring ? o.y - b.y : 0) <= RAY_HIT_RADIUS && sameLevel(o, b));
       if (i < 0) {
         const out = ring ? b.x < RING_MIN - 60 || b.x > RING_MAX + 60 || b.y < RING_MIN - 60 || b.y > RING_MAX + 60
           : b.x < RING_LEFT - 60 || b.x > RING_RIGHT + 60;
@@ -2490,7 +2510,7 @@
     MOVES, AIMS, ACTIONS, GUARD_BREAK_TICKS,
     MAX_FIGHTERS, RING_MIN, RING_MAX, HIT_ARC, GUARD_ARC, LUNA_SPEED, LUNA_REACH,
     FIST_MIN_TICKS, FIST_MAX_TICKS, FIST_WARN_TICKS, FIST_DAMAGE, FIST_RADIUS,
-    PLATFORMS, STAGE_MIN, STAGE_MAX, GRAVITY, JUMP_V, HIT_Z, supportAt,
+    PLATFORMS, STAGE_MIN, STAGE_MAX, GRAVITY, JUMP_V, JUMP_PEAK, HIT_Z, supportAt,
     createGame, step, setHeld, pressAction, snapshot, movePhase, removeFighter, isLuna,
     cheat, typeKey, airborne, untouchable, FLIP_CODE, CODES,
     DANCE_PULL_TO, CLOUD_SPEED, CLOUD_HIT_RADIUS, POISON_DAMAGE, POISON_EVERY, WATER_TICKS, WATER_START_TICKS, SWIM_TICKS, TELEPORT_GAP, GRANDPA_TICKS, GRANDPA_SPEED, CHARGE_SPEED, CHARGE_MAX_TICKS, CHARGE_KICK_AT, DADDY_TICKS, DADDY_SPEED, RUGBY_SMASH_AT, RUGBY_REACH, RUGBY_DAMAGE, DRAGON_TICKS, FIRE_COOL, BURN_TICKS, BURN_DAMAGE, MOUSTACHE_KO, MOUSTACHE_NAP, NAP_TICKS, JUGGLE_TICKS, PIES, PIE_EVERY, CLOWN_TICKS, PIE_SPEED, PIE_DAMAGE, PIE_FACE_TICKS, PIE_FLAVOURS, SUPER_ROUNDS, PIANO_TICKS, HONEY_SPEED, HONEY_RANGE, STICKY_TICKS, STICKY_SPEED, MUMMY_TICKS, MUMMY_RADIUS, CUDDLE_STEAL, CUDDLE_TICKS, CORNER_ZONE, CORNER_CLOSE, CLINCH_BLOCKS, CLINCH_WINDOW, ESCAPE_COOLDOWN, LEAPFROG_LAND, SWORD_TICKS, SWORD_DAMAGE, SWORD_REACH, CHESS_TICKS, CHESS, PIECES, PAWN_PROMOTES, VAMPIRE_TICKS, VAMPIRE_DAMAGE, LION_TICKS, LION_DAMAGE, USA_TICKS, HOTDOG_FIRST, HOTDOG_LAST, HOTDOG_FALL_TICKS, HOTDOG_CATCH_RADIUS, HOTDOG_HEAL, HOTDOG_REACH_AT, HOTDOG_JUMP_REACH_AT, PAUSE_TICKS, SPIKY_TICKS, SPIKY_KEEP, RAY_SPEED, RAY_FREEZE_TICKS, SHREE_TICKS, SHREE_DROP_TICKS, SHAAN_TICKS, SHAAN_DAMAGE, CAR_DAMAGE, CAR_SPEED, CAR_REV_TICKS, JUMP_CROUCH, FIST_HITSTUN, SURPRISES, BANANA_TICKS, ZAP_DAMAGE, BANANA_DAMAGE, FREEZE_TICKS, ZOOM_TICKS, SNACK_HEAL, JEMINI_TICKS, JEMINI_DAMAGE, KYLE_TICKS, KYLE_STUCK_DAMAGE, LUNA_SPELL_GAP, FLIP_CROUCH, FLIP_MAX_TRAVEL, FIST_KYLE_ODDS,

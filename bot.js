@@ -143,19 +143,32 @@ function botTick(game, i, bot) {
   }
 
   // On another level (ledges, one on one): get up to them, or drop down.
+  // Mid-jump (on ledges): keep steering where it was going till it lands.
+  if (game.platforms.length && f.state === 'attack' && f.move === 'jump') return;
   const dz = (o.z || 0) - (f.z || 0);
   if (game.platforms.length && Math.abs(dz) > Game.HIT_Z - 10) {
     const mine = game.platforms.find((p) => p.h === f.z && f.x >= p.x0 && f.x <= p.x1);
     if (dz > 0) {
       // A ledge above me I can reach, and the nearest of those.
-      const ledges = game.platforms.filter((p) => p.h > f.z + 10 && p.h <= f.z + 150)
+      const ledges = game.platforms.filter((p) => p.h > f.z + 10 && p.h <= f.z + Game.JUMP_PEAK - 8)
         .sort((a, b) => Math.abs((a.x0 + a.x1) / 2 - f.x) - Math.abs((b.x0 + b.x1) / 2 - f.x));
       const p = ledges[0];
       if (p) {
         const mid = (p.x0 + p.x1) / 2;
         const under = f.x >= p.x0 - 10 && f.x <= p.x1 + 10;
-        if (under && f.z === (mine ? mine.h : 0) && f.state !== 'attack') Game.pressAction(game, i, 'jump');
-        hold(toward(mid - f.x, 0));
+        // On a ledge that doesn't reach under the one above: jump from its
+        // end nearest it (and steer across), not off the end.
+        const end = mine && !under ? (mid > mine.x1 ? mine.x1 - 6 : mine.x0 + 6) : null;
+        const atEnd = end !== null && Math.abs(f.x - end) < 14;
+        const grounded = f.z === (mine ? mine.h : 0) && f.state !== 'attack';
+        if ((under || atEnd) && grounded) {
+          Game.pressAction(game, i, 'jump');
+          hold(toward(mid - f.x, 0));
+        } else if (end !== null) {
+          hold(toward(end - f.x, 0));
+        } else {
+          hold(toward(mid - f.x, 0));
+        }
         return;
       }
     } else if (mine) {
