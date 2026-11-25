@@ -185,6 +185,17 @@
   const CONFUSED_TICKS = 5 * TICK_RATE;
   const PIANO_TICKS = 2 * TICK_RATE;
   const BOSS_NAP = 4 * TICK_RATE; // a boss only nods off for a moment
+  // No standing there mashing punch: hit a boss this many times in quick
+  // succession (outside its dizzy moments, which are free hits) and it puts
+  // its guard up, then shoves everyone near it away. Space your hits, or wait
+  // for it to be dizzy.
+  const GUARD_HITS = 4; // 3 once it's angry
+  const GUARD_WINDOW = 2 * TICK_RATE;
+  const GUARD_TICKS = 30; // guard up (blocks everything)...
+  const SHOVE_TICKS = 24; // ...then the shove
+  const SHOVE_RANGE = 230;
+  const SHOVE_DAMAGE = 10;
+  const SHOVE_KNOCK = 16;
   const CLOUD_SPEED = 3.2;
   const POISON_DAMAGE = 3;
   const POISON_EVERY = 2 * TICK_RATE;
@@ -199,8 +210,12 @@
   const LEVEL_END = 7200;
 
   // Secrets: each level hides a secret room (off to the side of the level,
-  // where the camera never goes otherwise) behind a door somewhere, and a
-  // stair of invisible platforms that only show once someone stands on one.
+  // where the camera never goes otherwise), and a stair of invisible
+  // platforms that only show once someone stands on one. The way into the
+  // room moves about: each level has a few places it might be (alt 0, 1, 2),
+  // and every game picks one. It might be a door (a burrow behind a cracked
+  // rock, a hollow tree...) or down one of the holes: fall in the right one
+  // and you land in the room instead of losing a life.
   const ROOM_X = LEVEL_END + 1500;
   const ROCK_HITS = 3; // to break a cracked rock
   const IDLE_TICKS = 12 * TICK_RATE;
@@ -214,6 +229,7 @@
     const rocks = [];
     const doors = [];
     const rooms = [];
+    const pits = [];
     const h = {
       ground: (x0, x1, y = GROUND_Y) => solids.push({ x: x0, y, w: x1 - x0, h: VIEW_H + 300 - y }),
       plat: (x, y, w) => platforms.push({ x, y, w }),
@@ -228,8 +244,10 @@
       life: (x, y) => pickups.push({ type: 'life', x, y }),
       enemy: (type, x, y) => spawns.push({ type, x, y }),
       hiddenPlat: (x, y, w) => platforms.push({ x, y, w, hidden: true }),
-      rock: (x, kind) => rocks.push({ id: rocks.length, x, kind }) - 1,
-      door: (x, kind, room, rock = null) => doors.push({ x, kind, room, rock }),
+      rock: (x, kind, alt) => rocks.push({ id: rocks.length, x, kind, alt }) - 1,
+      door: (x, kind, room, rock = null, alt) => doors.push({ x, kind, room, rock, alt }),
+      // A hole that drops you into the secret room (x0..x1 is the hole).
+      pit: (x0, x1, room, alt) => pits.push({ x0, x1, room, alt }),
       room: (npc) => {
         const x0 = ROOM_X;
         h.ground(x0 - 200, x0 + VIEW_W + 200);
@@ -248,7 +266,7 @@
     build(h);
     spawns.sort((a, b) => a.x - b.x);
     pickups.forEach((p, k) => { p.id = k; });
-    const L = { ...info, solids, platforms, spawns, pickups, rocks, doors, rooms, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
+    const L = { ...info, solids, platforms, spawns, pickups, rocks, doors, rooms, pits, secretAlts: 3, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
     for (const d of doors) d.y = surfaceBelow(L, d.x, -100);
     for (const r of rocks) r.y = surfaceBelow(L, r.x, -100);
     return L;
@@ -316,7 +334,10 @@
     L.enemy('hedgehog', 6150);
     L.heart(6100, 430);
 
-    L.door(1150, 'burrow', L.room('bunny'), L.rock(1150, 'rock'));
+    const bunny = L.room('bunny');
+    L.door(1150, 'burrow', bunny, L.rock(1150, 'rock', 0), 0);
+    L.pit(2420, 2600, bunny, 1);
+    L.door(5150, 'burrow', bunny, L.rock(5150, 'rock', 2), 2);
     L.hiddenPlat(3260, 210, 90);
     L.hiddenPlat(3420, 140, 100);
     L.coins(3430, 100, 3, 36);
@@ -384,7 +405,10 @@
     L.enemy('goo', 6120);
     L.heart(6150, 430);
 
-    L.door(2110, 'tree', L.room('ghost'));
+    const ghost = L.room('ghost');
+    L.door(2110, 'tree', ghost, null, 0);
+    L.door(4450, 'tree', ghost, null, 1);
+    L.pit(3800, 3940, ghost, 2);
     L.hiddenPlat(3290, 130, 90);
     L.hiddenPlat(3450, 90, 90);
     L.coins(3460, 54, 3, 32);
@@ -444,7 +468,10 @@
     L.enemy('penguin', 6150);
     L.heart(6100, 430);
 
-    L.door(4560, 'cave', L.room('penguin'), L.rock(4560, 'ice'));
+    const penguin = L.room('penguin');
+    L.door(4560, 'cave', penguin, L.rock(4560, 'ice', 0), 0);
+    L.pit(2300, 2460, penguin, 1);
+    L.door(1800, 'cave', penguin, L.rock(1800, 'ice', 2), 2);
     L.hiddenPlat(3150, 220, 90);
     L.hiddenPlat(3300, 150, 90);
     L.coins(3310, 110, 3, 32);
@@ -510,7 +537,10 @@
     L.enemy('lavablob', 6150);
     L.heart(6100, 430);
 
-    L.door(2650, 'tube', L.room('dragon'), L.rock(2650, 'rock'));
+    const dragon = L.room('dragon');
+    L.door(2650, 'tube', dragon, L.rock(2650, 'rock', 0), 0);
+    L.door(5800, 'tube', dragon, L.rock(5800, 'rock', 1), 1);
+    L.pit(4900, 5030, dragon, 2);
     L.hiddenPlat(3190, 200, 90);
     L.hiddenPlat(3340, 130, 90);
     L.coins(3350, 90, 3, 32);
@@ -648,6 +678,8 @@
     g.inRoom = null;
     g.stash = null;
     g.foundHere = [];
+    // Where this level's secret room is hiding, this time.
+    g.secretAlt = Math.floor(rand(g) * (g.L.secretAlts || 1));
     const live = g.players.filter((p) => !p.left);
     live.forEach((p, k) => {
       Object.assign(p, noPowers(), {
@@ -855,6 +887,14 @@
     if (p.x < lo) p.x = lo;
     if (p.x > hi) p.x = hi;
 
+    // Down the right hole: into the secret room.
+    const pit = p.y > GROUND_Y + 60 && !g.inRoom && g.phase === 'run'
+      && g.L.pits.find((q) => inPlay(g, q) && p.x >= q.x0 - PLAYER_HW && p.x <= q.x1 + PLAYER_HW);
+    if (pit) {
+      const back = pit.x1 + 70;
+      enterRoom(g, { x: back, y: surfaceBelow(g.L, back, -100), room: pit.room }, i);
+      return;
+    }
     if (p.y > VIEW_H + 150) {
       // Down a hole.
       p.fell = true;
@@ -1057,10 +1097,12 @@
     g.events.push({ type: 'secret', what });
   }
 
+  /** Is this way in (or rock) the one in use this game? */
+  const inPlay = (g, x) => x.alt === undefined || x.alt === g.secretAlt;
   const doorOpen = (g, d) => d.rock === null || d.rock === undefined || g.broken.includes(d.rock);
 
   function tryDoor(g, p, i) {
-    const d = g.L.doors.find((q) => Math.abs(q.x - p.x) < 34 && Math.abs(q.y - p.y) < 4 && doorOpen(g, q));
+    const d = g.L.doors.find((q) => inPlay(g, q) && Math.abs(q.x - p.x) < 34 && Math.abs(q.y - p.y) < 4 && doorOpen(g, q));
     if (!d) return;
     if (d.exit) leaveRoom(g, i);
     else enterRoom(g, d, i);
@@ -1110,7 +1152,7 @@
   /** A cracked rock: a few good hits and it breaks open. */
   function hitRocks(g, p, i, box) {
     for (const r of g.L.rocks) {
-      if (g.broken.includes(r.id) || p.hits.includes(`r${r.id}`)) continue;
+      if (!inPlay(g, r) || g.broken.includes(r.id) || p.hits.includes(`r${r.id}`)) continue;
       if (!overlap(box.x0, box.y0, box.x1, box.y1, r.x - 30, r.y - 56, r.x + 30, r.y)) continue;
       p.hits.push(`r${r.id}`);
       g.rockHits[r.id] = (g.rockHits[r.id] || 0) + 1;
@@ -1773,6 +1815,25 @@
           g.events.push({ type: 'quake', x: e.x + e.facing * 70, crash: true });
         }
         break;
+      case 'guard':
+        // Guard up: nothing gets through.
+        e.vx = 0;
+        if (flyer) hover(0.4);
+        if (e.t >= GUARD_TICKS) setE(e, 'shove');
+        break;
+      case 'shove':
+        e.vx = 0;
+        if (flyer) hover(0.4);
+        if (e.t === 1) {
+          g.events.push({ type: 'shove', kind: e.type, x: e.x, y: e.y });
+          g.players.forEach((p, i) => {
+            if (down(p) || Math.abs(p.x - e.x) > SHOVE_RANGE || Math.abs(p.y - e.y) > 260) return;
+            // A guard (facing it) takes the edge off, as ever.
+            hurtPlayer(g, p, i, SHOVE_DAMAGE, p.x < e.x ? -1 : 1, SHOVE_KNOCK);
+          });
+        }
+        if (e.t >= SHOVE_TICKS) setE(e, 'idle');
+        break;
       case 'dizzy':
         if (e.onGround || flyer) e.vx *= 0.85;
         if (e.t >= (e.angry ? 120 : 160)) {
@@ -1909,6 +1970,10 @@
     }
     const boss = isBoss(e);
     if (boss && (e.state === 'enter' || e.state === 'roar')) return;
+    if (boss && (e.state === 'guard' || e.state === 'shove') && !quiet) {
+      g.events.push({ type: 'bossBlock', x: e.x, y: e.y - sizeOf(e).h / 2 });
+      return;
+    }
     if (boss && e.state === 'dizzy') damage = Math.round(damage * 1.5);
     if (e.shrunk > 0) damage = Math.round(damage * 1.5);
     damage = Math.max(1, damage);
@@ -1924,6 +1989,17 @@
       e.vx = dir * knock * 0.8;
       if (!CREATURES[e.type].flying) { e.vy = -3; e.onGround = false; } else e.vy = -1;
       if (CREATURES[e.type].kind === 'flyer') { setE(e, 'hover'); e.cool = 90; }
+    }
+    // Mashing: too many hits too quickly, and up goes the guard.
+    if (boss && !quiet && byIndex >= 0 && e.state !== 'dizzy' && e.hp > 0) {
+      e.hitLog = (e.hitLog || []).filter((t) => g.tick - t < GUARD_WINDOW);
+      e.hitLog.push(g.tick);
+      if (e.hitLog.length >= (e.angry ? GUARD_HITS - 1 : GUARD_HITS)) {
+        e.hitLog = [];
+        e.vx = 0;
+        setE(e, 'guard');
+        g.events.push({ type: 'bossGuard', kind: e.type, x: e.x, y: e.y - sizeOf(e).h });
+      }
     }
     if (boss && !e.angry && e.hp <= e.maxHp / 2) {
       e.angry = true;
@@ -2311,6 +2387,7 @@
       stopped: g.stopped,
       broken: g.broken,
       rockHits: g.rockHits,
+      secretAlt: g.secretAlt,
       revealed: g.revealed,
       inRoom: g.inRoom ? g.inRoom.room : null,
       golden: g.golden.length,
@@ -2342,6 +2419,7 @@
   const api = {
     TICK_RATE, VIEW_W, VIEW_H, GROUND_Y, GRAVITY, WALK, JUMP_V, MAX_HP, LIVES_EACH, WATER_Y,
     PLAYER_HW, PLAYER_H, MOVES, CREATURES, BOSSES, LEVELS, LEVEL_END,
+    GUARD_HITS, GUARD_WINDOW, GUARD_TICKS, SHOVE_TICKS, SHOVE_RANGE, SHOVE_DAMAGE,
     KO_TICKS, READY_TICKS, BOSS_INTRO_TICKS, CLEARED_TICKS, END_TICKS, HEART_HEAL, COIN_SCORE, STOMP_DAMAGE,
     CHARGE_DAMAGE, WAVE_DAMAGE, BOULDER_DAMAGE, SHOT_DAMAGE, BLOCK_SHARE, DROP_EVERY,
     CODES, POWER_TICKS, FIST_WARN, FIST_DAMAGE, CAR_DAMAGE, RUGBY_DAMAGE, FREEZE_TICKS, PIANO_TICKS, JUGGLE_TICKS,
