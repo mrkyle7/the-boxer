@@ -250,14 +250,19 @@
 
   const LEVEL_END = 7200;
 
-  // Secrets: each level hides a secret room (off to the side of the level,
+  // Secrets: each level hides secret rooms (off to the side of the level,
   // where the camera never goes otherwise), and a stair of invisible
-  // platforms that only show once someone stands on one. The way into the
-  // room moves about: each level has a few places it might be (alt 0, 1, 2),
-  // and every game picks one. It might be a door (a burrow behind a cracked
-  // rock, a hollow tree...) or down one of the holes: fall in the right one
-  // and you land in the room instead of losing a life.
+  // platforms that only show once someone stands on one. Every game, each
+  // level gets two to five rooms, picked at random, and each room's way in is
+  // picked at random from the level's possible places: a door (a burrow
+  // behind a cracked rock, a hollow tree...) or one of the holes (fall in the
+  // right one and you land in a room instead of losing a life). Who lives in
+  // each room is picked at random too, and one of them has the golden glove.
   const ROOM_X = LEVEL_END + 1500;
+  const ROOM_SLOTS = 5; // the most rooms a level can have
+  const ROOM_GAP = VIEW_W + 600; // between rooms, off to the side
+  const MIN_ROOMS = 2;
+  const ROOM_NPCS = ['bunny', 'ghost', 'penguin', 'dragon', 'camel', 'turtle', 'fairy', 'astronaut'];
   const ROCK_HITS = 3; // to break a cracked rock
   const IDLE_TICKS = 12 * TICK_RATE;
   const GOLD_DAMAGE = 1.25; // all four golden gloves
@@ -285,29 +290,37 @@
       life: (x, y) => pickups.push({ type: 'life', x, y }),
       enemy: (type, x, y) => spawns.push({ type, x, y }),
       hiddenPlat: (x, y, w) => platforms.push({ x, y, w, hidden: true }),
-      rock: (x, kind, alt) => rocks.push({ id: rocks.length, x, kind, alt }) - 1,
-      door: (x, kind, room, rock = null, alt) => doors.push({ x, kind, room, rock, alt }),
-      // A hole that drops you into the secret room (x0..x1 is the hole).
-      pit: (x0, x1, room, alt) => pits.push({ x0, x1, room, alt }),
-      room: (npc) => {
-        const x0 = ROOM_X;
-        h.ground(x0 - 200, x0 + VIEW_W + 200);
-        h.plat(x0 + 280, 380, 150);
-        h.plat(x0 + 520, 290, 150);
-        h.coins(x0 + 120, 440, 4);
-        h.coins(x0 + 300, 340, 4);
-        h.coinArc(x0 + 40, 380, 5);
-        pickups.push({ type: 'golden', x: x0 + 595, y: 236 });
-        h.heart(x0 + 860, 440);
-        rooms.push({ x0, npc });
-        doors.push({ x: x0 + 920, kind: 'exit', room: rooms.length - 1, exit: true });
-        return rooms.length - 1;
+      // A possible way into a secret room: a door (behind a cracked rock of
+      // this kind, if rockKind is given), or a hole (x0..x1). `way` numbers them.
+      door: (x, kind, rockKind = null) => {
+        const way = ways++;
+        const rock = rockKind ? rocks.push({ id: rocks.length, x, kind: rockKind, way }) - 1 : null;
+        doors.push({ x, kind, rock, way });
       },
+      pit: (x0, x1) => pits.push({ x0, x1, way: ways++ }),
     };
+    let ways = 0;
     build(h);
+    // The rooms themselves, side by side off past the end, each a little different.
+    for (let k = 0; k < ROOM_SLOTS; k++) {
+      const x0 = ROOM_X + k * ROOM_GAP;
+      const flip = k % 2 === 1;
+      const at = (x) => (flip ? x0 + VIEW_W - (x - x0) : x);
+      h.ground(x0 - 200, x0 + VIEW_W + 200);
+      h.plat(at(x0 + 280) - (flip ? 150 : 0), 380 - (k % 3) * 20, 150);
+      h.plat(at(x0 + 520) - (flip ? 150 : 0), 290 - (k % 3) * 20, 150);
+      h.coins(at(x0 + 120) - (flip ? 120 : 0), 440, 4);
+      h.coins(at(x0 + 300) - (flip ? 120 : 0), 340 - (k % 3) * 20, 4);
+      h.coinArc(at(x0 + 40) - (flip ? 144 : 0), 380, 5);
+      pickups.push({ type: 'golden', x: at(x0 + 595), y: 236 - (k % 3) * 20, room: k });
+      h.heart(at(x0 + 860), 440);
+      rooms.push({ x0 });
+      // The way out: at the far end, away from where you come in.
+      doors.push({ x: x0 + 920, kind: 'exit', room: k, exit: true });
+    }
     spawns.sort((a, b) => a.x - b.x);
     pickups.forEach((p, k) => { p.id = k; });
-    const L = { ...info, solids, platforms, spawns, pickups, rocks, doors, rooms, pits, secretAlts: 3, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
+    const L = { ...info, solids, platforms, spawns, pickups, rocks, doors, rooms, pits, ways, end: LEVEL_END, arenaX: LEVEL_END - VIEW_W };
     for (const d of doors) d.y = surfaceBelow(L, d.x, -100);
     for (const r of rocks) r.y = surfaceBelow(L, r.x, -100);
     return L;
@@ -375,10 +388,14 @@
     L.enemy('hedgehog', 6150);
     L.heart(6100, 430);
 
-    const bunny = L.room('bunny');
-    L.door(1150, 'burrow', bunny, L.rock(1150, 'rock', 0), 0);
-    L.pit(2420, 2600, bunny, 1);
-    L.door(5150, 'burrow', bunny, L.rock(5150, 'rock', 2), 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1150, 'burrow', 'rock');
+    L.door(2050, 'burrow', 'rock');
+    L.door(3780, 'burrow', 'rock');
+    L.door(4940, 'burrow', 'rock');
+    L.door(5390, 'burrow', 'rock');
+    L.pit(2420, 2600);
+    L.pit(4800, 4900);
     L.hiddenPlat(3260, 210, 90);
     L.hiddenPlat(3420, 140, 100);
     L.coins(3430, 100, 3, 36);
@@ -446,10 +463,14 @@
     L.enemy('goo', 6120);
     L.heart(6150, 430);
 
-    const ghost = L.room('ghost');
-    L.door(2110, 'tree', ghost, null, 0);
-    L.door(4450, 'tree', ghost, null, 1);
-    L.pit(3800, 3940, ghost, 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1090, 'tree');
+    L.door(1990, 'tree');
+    L.door(3590, 'tree');
+    L.door(4490, 'tree');
+    L.door(5600, 'tree');
+    L.pit(2200, 2500);
+    L.pit(3800, 3940);
     L.hiddenPlat(3290, 130, 90);
     L.hiddenPlat(3450, 90, 90);
     L.coins(3460, 54, 3, 32);
@@ -509,10 +530,14 @@
     L.enemy('penguin', 6150);
     L.heart(6100, 430);
 
-    const penguin = L.room('penguin');
-    L.door(4560, 'cave', penguin, L.rock(4560, 'ice', 0), 0);
-    L.pit(2300, 2460, penguin, 1);
-    L.door(1800, 'cave', penguin, L.rock(1800, 'ice', 2), 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1160, 'cave', 'ice');
+    L.door(2060, 'cave', 'ice');
+    L.door(3440, 'cave', 'ice');
+    L.door(4510, 'cave', 'ice');
+    L.door(5440, 'cave', 'ice');
+    L.pit(2300, 2460);
+    L.pit(3500, 3640);
     L.hiddenPlat(3150, 220, 90);
     L.hiddenPlat(3300, 150, 90);
     L.coins(3310, 110, 3, 32);
@@ -578,10 +603,14 @@
     L.enemy('lavablob', 6150);
     L.heart(6100, 430);
 
-    const dragon = L.room('dragon');
-    L.door(2650, 'tube', dragon, L.rock(2650, 'rock', 0), 0);
-    L.door(5800, 'tube', dragon, L.rock(5800, 'rock', 1), 1);
-    L.pit(4900, 5030, dragon, 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1100, 'tube', 'rock');
+    L.door(2000, 'tube', 'rock');
+    L.door(3480, 'tube', 'rock');
+    L.door(4380, 'tube', 'rock');
+    L.door(5490, 'tube', 'rock');
+    L.pit(2200, 2520);
+    L.pit(4900, 5030);
     L.hiddenPlat(3190, 200, 90);
     L.hiddenPlat(3340, 130, 90);
     L.coins(3350, 90, 3, 32);
@@ -644,10 +673,14 @@
     L.enemy('scorpion', 6150);
     L.heart(6100, 430);
 
-    const camel = L.room('camel');
-    L.door(2250, 'tomb', camel, L.rock(2250, 'rock', 0), 0);
-    L.pit(3650, 3800, camel, 1);
-    L.door(5950, 'tomb', camel, L.rock(5950, 'rock', 2), 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1100, 'tomb', 'rock');
+    L.door(2000, 'tomb', 'rock');
+    L.door(3540, 'tomb', 'rock');
+    L.door(4570, 'tomb', 'rock');
+    L.door(5470, 'tomb', 'rock');
+    L.pit(2350, 2560);
+    L.pit(3650, 3800);
     L.hiddenPlat(3240, 200, 90);
     L.hiddenPlat(3400, 130, 90);
     L.coins(3410, 90, 3, 32);
@@ -713,10 +746,14 @@
     L.enemy('starfish', 6150);
     L.heart(6100, 430);
 
-    const turtle = L.room('turtle');
-    L.door(980, 'cove', turtle, L.rock(980, 'rock', 0), 0);
-    L.pit(2150, 2420, turtle, 1);
-    L.door(4100, 'cove', turtle, L.rock(4100, 'rock', 2), 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1070, 'cove', 'rock');
+    L.door(2070, 'cove', 'rock');
+    L.door(3380, 'cove', 'rock');
+    L.door(4450, 'cove', 'rock');
+    L.door(5440, 'cove', 'rock');
+    L.pit(1260, 1410);
+    L.pit(2150, 2420);
     L.hiddenPlat(3080, 200, 90);
     L.hiddenPlat(3240, 130, 90);
     L.coins(3250, 90, 3, 32);
@@ -779,10 +816,14 @@
     L.enemy('gummy', 6150);
     L.heart(6100, 430);
 
-    const fairy = L.room('fairy');
-    L.door(1000, 'cookie', fairy, null, 0);
-    L.door(4250, 'cookie', fairy, null, 1);
-    L.pit(4800, 4930, fairy, 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1100, 'cookie');
+    L.door(2000, 'cookie');
+    L.door(3470, 'cookie');
+    L.door(4520, 'cookie');
+    L.door(5420, 'cookie');
+    L.pit(2300, 2500);
+    L.pit(4800, 4930);
     L.hiddenPlat(3170, 200, 90);
     L.hiddenPlat(3330, 130, 90);
     L.coins(3340, 90, 3, 32);
@@ -845,10 +886,14 @@
     L.enemy('robot', 6150);
     L.heart(6100, 430);
 
-    const astronaut = L.room('astronaut');
-    L.door(1150, 'hatch', astronaut, L.rock(1150, 'rock', 0), 0);
-    L.door(5300, 'hatch', astronaut, L.rock(5300, 'rock', 1), 1);
-    L.pit(2350, 2600, astronaut, 2);
+    // Possible ways into the secret rooms (each game uses two to five of them).
+    L.door(1100, 'hatch', 'rock');
+    L.door(2000, 'hatch', 'rock');
+    L.door(3560, 'hatch', 'rock');
+    L.door(4590, 'hatch', 'rock');
+    L.door(5540, 'hatch', 'rock');
+    L.pit(2350, 2600);
+    L.pit(3650, 3850);
     L.hiddenPlat(3260, 140, 90);
     L.hiddenPlat(3420, 60, 90);
     L.coins(3430, 20, 3, 32);
@@ -986,8 +1031,22 @@
     g.inRoom = null;
     g.stash = null;
     g.foundHere = [];
-    // Where this level's secret room is hiding, this time.
-    g.secretAlt = Math.floor(rand(g) * (g.L.secretAlts || 1));
+    // This time: how many secret rooms, which ways in, who lives in each,
+    // and which has the golden glove.
+    const L = g.L;
+    const n = Math.min(L.ways, ROOM_SLOTS, MIN_ROOMS + Math.floor(rand(g) * (ROOM_SLOTS - MIN_ROOMS + 1)));
+    const shuffle = (list) => {
+      const a = list.slice();
+      for (let k = a.length - 1; k > 0; k--) {
+        const j = Math.floor(rand(g) * (k + 1));
+        [a[k], a[j]] = [a[j], a[k]];
+      }
+      return a;
+    };
+    g.secretWays = shuffle([...Array(L.ways).keys()]).slice(0, n); // room k's way in is secretWays[k]
+    g.roomNpcs = shuffle(ROOM_NPCS).slice(0, n);
+    g.goldenRoom = Math.floor(rand(g) * n);
+    for (const pk of L.pickups) if (pk.type === 'golden' && pk.room !== g.goldenRoom) g.taken.push(pk.id);
     const live = g.players.filter((p) => !p.left);
     live.forEach((p, k) => {
       Object.assign(p, noPowers(), {
@@ -1200,7 +1259,7 @@
       && g.L.pits.find((q) => inPlay(g, q) && p.x >= q.x0 - PLAYER_HW && p.x <= q.x1 + PLAYER_HW);
     if (pit) {
       const back = pit.x1 + 70;
-      enterRoom(g, { x: back, y: surfaceBelow(g.L, back, -100), room: pit.room }, i);
+      enterRoom(g, { x: back, y: surfaceBelow(g.L, back, -100), room: roomOf(g, pit) }, i);
       return;
     }
     if (p.y > VIEW_H + 150) {
@@ -1406,14 +1465,17 @@
   }
 
   /** Is this way in (or rock) the one in use this game? */
-  const inPlay = (g, x) => x.alt === undefined || x.alt === g.secretAlt;
+  /** Which room a way in leads to this game (or -1: it isn't one this time). */
+  const roomOf = (g, x) => g.secretWays.indexOf(x.way);
+  /** Is this way in (or the rock in front of it) one in use this game? */
+  const inPlay = (g, x) => x.way === undefined || roomOf(g, x) >= 0;
   const doorOpen = (g, d) => d.rock === null || d.rock === undefined || g.broken.includes(d.rock);
 
   function tryDoor(g, p, i) {
     const d = g.L.doors.find((q) => inPlay(g, q) && Math.abs(q.x - p.x) < 34 && Math.abs(q.y - p.y) < 4 && doorOpen(g, q));
     if (!d) return;
     if (d.exit) leaveRoom(g, i);
-    else enterRoom(g, d, i);
+    else enterRoom(g, { ...d, room: roomOf(g, d) }, i);
   }
 
   /** Through the door: the whole team goes into the secret room. */
@@ -1427,8 +1489,8 @@
     g.fists = [];
     g.camX = room.x0;
     teleportTeam(g, room.x0 + 100, GROUND_Y);
-    found(g, 'room');
-    g.events.push({ type: 'enterRoom', i, npc: room.npc });
+    found(g, `room${d.room}`);
+    g.events.push({ type: 'enterRoom', i, npc: g.roomNpcs[d.room] });
   }
 
   function leaveRoom(g, i) {
@@ -2896,7 +2958,8 @@
       stopped: g.stopped,
       broken: g.broken,
       rockHits: g.rockHits,
-      secretAlt: g.secretAlt,
+      secretWays: g.secretWays,
+      roomNpcs: g.roomNpcs,
       revealed: g.revealed,
       inRoom: g.inRoom ? g.inRoom.room : null,
       golden: g.golden.length,

@@ -3,7 +3,11 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const WebSocket = require('ws');
-const { createServer } = require('../server.js');
+const { createServer, rooms } = require('../server.js');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
+const { createScores } = require('../scores.js');
 
 // Stands in for auth.js: the cookie "userjwt=<name>" is that player signed in.
 const fakeAuth = {
@@ -43,7 +47,8 @@ function client(port, cookie) {
 }
 
 async function withServer(fn) {
-  const server = createServer({ auth: fakeAuth });
+  const board = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'boxer-test-')), 'board.json');
+  const server = createServer({ auth: fakeAuth, scores: createScores({ file: board }) });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const clients = [];
@@ -390,5 +395,29 @@ test('a fight against the computer can be in an adventure setting', async () => 
     a.send({ t: 'bot', level: 'easy', venue: 'meadow' });
     const start = await a.next((m) => m.t === 'start');
     assert.strictEqual(start.venue, 'meadow');
+  });
+});
+
+test('an adventure that ends goes on the leaderboard, for everyone to see', async () => {
+  await withServer(async (port, connect) => {
+    const before = await (await fetch(`http://127.0.0.1:${port}/api/leaderboard`)).json();
+    assert.deepStrictEqual(before.scores, []);
+    const a = await connect();
+    a.send({ t: 'hello', name: 'Ann' });
+    a.send({ t: 'adventure', solo: true, level: 2 });
+    await a.next((m) => m.t === 'start' && m.mode === 'adventure');
+    // Reach in and end the game, with a score.
+    const room = [...rooms.values()].find((r) => r.kind === 'adventure');
+    room.game.score = 4321;
+    room.game.over = true;
+    await a.next((m) => m.t === 'adventureOver');
+    const lb = await a.next((m) => m.t === 'leaderboard');
+    assert.strictEqual(lb.rank, 1);
+    assert.strictEqual(lb.top[0].name, 'Ann');
+    assert.strictEqual(lb.top[0].score, 4321);
+    assert.strictEqual(lb.top[0].from, 3);
+    const after = await (await fetch(`http://127.0.0.1:${port}/api/leaderboard`)).json();
+    assert.strictEqual(after.scores.length, 1);
+    assert.strictEqual(after.scores[0].score, 4321);
   });
 });

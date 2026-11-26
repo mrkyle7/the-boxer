@@ -27,7 +27,13 @@ Eight levels, each with its own creatures and a boss in a ring at the end. Beat 
 7. **Candy Land.** Gummy bears crouch and take huge leaps at you, cupcakes lob sprinkles, candyfloss clouds drift over dropping gumdrops, and peppermints roll. The boss is **the Gingerbread Giant**, who stomps, throws gumballs, leaps across the ring and makes it rain sweets.
 8. **Moon Base.** Low gravity: everyone jumps much higher (the creatures too). Aliens vanish and pop up right beside you to zap you, UFOs float over dropping laser blasts, robots rear up and charge, and moonbugs burrow like the sandworms. The boss is **Mecha Max**, the champion from outer space: charges, moon rocks, leaps and meteor showers, and once he's angry, rolling balls of plasma.
 
-Every level also hides a few secrets. Nobody's telling where, and they don't stay put: the way in is somewhere different from one game to the next. Go exploring (and don't assume every hole is the end of you).
+Every level also hides secrets: two to five secret rooms each game, picked at random, with their ways in picked at random too, and who you'll meet inside. Nobody's telling where, and they don't stay put from one game to the next. Go exploring (and don't assume every hole is the end of you). One of the rooms on each level has its golden glove.
+
+### Leaderboard
+
+When an adventure ends, win or lose, the team's score goes on the **adventure leaderboard**, and you see where you came. Anyone can look at the best scores from the lobby ("Adventure leaderboard").
+
+The board lives in a Google Cloud Storage bucket when the server has `SCORES_BUCKET` set (and `SCORES_OBJECT`, default `adventure-leaderboard.json`), so every server shares it and it survives deploys; the server's service account needs to read and write objects in it. Without a bucket it's a file on the server's disk (`SCORES_FILE`, default in the temp folder): fine for running it yourself, but on Cloud Run it starts again whenever the server does.
 
 Bosses don't stand for button-mashing. Land too many hits too quickly and a boss puts its guard up (nothing gets through), then shoves everyone near it away. Space your hits out, or save them for when it's dizzy.
 
