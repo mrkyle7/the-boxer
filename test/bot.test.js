@@ -7,11 +7,23 @@ const assert = require('node:assert');
 const G = require('../public/game.js');
 const { createBot, botTick, LEVELS, CODE_POOL } = require('../bot.js');
 
-/** A whole match between bots at these levels; the game at the end. */
+/** A steady pseudo-random number (mulberry32): the same matches every run. */
+function seeded(seed) {
+  let x = seed | 0;
+  return () => {
+    x = (x + 0x6D2B79F5) | 0;
+    let t = Math.imul(x ^ (x >>> 15), 1 | x);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** A whole match between bots at these levels; the game at the end. Seeded, so a test gives the same result every time. */
 function match(levels, opts = {}) {
   const names = levels.map((l, i) => `${l}${i}`);
-  const g = G.createGame(names, { fists: true, ...opts });
-  const bots = levels.map((l) => createBot(l));
+  const random = seeded(opts.seed === undefined ? 1 : opts.seed);
+  const g = G.createGame(names, { fists: true, random, ...opts });
+  const bots = levels.map((l) => createBot(l, random));
   const events = [];
   for (let t = 0; g.phase !== 'matchEnd' && t < 8 * 60 * G.TICK_RATE; t++) {
     bots.forEach((b, i) => botTick(g, i, b));
@@ -24,7 +36,7 @@ function match(levels, opts = {}) {
 
 function wins(a, b, n = 12) {
   let won = 0;
-  for (let k = 0; k < n; k++) if (match([a, b]).g.winner === 0) won++;
+  for (let k = 0; k < n; k++) if (match([a, b], { seed: 5000 + k * 7919 }).g.winner === 0) won++;
   return won;
 }
 
