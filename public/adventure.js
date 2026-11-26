@@ -75,7 +75,12 @@
 
   // The creatures, by how they behave: hoppers hop at you, flyers hover and
   // dive, rollers curl up and roll at you (immune to hits while curled, and
-  // spiky ones hurt to land on), shooters spit things.
+  // spiky ones hurt to land on), shooters spit things (or lob them in an arc).
+  // From level 5 on there are more: burrowers tunnel along under the ground
+  // (out of reach) and pop up under you; chargers rear up, then dash at you;
+  // bombers fly over and drop things on you; floaters bob up and down in one
+  // place, stinging; leapers jump up out of the water in the holes; jumpers
+  // take huge leaps at you; and blinkers vanish and pop up beside you.
   const CREATURES = {
     slime: { kind: 'hopper', hw: 22, h: 30, hp: 20, damage: 8, score: 100 },
     goo: { kind: 'hopper', hw: 22, h: 30, hp: 24, damage: 8, score: 110 },
@@ -93,10 +98,34 @@
     mushroom: { kind: 'shooter', hw: 22, h: 40, hp: 26, damage: 8, score: 160, shot: 'spore' },
     snowman: { kind: 'shooter', hw: 24, h: 56, hp: 30, damage: 8, score: 170, shot: 'snowball' },
     lizard: { kind: 'shooter', hw: 26, h: 30, hp: 30, damage: 10, score: 190, shot: 'fireball' },
+    // Level 5, the desert.
+    sandworm: { kind: 'burrower', hw: 22, h: 46, hp: 26, damage: 10, score: 220 },
+    scorpion: { kind: 'charger', hw: 28, h: 30, hp: 32, damage: 10, score: 230, spikes: true },
+    vulture: { kind: 'bomber', hw: 26, h: 28, hp: 18, damage: 8, score: 200, flying: true, drop: 'egg' },
+    cactus: { kind: 'shooter', hw: 22, h: 58, hp: 34, damage: 8, score: 180, shot: 'needle', spikes: true },
+    // Level 6, the beach.
+    jellyfish: { kind: 'floater', hw: 22, h: 34, hp: 18, damage: 9, score: 180, flying: true, spikes: true },
+    fish: { kind: 'leaper', hw: 20, h: 26, hp: 14, damage: 9, score: 200 },
+    monkey: { kind: 'shooter', hw: 22, h: 40, hp: 28, damage: 8, score: 210, shot: 'coconut', lob: true },
+    starfish: { kind: 'roller', hw: 24, h: 30, hp: 30, damage: 10, score: 210, spikes: true },
+    // Level 7, Candy Land.
+    gummy: { kind: 'jumper', hw: 24, h: 36, hp: 30, damage: 10, score: 220 },
+    cupcake: { kind: 'shooter', hw: 24, h: 40, hp: 28, damage: 8, score: 210, shot: 'sprinkle', lob: true },
+    cottoncloud: { kind: 'bomber', hw: 34, h: 28, hp: 20, damage: 8, score: 220, flying: true, drop: 'gumdrop' },
+    peppermint: { kind: 'roller', hw: 24, h: 34, hp: 32, damage: 10, score: 220 },
+    // Level 8, the moon.
+    alien: { kind: 'blinker', hw: 20, h: 40, hp: 26, damage: 9, score: 240, shot: 'zap' },
+    ufo: { kind: 'bomber', hw: 34, h: 24, hp: 24, damage: 9, score: 250, flying: true, drop: 'laser' },
+    robot: { kind: 'charger', hw: 26, h: 52, hp: 40, damage: 11, score: 260 },
+    moonbug: { kind: 'burrower', hw: 22, h: 34, hp: 28, damage: 10, score: 240 },
     rhino: { kind: 'boss', hw: 70, h: 150, hp: 260, damage: 10, score: 5000 },
     owl: { kind: 'boss', hw: 60, h: 120, hp: 240, damage: 10, score: 6000, flying: true },
     yeti: { kind: 'boss', hw: 70, h: 150, hp: 300, damage: 11, score: 7000 },
     gorilla: { kind: 'boss', hw: 75, h: 160, hp: 340, damage: 12, score: 9000 },
+    kangaroo: { kind: 'boss', hw: 65, h: 160, hp: 360, damage: 12, score: 10000 },
+    walrus: { kind: 'boss', hw: 80, h: 140, hp: 380, damage: 12, score: 11000 },
+    gingerbread: { kind: 'boss', hw: 70, h: 160, hp: 400, damage: 12, score: 12000 },
+    robo: { kind: 'boss', hw: 70, h: 160, hp: 430, damage: 13, score: 15000 },
   };
 
   // The bosses: who they are, and the moves they cycle through. Moves in
@@ -106,7 +135,19 @@
     owl: { name: 'Count Hoot', title: 'Lord of the night', pattern: ['swoop', 'rain', 'swoop', 'swoop'], angryOnly: [], fall: 'feather' },
     yeti: { name: 'Frostbite', title: 'King of the mountain', pattern: ['charge', 'roll', 'stomp', 'roll'], angryOnly: [], fall: 'icicle' },
     gorilla: { name: 'Silverback', title: 'Undefeated, undisputed', pattern: ['leap', 'throw', 'charge', 'beat'], angryOnly: [], rock: 'lavarock', fall: 'rock' },
+    kangaroo: { name: 'Jack Hopper', title: 'Bounciest boxer in the outback', pattern: ['leap', 'charge', 'leap', 'throw'], angryOnly: [], rock: 'sandrock', fall: 'sandrock' },
+    walrus: { name: 'Sir Blubber', title: 'Heavyweight of the high tide', pattern: ['charge', 'roll', 'stomp', 'rain'], angryOnly: [], roll: 'beachball', fall: 'coconut' },
+    gingerbread: { name: 'The Gingerbread Giant', title: 'Run, run, as fast as you can', pattern: ['stomp', 'throw', 'leap', 'rain'], angryOnly: [], rock: 'gumball', fall: 'candy' },
+    robo: { name: 'Mecha Max', title: 'The champion from outer space', pattern: ['charge', 'throw', 'leap', 'rain', 'roll'], angryOnly: ['roll'], rock: 'moonrock', roll: 'plasma', fall: 'meteor' },
   };
+  // Projectiles, by how they hit: big ones thrown by bosses, things falling
+  // from above (they hang at the top of the screen first), and things that
+  // roll along the ground (jump them).
+  const BIG_ROCKS = ['boulder', 'lavarock', 'sandrock', 'gumball', 'moonrock'];
+  const FALLING = ['feather', 'icicle', 'rock', 'sandrock', 'coconut', 'candy', 'meteor'];
+  const GROUND_ROLLERS = ['snowroll', 'beachball', 'plasma'];
+  // Bombers' drops fall from them (no hanging about first).
+  const DROPS = ['egg', 'gumdrop', 'laser'];
   const BOSS_HP_PER_EXTRA = 0.55; // each extra player adds this much of its health
   const CHARGE_DAMAGE = 16;
   const WAVE_DAMAGE = 12;
@@ -547,7 +588,274 @@
     L.heart(3235, 165);
   });
 
-  const LEVELS = [meadow, forest, snow, volcano];
+  const desert = makeLevel({ name: 'Sandy Desert', theme: 'desert', boss: 'kangaroo' }, (L) => {
+    L.ground(-200, 1300);
+    L.plat(450, 380, 150);
+    L.plat(760, 300, 140);
+    L.coins(240, 440, 4);
+    L.coins(470, 340, 4);
+    L.coins(780, 260, 3);
+    L.enemy('sandworm', 700);
+    L.enemy('scorpion', 1050);
+
+    L.coinArc(1290, 400, 5);
+    L.ground(1440, 2100);
+    L.ground(2100, 2350, 426);
+    L.enemy('vulture', 1650, 250);
+    L.enemy('cactus', 1900);
+    L.enemy('sandworm', 2200);
+    L.coins(2130, 386, 5);
+
+    L.plat(2420, 420, 90);
+    L.ground(2560, 3650);
+    L.plat(2750, 370, 160);
+    L.plat(3000, 290, 160);
+    L.plat(3250, 370, 160);
+    L.coins(2770, 330, 4);
+    L.coins(3270, 330, 4);
+    L.heart(3080, 250);
+    L.enemy('scorpion', 2800);
+    L.enemy('vulture', 3050, 220);
+    L.enemy('cactus', 3450);
+    L.enemy('sandworm', 3550);
+
+    L.coinArc(3640, 400, 5);
+    L.ground(3800, 4850);
+    L.plat(4050, 380, 130);
+    L.plat(4380, 300, 140);
+    L.plat(4620, 220, 110);
+    L.life(4675, 175);
+    L.coins(4400, 260, 4);
+    L.enemy('cactus', 4000);
+    L.enemy('scorpion', 4250);
+    L.enemy('vulture', 4500, 240);
+    L.enemy('sandworm', 4750);
+
+    L.coinArc(4840, 410, 4);
+    L.ground(4980, 5350);
+    L.ground(5350, 5600, 426);
+    L.ground(5600, 5850, 366);
+    L.ground(5850, LEVEL_END + 200);
+    L.coins(5630, 326, 4);
+    L.enemy('scorpion', 5200);
+    L.enemy('cactus', 5500);
+    L.enemy('vulture', 5750, 230);
+    L.enemy('sandworm', 6000);
+    L.enemy('scorpion', 6150);
+    L.heart(6100, 430);
+
+    const camel = L.room('camel');
+    L.door(2250, 'tomb', camel, L.rock(2250, 'rock', 0), 0);
+    L.pit(3650, 3800, camel, 1);
+    L.door(5950, 'tomb', camel, L.rock(5950, 'rock', 2), 2);
+    L.hiddenPlat(3240, 200, 90);
+    L.hiddenPlat(3400, 130, 90);
+    L.coins(3410, 90, 3, 32);
+    L.heart(3285, 165);
+  });
+
+  const beach = makeLevel({ name: 'Sunny Beach', theme: 'beach', boss: 'walrus', water: true }, (L) => {
+    L.ground(-200, 1260);
+    L.plat(420, 380, 150);
+    L.plat(720, 310, 140);
+    L.coins(240, 440, 4);
+    L.coins(440, 340, 4);
+    L.enemy('starfish', 680);
+    L.enemy('monkey', 1000);
+
+    L.enemy('fish', 1330, GROUND_Y);
+    L.coinArc(1240, 400, 5);
+    L.ground(1410, 2150);
+    L.plat(1650, 360, 140);
+    L.plat(1900, 290, 120);
+    L.enemy('jellyfish', 1700, 260);
+    L.enemy('starfish', 2000);
+    L.coins(1670, 320, 4);
+
+    L.enemy('fish', 2265, GROUND_Y);
+    L.enemy('fish', 2345, GROUND_Y);
+    L.plat(2270, 400, 70);
+    L.ground(2420, 3500);
+    L.plat(2650, 370, 160);
+    L.plat(2900, 290, 160);
+    L.plat(3150, 370, 160);
+    L.coins(2670, 330, 4);
+    L.coins(3170, 330, 4);
+    L.heart(2980, 250);
+    L.enemy('monkey', 2700);
+    L.enemy('jellyfish', 3000, 230);
+    L.enemy('starfish', 3300);
+
+    L.enemy('fish', 3570, GROUND_Y);
+    L.coinArc(3490, 400, 5);
+    L.ground(3650, 4800);
+    L.plat(3900, 380, 130);
+    L.plat(4250, 320, 150);
+    L.plat(4550, 230, 110);
+    L.life(4605, 185);
+    L.coins(4270, 280, 4);
+    L.enemy('jellyfish', 3950, 250);
+    L.enemy('monkey', 4150);
+    L.enemy('starfish', 4400);
+    L.enemy('jellyfish', 4700, 240);
+
+    L.enemy('fish', 4870, GROUND_Y);
+    L.coinArc(4790, 410, 4);
+    L.ground(4950, 5300);
+    L.ground(5300, 5550, 426);
+    L.ground(5550, 5800, 366);
+    L.ground(5800, LEVEL_END + 200);
+    L.coins(5580, 326, 4);
+    L.enemy('monkey', 5150);
+    L.enemy('starfish', 5450);
+    L.enemy('jellyfish', 5700, 220);
+    L.enemy('monkey', 6000);
+    L.enemy('starfish', 6150);
+    L.heart(6100, 430);
+
+    const turtle = L.room('turtle');
+    L.door(980, 'cove', turtle, L.rock(980, 'rock', 0), 0);
+    L.pit(2150, 2420, turtle, 1);
+    L.door(4100, 'cove', turtle, L.rock(4100, 'rock', 2), 2);
+    L.hiddenPlat(3080, 200, 90);
+    L.hiddenPlat(3240, 130, 90);
+    L.coins(3250, 90, 3, 32);
+    L.heart(3125, 165);
+  });
+
+  const candy = makeLevel({ name: 'Candy Land', theme: 'candy', boss: 'gingerbread' }, (L) => {
+    L.ground(-200, 1350);
+    L.plat(450, 370, 150);
+    L.plat(760, 290, 140);
+    L.coins(240, 440, 4);
+    L.coins(470, 330, 4);
+    L.coins(780, 250, 3);
+    L.enemy('gummy', 700);
+    L.enemy('cupcake', 1100);
+
+    L.coinArc(1340, 400, 5);
+    L.ground(1480, 2050);
+    L.ground(2050, 2300, 426);
+    L.enemy('cottoncloud', 1650, 240);
+    L.enemy('peppermint', 1900);
+    L.enemy('gummy', 2200);
+    L.coins(2080, 386, 5);
+
+    L.plat(2370, 420, 90);
+    L.ground(2500, 3600);
+    L.plat(2700, 370, 160);
+    L.plat(2950, 290, 160);
+    L.plat(3200, 370, 160);
+    L.coins(2720, 330, 4);
+    L.coins(3220, 330, 4);
+    L.heart(3030, 250);
+    L.enemy('cupcake', 2750);
+    L.enemy('gummy', 3000);
+    L.enemy('cottoncloud', 3200, 220);
+    L.enemy('peppermint', 3450);
+
+    L.coinArc(3590, 400, 5);
+    L.ground(3750, 4800);
+    L.plat(4000, 380, 130);
+    L.plat(4330, 300, 140);
+    L.plat(4600, 220, 110);
+    L.life(4655, 175);
+    L.coins(4350, 260, 4);
+    L.enemy('gummy', 3950);
+    L.enemy('cupcake', 4200);
+    L.enemy('cottoncloud', 4450, 230);
+    L.enemy('peppermint', 4700);
+
+    L.coinArc(4790, 410, 4);
+    L.ground(4930, 5300);
+    L.ground(5300, 5550, 426);
+    L.ground(5550, 5800, 366);
+    L.ground(5800, LEVEL_END + 200);
+    L.coins(5580, 326, 4);
+    L.enemy('gummy', 5150);
+    L.enemy('cupcake', 5450);
+    L.enemy('cottoncloud', 5700, 230);
+    L.enemy('peppermint', 6000);
+    L.enemy('gummy', 6150);
+    L.heart(6100, 430);
+
+    const fairy = L.room('fairy');
+    L.door(1000, 'cookie', fairy, null, 0);
+    L.door(4250, 'cookie', fairy, null, 1);
+    L.pit(4800, 4930, fairy, 2);
+    L.hiddenPlat(3170, 200, 90);
+    L.hiddenPlat(3330, 130, 90);
+    L.coins(3340, 90, 3, 32);
+    L.heart(3215, 165);
+  });
+
+  // The moon: everything falls slowly, so you jump much higher (and so do they).
+  const moon = makeLevel({ name: 'Moon Base', theme: 'moon', boss: 'robo', gravity: 0.6 }, (L) => {
+    L.ground(-200, 1300);
+    L.plat(450, 340, 150);
+    L.plat(760, 230, 140);
+    L.coins(240, 440, 4);
+    L.coins(470, 300, 4);
+    L.coins(780, 190, 3);
+    L.enemy('alien', 700);
+    L.enemy('moonbug', 1050);
+
+    L.coinArc(1300, 380, 6);
+    L.ground(1500, 2100);
+    L.ground(2100, 2350, 406);
+    L.enemy('ufo', 1700, 220);
+    L.enemy('robot', 1900);
+    L.enemy('alien', 2250);
+    L.coins(2130, 366, 5);
+
+    L.ground(2600, 3650);
+    L.plat(2800, 340, 160);
+    L.plat(3050, 230, 160);
+    L.plat(3300, 340, 160);
+    L.coins(2820, 300, 4);
+    L.coins(3320, 300, 4);
+    L.heart(3130, 190);
+    L.enemy('moonbug', 2850);
+    L.enemy('ufo', 3100, 200);
+    L.enemy('robot', 3400);
+    L.enemy('alien', 3550);
+
+    L.coinArc(3660, 380, 6);
+    L.ground(3850, 4850);
+    L.plat(4100, 340, 130);
+    L.plat(4400, 230, 140);
+    L.plat(4650, 120, 110);
+    L.life(4705, 75);
+    L.coins(4420, 190, 4);
+    L.enemy('robot', 4000);
+    L.enemy('alien', 4250);
+    L.enemy('ufo', 4500, 210);
+    L.enemy('moonbug', 4750);
+
+    L.coinArc(4860, 380, 5);
+    L.ground(5050, 5400);
+    L.ground(5400, 5650, 406);
+    L.ground(5650, 5900, 326);
+    L.ground(5900, LEVEL_END + 200);
+    L.coins(5680, 286, 4);
+    L.enemy('alien', 5250);
+    L.enemy('robot', 5550);
+    L.enemy('ufo', 5800, 200);
+    L.enemy('moonbug', 6050);
+    L.enemy('robot', 6150);
+    L.heart(6100, 430);
+
+    const astronaut = L.room('astronaut');
+    L.door(1150, 'hatch', astronaut, L.rock(1150, 'rock', 0), 0);
+    L.door(5300, 'hatch', astronaut, L.rock(5300, 'rock', 1), 1);
+    L.pit(2350, 2600, astronaut, 2);
+    L.hiddenPlat(3260, 140, 90);
+    L.hiddenPlat(3420, 60, 90);
+    L.coins(3430, 20, 3, 32);
+    L.heart(3305, 105);
+  });
+
+  const LEVELS = [meadow, forest, snow, volcano, desert, beach, candy, moon];
 
   // ---- Bodies and the ground --------------------------------------------------
 
@@ -858,7 +1166,7 @@
     if (busy(p) && !p.car && !p.dash) p.vx = p.onGround ? 0 : p.vx;
 
     p.prevY = p.y;
-    const grav = g.flood > 0 && p.y > WATER_Y ? GRAVITY * 0.45 : GRAVITY;
+    const grav = (g.flood > 0 && p.y > WATER_Y ? GRAVITY * 0.45 : GRAVITY) * (L.gravity || 1);
     p.vy = Math.min(g.flood > 0 && p.y > WATER_Y ? 5 : MAX_FALL, p.vy + grav);
     // Holes fill with water in a flood: you float back up and can swim over.
     if (g.flood > 0 && p.y > GROUND_Y + 30) p.vy = Math.min(p.vy, -2);
@@ -1225,7 +1533,7 @@
   // ---- The cheat codes ----------------------------------------------------------
 
   function enemiesOnScreen(g) {
-    return g.enemies.filter((e) => !e.dead && e.x > g.camX - 40 && e.x < g.camX + VIEW_W + 40 && e.state !== 'enter');
+    return g.enemies.filter((e) => !e.dead && !e.hidden && e.x > g.camX - 40 && e.x < g.camX + VIEW_W + 40 && e.state !== 'enter');
   }
 
   function nearestEnemy(g, x, within = Infinity, ahead = 0) {
@@ -1621,6 +1929,22 @@
       stepShooter(g, e, c, near, toward, tdx);
     } else if (c.kind === 'boss') {
       stepBoss(g, e, target);
+    } else if (c.kind === 'burrower') {
+      stepBurrower(g, e, near, toward, tdx);
+    } else if (c.kind === 'charger') {
+      stepCharger(g, e, c, target, near, toward, tdx);
+    } else if (c.kind === 'bomber') {
+      stepBomber(g, e, c, target);
+    } else if (c.kind === 'floater') {
+      e.vx = 0;
+      e.vy = (e.ay + Math.sin(e.t * 0.035) * 70 - e.y) * 0.05;
+      if (target) e.facing = toward;
+    } else if (c.kind === 'leaper') {
+      stepLeaper(g, e, near);
+    } else if (c.kind === 'jumper') {
+      stepJumper(g, e, near, toward);
+    } else if (c.kind === 'blinker') {
+      stepBlinker(g, e, c, target, near, toward);
     }
 
     const k = e.sticky > 0 ? 0.5 : 1;
@@ -1628,8 +1952,14 @@
       if (e.state !== 'dizzy' && e.state !== 'dead') { e.x += e.vx * k; e.y += e.vy * k; }
       else { e.vy = Math.min(MAX_FALL, e.vy + GRAVITY); e.y = Math.min(GROUND_Y, e.y + e.vy); e.onGround = e.y >= GROUND_Y; }
     } else if (!c.flying) {
-      e.vy = Math.min(MAX_FALL, e.vy + GRAVITY);
+      e.vy = Math.min(MAX_FALL, e.vy + GRAVITY * (g.L.gravity || 1));
       const s = sizeOf(e);
+      if (c.kind === 'leaper') {
+        // A fish: up out of its hole and back down into the water, no ground to land on.
+        e.x += e.vx * k;
+        e.y = Math.min(e.ay + 120, e.y + e.vy * k);
+        return;
+      }
       moveBody(g.L, e, s.hw, s.h, k);
       if (e.hitWall && c.kind === 'hopper') e.facing = -e.facing;
       if (e.y > VIEW_H + 150) {
@@ -1677,21 +2007,199 @@
     if (e.state === 'spit') {
       if (e.t === 18) {
         const s = sizeOf(e);
-        g.projectiles.push({ id: g.nextId++, type: c.shot, x: e.x + e.facing * (s.hw + 6), y: e.y - s.h * 0.65, vx: e.facing * SHOT_SPEED, vy: 0, t: 0, life: 150 });
+        const sx = e.x + e.facing * (s.hw + 6);
+        const sy = e.y - s.h * 0.65;
+        if (c.lob) {
+          // Lobbed: up and over, landing about where you were standing.
+          const flight = 50;
+          const aim = e.lobAt !== undefined ? e.lobAt : sx + e.facing * 250;
+          g.projectiles.push({ id: g.nextId++, type: c.shot, x: sx, y: sy, gravity: 0.3, vx: (aim - sx) / flight, vy: (e.y - 20 - sy) / flight - 0.15 * flight, t: 0, life: 200 });
+        } else {
+          g.projectiles.push({ id: g.nextId++, type: c.shot, x: sx, y: sy, vx: e.facing * SHOT_SPEED, vy: 0, t: 0, life: 150 });
+        }
         g.events.push({ type: 'spit', x: e.x, kind: c.shot });
       }
       if (e.t >= 36) setE(e, 'idle');
     } else if (e.t >= 100 && near) {
       e.facing = toward;
       if (Math.abs(tdx) < 420 && e.cool <= 0) {
+        e.lobAt = e.x + tdx;
         setE(e, 'spit');
         e.cool = 2;
       } else {
         e.t = 0;
         e.cool--;
         // Frogs and lizards hop; snowmen and mushrooms stay put.
-        if ((e.type === 'frog' || e.type === 'lizard') && footing(g.L, e.x + toward * 90, e.y)) { e.vy = -10; e.vx = toward * 2.6; }
+        if (['frog', 'lizard', 'monkey'].includes(e.type) && footing(g.L, e.x + toward * 90, e.y)) { e.vy = -10; e.vx = toward * 2.6; }
       }
+    }
+  }
+
+  // ---- Creatures from level 5 on ------------------------------------------------
+
+  /**
+   * A burrower (sandworm, moonbug): a mound moving along under the ground,
+   * out of reach, after whoever's nearest. Under them, the ground cracks (a
+   * moment to get out of the way), it bursts up and bites, then stays up a
+   * while (now's your chance) before it dives again.
+   */
+  function stepBurrower(g, e, near, toward, tdx) {
+    e.vx = 0;
+    if (e.state === 'idle') setE(e, 'under');
+    if (e.state === 'under') {
+      e.hidden = true;
+      if (near && Math.abs(tdx) > 12 && footing(g.L, e.x + toward * 30, e.y)) {
+        e.vx = toward * 2.2;
+        e.facing = toward;
+      }
+      if (near && Math.abs(tdx) < 26 && e.t > 50) {
+        setE(e, 'crack');
+        g.events.push({ type: 'rumble', x: e.x, y: e.y });
+      }
+    } else if (e.state === 'crack') {
+      e.hidden = true;
+      if (e.t >= 30) {
+        setE(e, 'up');
+        e.hidden = false;
+        e.vy = -7;
+        e.onGround = false;
+        g.events.push({ type: 'burst', x: e.x, y: e.y });
+      }
+    } else if (e.state === 'up') {
+      e.hidden = false;
+      if (e.t >= 120) setE(e, 'dive');
+    } else if (e.state === 'dive') {
+      if (e.t >= 18) { e.hidden = true; setE(e, 'under'); }
+    }
+  }
+
+  /**
+   * A charger (scorpion, robot): walks about; when you're level with it and
+   * not too far, it rears up (the warning), then dashes at you till it runs
+   * out of puff, hits a wall or comes to an edge, and has to get its breath back.
+   */
+  function stepCharger(g, e, c, target, near, toward, tdx) {
+    if (e.state === 'idle' || e.state === 'walk') {
+      if (e.state === 'idle') setE(e, 'walk');
+      walker(g, e, 1, near ? toward : (e.facing || -1));
+      const level = target && Math.abs(target.p.y - e.y) < 60;
+      if (near && level && Math.abs(tdx) < 340 && e.t > 90) {
+        setE(e, 'rear');
+        e.facing = toward;
+        g.events.push({ type: 'rear', x: e.x, kind: e.type });
+      }
+    } else if (e.state === 'rear') {
+      e.vx = 0;
+      if (e.t >= 34) setE(e, 'dash');
+    } else if (e.state === 'dash') {
+      e.vx = e.facing * 7.5;
+      const edge = !footing(g.L, e.x + e.facing * (sizeOf(e).hw + 10), e.y);
+      if (edge || e.hitWall || e.t >= 70) { e.vx = 0; setE(e, 'puff'); }
+    } else if (e.state === 'puff') {
+      e.vx *= 0.8;
+      if (e.t >= 60) setE(e, 'walk');
+    }
+  }
+
+  /**
+   * A bomber (vulture, candyfloss cloud, UFO): flies along up high after
+   * whoever's nearest and drops things on them. Low enough to punch from a
+   * platform, or with a good jump.
+   */
+  function stepBomber(g, e, c, target) {
+    if (e.cool > 0) e.cool--;
+    if (target && Math.abs(target.p.x - e.x) < 600) {
+      const want = target.p.x + Math.sin(e.t * 0.02) * 60;
+      e.vx = Math.max(-2.2, Math.min(2.2, (want - e.x) * 0.03));
+      if (Math.abs(e.vx) > 0.3) e.facing = e.vx > 0 ? 1 : -1;
+      if (e.cool <= 0 && Math.abs(target.p.x - e.x) < 40) {
+        g.projectiles.push({ id: g.nextId++, type: c.drop, x: e.x, y: e.y + 10, vx: e.vx * 0.3, vy: 1, gravity: 0.3, t: 0, life: 200 });
+        g.events.push({ type: 'drop', x: e.x, kind: c.drop });
+        e.cool = 110;
+      }
+    } else {
+      e.vx = Math.sin(e.t * 0.02) * 1.2;
+    }
+    e.vy = (e.ay + Math.sin(e.t * 0.07) * 10 - e.y) * 0.08;
+  }
+
+  /** A leaper (a fish): down in the water in its hole, it leaps up every so often in an arc. */
+  function stepLeaper(g, e, near) {
+    if (e.state === 'idle') setE(e, 'wait');
+    if (e.state === 'wait') {
+      e.vx = 0;
+      e.vy = 0;
+      e.y = e.ay + 120;
+      e.hidden = true;
+      if (near && e.t >= 80) {
+        setE(e, 'leap');
+        e.hidden = false;
+        e.vy = -22; // out of the water and up past the top of the hole
+        e.facing = e.facing === 1 ? -1 : 1;
+        e.vx = e.facing * 1.4;
+        g.events.push({ type: 'splash', x: e.x, y: GROUND_Y });
+      }
+    } else if (e.state === 'leap') {
+      if (e.t > 10 && e.y >= e.ay + 110) {
+        g.events.push({ type: 'splash', x: e.x, y: GROUND_Y });
+        e.x = e.ax;
+        setE(e, 'wait');
+      }
+    }
+  }
+
+  /** A jumper (a gummy bear): crouches, then a huge leap at you. */
+  function stepJumper(g, e, near, toward) {
+    if (!e.onGround) return;
+    e.vx = 0;
+    if (e.state !== 'crouch' && e.t >= 80) setE(e, 'crouch');
+    if (e.state === 'crouch' && e.t >= 20) {
+      const dir = near ? toward : (e.facing || -1);
+      e.facing = dir;
+      setE(e, 'idle');
+      if (footing(g.L, e.x + dir * 160, e.y) || footing(g.L, e.x + dir * 80, e.y)) {
+        e.vy = -13;
+        e.vx = dir * 4;
+        e.onGround = false;
+        g.events.push({ type: 'boing', x: e.x });
+      } else e.facing = -dir;
+    }
+  }
+
+  /**
+   * A blinker (an alien): blinks out (out of reach) and pops up again a
+   * little way from whoever's nearest, facing them, then zaps.
+   */
+  function stepBlinker(g, e, c, target, near, toward) {
+    e.vx = 0;
+    if (e.state === 'idle' && near && e.t >= 110) {
+      setE(e, 'blink');
+      g.events.push({ type: 'blink', x: e.x, y: e.y });
+    } else if (e.state === 'blink') {
+      e.hidden = e.t >= 10;
+      if (e.t === 30 && target) {
+        // Where to: beside them, on solid ground, on screen.
+        for (const side of [rand(g) < 0.5 ? -1 : 1, 0]) {
+          const dir = side || (target.p.x > e.x ? -1 : 1);
+          const x = Math.max(g.camX + 40, Math.min(g.camX + VIEW_W - 40, target.p.x + dir * 170));
+          const y = surfaceBelow(g.L, x, target.p.y - 200);
+          if (y < VIEW_H) { e.x = x; e.y = y; e.vy = 0; break; }
+        }
+        e.facing = target.p.x >= e.x ? 1 : -1;
+      }
+      if (e.t >= 46) {
+        e.hidden = false;
+        setE(e, 'spit');
+        g.events.push({ type: 'blink', x: e.x, y: e.y });
+      }
+    } else if (e.state === 'spit') {
+      if (target) e.facing = toward;
+      if (e.t === 26) {
+        const s = sizeOf(e);
+        g.projectiles.push({ id: g.nextId++, type: c.shot, x: e.x + e.facing * (s.hw + 6), y: e.y - s.h * 0.6, vx: e.facing * SHOT_SPEED * 1.2, vy: 0, t: 0, life: 150 });
+        g.events.push({ type: 'spit', x: e.x, kind: c.shot });
+      }
+      if (e.t >= 50) setE(e, 'idle');
     }
   }
 
@@ -1897,7 +2405,7 @@
         e.vx = 0;
         e.facing = toward;
         if (e.t === 30 || (e.angry && e.t === 80)) {
-          g.projectiles.push({ id: g.nextId++, type: 'snowroll', x: e.x + toward * 80, y: GROUND_Y, vx: toward * 6.5 * fast, vy: 0, t: 0, life: 300 });
+          g.projectiles.push({ id: g.nextId++, type: B.roll || 'snowroll', x: e.x + toward * 80, y: GROUND_Y, vx: toward * 6.5 * fast, vy: 0, t: 0, life: 300 });
           g.events.push({ type: 'throw' });
         }
         if (e.t >= (e.angry ? 120 : 80)) setE(e, 'idle');
@@ -1962,7 +2470,7 @@
    * water): it doesn't wake or knock anything about.
    */
   function hurtEnemy(g, e, damage, dir, knock, byIndex, unstoppable = false, quiet = false) {
-    if (e.dead) return;
+    if (e.dead || e.hidden) return; // under the ground, or blinked away
     const p = g.players[byIndex];
     if (e.shelled && !unstoppable) {
       g.events.push({ type: 'clink', x: e.x, y: e.y - 20, spiky: e.spiky });
@@ -2080,7 +2588,7 @@
       if (box) hitRocks(g, p, i, box);
 
       for (const e of g.enemies) {
-        if (e.dead) continue;
+        if (e.dead || e.hidden) continue;
         const c = CREATURES[e.type];
         const s = sizeOf(e);
         const ex0 = e.x - s.hw;
@@ -2130,15 +2638,16 @@
       for (const pr of g.projectiles) {
         if (pr.gone || pr.mine || pr.warn > 0) continue;
         if (stopped) continue;
-        if (pr.type === 'wave' || pr.type === 'snowroll') {
+        const rolling = GROUND_ROLLERS.includes(pr.type);
+        if (pr.type === 'wave' || rolling) {
           // Along the ground: only hits feet on the ground near it.
-          const r = pr.type === 'snowroll' ? 34 : 24;
-          if (Math.abs(pr.x - p.x) < r + PLAYER_HW && p.y > pr.y - (pr.type === 'snowroll' ? 50 : 30)) {
-            if (hurtPlayer(g, p, i, pr.type === 'snowroll' ? SNOWROLL_DAMAGE : WAVE_DAMAGE, pr.vx > 0 ? 1 : -1, 8, true)) p.vy = -9;
+          const r = rolling ? 34 : 24;
+          if (Math.abs(pr.x - p.x) < r + PLAYER_HW && p.y > pr.y - (rolling ? 50 : 30)) {
+            if (hurtPlayer(g, p, i, rolling ? SNOWROLL_DAMAGE : WAVE_DAMAGE, pr.vx > 0 ? 1 : -1, 8, true)) p.vy = -9;
           }
           continue;
         }
-        const r = ['boulder', 'lavarock'].includes(pr.type) ? 26 : ['icicle', 'rock'].includes(pr.type) ? 18 : 14;
+        const r = BIG_ROCKS.includes(pr.type) ? 26 : FALLING.includes(pr.type) && pr.type !== 'feather' ? 18 : 14;
         if (box && overlap(box.x0, box.y0, box.x1, box.y1, pr.x - r, pr.y - r, pr.x + r, pr.y + r)) {
           // Punched out of the air.
           pr.gone = true;
@@ -2147,8 +2656,8 @@
         }
         if (overlap(px0, py0, px1, p.y, pr.x - r, pr.y - r, pr.x + r, pr.y + r)) {
           const dir = pr.vx > 0 ? 1 : pr.vx < 0 ? -1 : (p.x < pr.x ? -1 : 1);
-          const fall = ['feather', 'icicle', 'rock'].includes(pr.type);
-          const damage = ['boulder', 'lavarock'].includes(pr.type) ? BOULDER_DAMAGE : fall ? FALL_DAMAGE : SHOT_DAMAGE;
+          const fall = FALLING.includes(pr.type) && !pr.gravity;
+          const damage = BIG_ROCKS.includes(pr.type) && pr.gravity ? BOULDER_DAMAGE : fall ? FALL_DAMAGE : SHOT_DAMAGE;
           if (hurtPlayer(g, p, i, damage, dir, 8, fall)) {
             pr.gone = true;
             g.events.push({ type: 'smash', x: pr.x, y: pr.y, kind: pr.type });
@@ -2210,7 +2719,7 @@
   function myShotHits(g, pr) {
     const r = pr.type === 'cloud' ? 40 : 16;
     for (const e of g.enemies) {
-      if (e.dead || e.state === 'enter') continue;
+      if (e.dead || e.hidden || e.state === 'enter') continue;
       const s = sizeOf(e);
       if (!overlap(pr.x - r, pr.y - r, pr.x + r, pr.y + r, e.x - s.hw, e.y - s.h, e.x + s.hw, e.y)) continue;
       if (pr.type === 'cloud') {
@@ -2245,10 +2754,10 @@
         continue;
       }
       if (pr.gravity) pr.vy += pr.gravity;
-      if (['feather', 'icicle', 'rock'].includes(pr.type)) pr.vy = Math.min(pr.type === 'feather' ? 6 : 12, pr.vy + 0.5);
+      if (FALLING.includes(pr.type) && !pr.gravity) pr.vy = Math.min(pr.type === 'feather' ? 6 : 12, pr.vy + 0.5);
       pr.x += pr.vx;
       pr.y += pr.vy;
-      if (pr.vy > 0 && !['wave', 'snowroll'].includes(pr.type) && !pr.mine) {
+      if (pr.vy > 0 && pr.type !== 'wave' && !GROUND_ROLLERS.includes(pr.type) && !pr.mine) {
         const floor = surfaceBelow(g.L, pr.x, pr.y - pr.vy - 20);
         if (pr.y + 14 >= floor) {
           pr.gone = true;
@@ -2403,11 +2912,11 @@
       })),
       enemies: g.enemies.map((e) => ({
         id: e.id, type: e.type, x: r1(e.x), y: r1(e.y), facing: e.facing, state: e.state, t: e.t,
-        hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, dead: e.dead, spiky: e.spiky, shelled: e.shelled, angry: !!e.angry,
+        hp: e.hp, maxHp: e.maxHp, hurt: e.hurt, dead: e.dead, ...(e.hidden ? { hidden: true } : {}), spiky: e.spiky, shelled: e.shelled, angry: !!e.angry,
         frozen: e.frozen, asleep: e.asleep > 0, sticky: e.sticky, shrunk: e.shrunk, confused: e.confused,
         cuddled: e.cuddled, burning: e.burning, poison: e.poison, pie: e.pieFlavour,
       })),
-      projectiles: g.projectiles.map((pr) => ({ id: pr.id, type: pr.type, x: r1(pr.x), y: r1(pr.y), t: pr.t, warn: pr.warn || 0, dir: Math.sign(pr.vx) })),
+      projectiles: g.projectiles.map((pr) => ({ id: pr.id, type: pr.type, x: r1(pr.x), y: r1(pr.y), t: pr.t, warn: pr.warn || 0, dir: Math.sign(pr.vx), ...(pr.gravity ? { thrown: true } : {}) })),
       pickups: g.L.pickups.filter((pk) => near(pk.x) && !g.taken.includes(pk.id)).map((pk) => pk.id),
       extra: g.extra.filter((pk) => near(pk.x)),
       fists: g.fists.map((f) => ({ id: f.id, x: r1(f.x), t: f.t })),

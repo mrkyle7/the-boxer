@@ -147,9 +147,9 @@ test('in through the door: the whole team goes; the creatures wait outside for y
   assert.strictEqual(g.secrets, 1);
 });
 
-test('all four golden gloves: golden gloves for everyone, hitting harder', () => {
+test('every golden glove: golden gloves for everyone, hitting harder', () => {
   const g = playing(['A', 'B']);
-  g.golden = [1, 2, 3];
+  g.golden = A.LEVELS.map((L, k) => k).slice(1);
   g.inRoom = { room: 0, camX: 0, x: 0, y: A.GROUND_Y };
   g.camX = g.L.rooms[0].x0;
   const gold = g.L.pickups.find((pk) => pk.type === 'golden');
@@ -157,7 +157,7 @@ test('all four golden gloves: golden gloves for everyone, hitting harder', () =>
   p.x = gold.x;
   p.y = gold.y + 40;
   A.step(g);
-  assert.strictEqual(g.golden.length, 4);
+  assert.strictEqual(g.golden.length, A.LEVELS.length);
   assert.ok(g.players.every((q) => q.gold));
   assert.ok(g.events.some((e) => e.type === 'goldenAll'));
   // And they keep them on the next level.

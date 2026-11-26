@@ -409,9 +409,16 @@ test('harrison: a different code every time', () => {
 
 // ---- The levels ------------------------------------------------------------------
 
-test('four levels, each with its own creatures and boss', () => {
-  assert.strictEqual(A.LEVELS.length, 4);
-  assert.deepStrictEqual(A.LEVELS.map((L) => L.boss), ['rhino', 'owl', 'yeti', 'gorilla']);
+test('eight levels, each with its own creatures and boss', () => {
+  assert.strictEqual(A.LEVELS.length, 8);
+  assert.deepStrictEqual(A.LEVELS.map((L) => L.boss), ['rhino', 'owl', 'yeti', 'gorilla', 'kangaroo', 'walrus', 'gingerbread', 'robo']);
+  // Levels 5 to 8 each bring creatures you haven't met before.
+  const earlier = new Set(A.LEVELS.slice(0, 4).flatMap((L) => L.spawns.map((s) => s.type)));
+  for (const L of A.LEVELS.slice(4)) {
+    const types = new Set(L.spawns.map((s) => s.type));
+    assert.ok(types.size >= 4, L.name);
+    for (const t of types) assert.ok(!earlier.has(t), `${L.name}: ${t} is new`);
+  }
   for (const L of A.LEVELS) {
     assert.ok(L.spawns.length > 15, L.name);
     for (const s of L.spawns) assert.ok(A.CREATURES[s.type], `${L.name}: ${s.type}`);
@@ -423,7 +430,7 @@ test('four levels, each with its own creatures and boss', () => {
 });
 
 test('you can start on any level', () => {
-  for (let level = 0; level < 4; level++) {
+  for (let level = 0; level < A.LEVELS.length; level++) {
     const g = A.createGame(['A'], { level });
     assert.strictEqual(g.level, level);
     assert.strictEqual(A.snapshot(g).level, level);
