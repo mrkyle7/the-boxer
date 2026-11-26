@@ -201,3 +201,35 @@ test('levels 5 to 8 can be played through for a while with no trouble', () => {
     JSON.stringify(A.snapshot(g));
   }
 });
+
+test('a save point is the start of the level you are on: carrying on plays it again', () => {
+  const g = A.createGame(['A'], { level: 1 });
+  run(g, A.READY_TICKS + 1);
+  g.score = 1500; // earned before this level...
+  g.golden = [0];
+  A.loadLevel(g, 2); // ...and now on to level 3
+  g.score = 2600; // halfway through it
+  g.lives = 1;
+  g.secrets = 4;
+  const save = A.progress(g);
+  assert.deepStrictEqual(save, { level: 2, score: 1500, lives: A.LIVES_EACH, golden: [0], secrets: 0, from: 1 });
+  // Carrying on, alone or with a friend.
+  const back = A.createGame(['A'], { resume: save });
+  assert.strictEqual(back.level, 2);
+  assert.strictEqual(back.score, 1500);
+  assert.strictEqual(back.lives, A.LIVES_EACH, 'the lives it had when the level began');
+  assert.deepStrictEqual(back.golden, [0]);
+  assert.strictEqual(back.from, 1, 'remembers where the adventure began');
+  const two = A.createGame(['A', 'B'], { resume: save });
+  assert.strictEqual(two.lives, A.LIVES_EACH * 2, 'a friend brings their own lives');
+});
+
+test('a save can carry every golden glove (gold for everyone) and never sets impossible values', () => {
+  const all = A.LEVELS.map((L, k) => k);
+  const g = A.createGame(['A'], { resume: { level: 99, score: -5, lives: 0, golden: [...all, 42, 'x'], secrets: 3, from: 2 } });
+  assert.strictEqual(g.level, A.LEVELS.length - 1);
+  assert.strictEqual(g.score, 0);
+  assert.strictEqual(g.lives, 1);
+  assert.deepStrictEqual(g.golden, all);
+  assert.ok(g.players[0].gold);
+});

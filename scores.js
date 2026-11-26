@@ -24,10 +24,10 @@
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
+const { createGcs } = require('./gcs.js');
 
 const KEEP = 100; // how many scores the board holds
 const CACHE_MS = 15 * 1000; // how long a read from the bucket is trusted
-const TOKEN_URL = 'http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token';
 
 /** Best first; equal scores, whoever got there first. */
 function sortScores(list) {
@@ -81,50 +81,28 @@ function fileStore(file) {
 }
 
 function bucketStore(bucket, object, fetchImpl) {
-  const base = `https://storage.googleapis.com/storage/v1/b/${encodeURIComponent(bucket)}/o`;
-  const upload = `https://storage.googleapis.com/upload/storage/v1/b/${encodeURIComponent(bucket)}/o`;
-  let token = null;
-  let cache = null; // { list, generation, at }
-
-  async function auth() {
-    if (token && token.until > Date.now() + 60 * 1000) return token.value;
-    const res = await fetchImpl(TOKEN_URL, { headers: { 'Metadata-Flavor': 'Google' } });
-    if (!res.ok) throw new Error(`metadata server: ${res.status}`);
-    const t = await res.json();
-    token = { value: t.access_token, until: Date.now() + t.expires_in * 1000 };
-    return token.value;
-  }
+  const gcs = createGcs(bucket, fetchImpl);
+  let cache = null; // { list, at }
 
   async function load() {
-    const res = await fetchImpl(`${base}/${encodeURIComponent(object)}?alt=media`, { headers: { Authorization: `Bearer ${await auth()}` } });
-    if (res.status === 404) return { list: [], generation: 0 };
-    if (!res.ok) throw new Error(`reading the board: ${res.status}`);
-    const generation = Number(res.headers.get('x-goog-generation')) || 0;
-    const data = await res.json();
-    return { list: Array.isArray(data) ? sortScores(data).slice(0, KEEP) : [], generation };
+    const got = await gcs.get(object);
+    if (!got) return { list: [], generation: 0 };
+    return { list: Array.isArray(got.data) ? sortScores(got.data).slice(0, KEEP) : [], generation: got.generation };
   }
 
   return {
     async read() {
-      if (!cache || Date.now() - cache.at > CACHE_MS) cache = { ...(await load()), at: Date.now() };
+      if (!cache || Date.now() - cache.at > CACHE_MS) cache = { list: (await load()).list, at: Date.now() };
       return cache.list;
     },
     async add(entry) {
       for (let attempt = 0; attempt < 5; attempt++) {
         const now = await load();
         const out = insert(now.list, entry);
-        const url = `${upload}?uploadType=media&name=${encodeURIComponent(object)}&ifGenerationMatch=${now.generation}`;
-        const res = await fetchImpl(url, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${await auth()}`, 'Content-Type': 'application/json' },
-          body: JSON.stringify(out.list),
-        });
-        if (res.ok) {
-          const meta = await res.json().catch(() => ({}));
-          cache = { list: out.list, generation: Number(meta.generation) || now.generation + 1, at: Date.now() };
+        if (await gcs.put(object, out.list, now.generation)) {
+          cache = { list: out.list, at: Date.now() };
           return out.rank;
         }
-        if (res.status !== 412) throw new Error(`saving the board: ${res.status}`);
         // Someone else saved first: read theirs and try again.
       }
       throw new Error('saving the board: too busy');

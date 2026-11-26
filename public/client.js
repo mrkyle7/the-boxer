@@ -28,6 +28,15 @@
 
   function load(key) { try { return localStorage.getItem(key); } catch { return null; } }
   function save(key, value) { try { localStorage.setItem(key, value); } catch { /* ignore */ } }
+  // A guest's own random id, kept in this browser: what their saved adventure is under.
+  function guestId() {
+    let id = load('boxer-guest');
+    if (!id || !/^[A-Za-z0-9-]{16,64}$/.test(id)) {
+      id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+      save('boxer-guest', id);
+    }
+    return id;
+  }
 
   // ---- Screens ---------------------------------------------------------------
 
@@ -49,7 +58,7 @@
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}`);
     ws.addEventListener('open', () => {
-      send({ t: 'hello', name: playerName() });
+      send({ t: 'hello', name: playerName(), guest: guestId() });
       queue.forEach(send);
       queue = [];
       if (pendingJoin) {
@@ -1410,7 +1419,7 @@
   }).catch(() => {});
   $('name').addEventListener('change', () => {
     save('boxer-name', $('name').value.trim());
-    send({ t: 'hello', name: playerName() });
+    send({ t: 'hello', name: playerName(), guest: guestId() });
   });
   if (pendingJoin) $('code').value = pendingJoin;
 
@@ -1418,7 +1427,7 @@
     sound.unlock();
     $('lobby-error').textContent = '';
     save('boxer-name', $('name').value.trim());
-    send({ t: 'hello', name: playerName() });
+    send({ t: 'hello', name: playerName(), guest: guestId() });
   }
 
   // Where the fight happens: the plain ring or an adventure setting. Picked in

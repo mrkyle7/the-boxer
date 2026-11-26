@@ -7,6 +7,7 @@ const { WebSocketServer } = require('ws');
 const Game = require('./public/game.js');
 const Adventure = require('./public/adventure.js');
 const { createScores } = require('./scores.js');
+const { createSaves, playerKey } = require('./saves.js');
 const { createAuth } = require('./auth');
 const Bot = require('./bot');
 
@@ -70,6 +71,7 @@ const VENUES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
 const cleanVenue = (v) => (VENUES.includes(v) ? v : 'ring');
 const rooms = new Map();
 let scores = null; // the adventure leaderboard (scores.js), set up by createServer
+let saves = null; // saved adventures (saves.js), set up by createServer
 let quickQueue = null; // a room waiting for a random opponent
 
 function makeCode() {
@@ -143,7 +145,11 @@ function sendRoom(room) {
 function startAdventure(room) {
   room.fighters = humans(room).slice(0, MAX_PLAYERS);
   const names = room.fighters.map((p) => p.name);
-  room.game = Adventure.createGame(names, { level: room.level, seed: Math.floor(Math.random() * 2 ** 31) });
+  // Carrying on from a save the first time; "play again" after that starts that level afresh.
+  const resume = room.resume;
+  room.resume = null;
+  room.paused = false;
+  room.game = Adventure.createGame(names, { level: room.level, resume, seed: Math.floor(Math.random() * 2 ** 31) });
   room.rematch = new Set();
   room.fighters.forEach((p, i) => {
     p.seat = i;
@@ -152,6 +158,7 @@ function startAdventure(room) {
   stopLoop(room);
   let n = 0;
   room.loop = setInterval(() => {
+    if (room.paused) return; // on your own, with the menu open
     Adventure.step(room.game);
     if (++n % ADVENTURE_BROADCAST_EVERY !== 0 && !room.game.over) return;
     const msg = JSON.stringify({ t: 'state', s: Adventure.snapshot(room.game), e: room.game.events });
@@ -173,7 +180,7 @@ function recordScore(room) {
     team: g.players.map((p) => p.name),
     score: g.score,
     level: g.level + 1,
-    from: (room.level || 0) + 1,
+    from: (g.from || 0) + 1,
     won: !!g.won,
     secrets: g.secrets,
   };
@@ -281,6 +288,11 @@ const handlers = {
   hello(ws, msg) {
     // A signed-in player's name is their account's.
     if (!ws.account) ws.name = cleanName(msg.name);
+    // A guest's browser keeps a random token, for their saved adventure.
+    if (typeof msg.guest === 'string') ws.guest = msg.guest.slice(0, 64);
+    // Tell them if they've an adventure saved, so the lobby can offer it.
+    const key = playerKey(ws.account, ws.guest);
+    if (key && saves) saves.get(key).then((save) => send(ws, { t: 'save', save }), () => {});
     if (ws.room && !ws.room.isPublic && !ws.room.game) sendRoom(ws.room);
   },
   create(ws, msg) {
@@ -332,6 +344,42 @@ const handlers = {
     if (!room || room.isPublic || room.game || hostOf(room) !== ws || adventure(room)) return;
     room.venue = cleanVenue(msg.venue);
     sendRoom(room);
+  },
+  /** Pausing an adventure you're playing on your own (the menu's open). */
+  pause(ws, msg) {
+    const room = ws.room;
+    if (!room || !adventure(room) || !fighting(room) || humans(room).length !== 1) return;
+    room.paused = !!msg.on;
+  },
+  /**
+   * Save & quit: keeps where you'd got to (the start of the level you're on)
+   * for another day, and you leave. Anyone else in the adventure plays on.
+   */
+  saveQuit(ws) {
+    const room = ws.room;
+    if (!room || !adventure(room) || !fighting(room)) return;
+    const key = playerKey(ws.account, ws.guest);
+    const save = Adventure.progress(room.game);
+    leaveRoom(ws);
+    if (!key) return send(ws, { t: 'saved', ok: false });
+    saves.put(key, save).then(
+      () => send(ws, { t: 'saved', ok: true, save }),
+      (err) => { console.error('Saving:', err.message); send(ws, { t: 'saved', ok: false }); },
+    );
+  },
+  /** Carrying on from your save: on your own, or a room for friends to join. */
+  resume(ws, msg) {
+    const key = playerKey(ws.account, ws.guest);
+    saves.take(key).then((save) => {
+      if (!save) return send(ws, { t: 'save', save: null });
+      leaveRoom(ws);
+      const room = createRoom(false, 'adventure');
+      room.level = Math.max(0, Math.min(Adventure.LEVELS.length - 1, Math.floor(Number(save.level)) || 0));
+      room.resume = save;
+      addPlayer(room, ws);
+      if (msg.solo) startMatch(room);
+      else sendRoom(room);
+    }, (err) => { console.error('Loading a save:', err.message); send(ws, { t: 'error', msg: 'Couldn’t load your save. Try again in a moment.' }); });
   },
   /** The host fills a corner with a bot. */
   addBot(ws, msg) {
@@ -412,8 +460,9 @@ async function serveLeaderboard(res) {
   res.end(JSON.stringify({ scores: top }));
 }
 
-function createServer({ auth = createAuth(), scores: board = createScores() } = {}) {
+function createServer({ auth = createAuth(), scores: board = createScores(), saves: store = createSaves() } = {}) {
   scores = board;
+  saves = store;
   const server = http.createServer((req, res) => {
     const route = new URL(req.url, 'http://x').pathname;
     if (route === '/api/me') {
