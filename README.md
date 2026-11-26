@@ -29,6 +29,10 @@ Eight levels, each with its own creatures and a boss in a ring at the end. Beat 
 
 Every level also hides secrets: two to five secret rooms each game, picked at random, with their ways in picked at random too, and who you'll meet inside. Nobody's telling where, and they don't stay put from one game to the next. Go exploring (and don't assume every hole is the end of you). One of the rooms on each level has its golden glove.
 
+### Saving
+
+Press `Esc` (or the ❚❚ button) for the menu: **Save & quit**, **Quit without saving**, or **Keep playing**. On your own, the game pauses while the menu's open; with friends they play on. A save keeps your place at the **start of the level you're on** (with the score, lives and golden gloves you had then), so carrying on means playing that level again. **Continue** in the lobby picks it up, on your own or with friends. Each player has one save, kept on the server (with your account if you're signed in, otherwise with this browser), and carrying on uses it up, so it can't be replayed for the leaderboard. Saves live in the same bucket as the leaderboard (`SAVES_BUCKET`, or `SCORES_BUCKET`), or in `SAVES_DIR` without one.
+
 ### Leaderboard
 
 When an adventure ends, win or lose, the team's score goes on the **adventure leaderboard**, and you see where you came. Anyone can look at the best scores from the lobby ("Adventure leaderboard").

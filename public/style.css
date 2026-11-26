@@ -389,3 +389,15 @@ body.ring.flat .side-only { display: inline-flex !important; align-items: center
 .board li.mine { background: rgba(244, 197, 66, 0.12); }
 .adv-rank { font-weight: 700; color: var(--gold); margin: 0 0 4px; }
 #adv-board { margin: 0 0 12px; max-width: 360px; margin-inline: auto; text-align: left; }
+
+/* Adventure: the menu (pause, save & quit) and carrying on from a save. */
+.adv-menu-btn {
+  position: absolute; top: 14%; right: 1.2%;
+  width: 40px; height: 32px; border-radius: 6px; border: 1px solid var(--line);
+  background: rgba(16, 21, 31, 0.75); color: var(--text); font: 700 13px var(--body, sans-serif); cursor: pointer;
+}
+.adv-menu-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.adv-menu-actions { flex-direction: column; }
+.adv-menu-actions .btn { width: 100%; flex: 0 0 auto; }
+.adv-continue { margin-top: 10px; padding: 10px; border: 1px solid #3f7d36; border-radius: 8px; background: rgba(35, 71, 31, 0.35); }
+.adv-continue p { margin: 0 0 8px; font-weight: 600; }

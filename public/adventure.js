@@ -995,19 +995,43 @@
       seed: opts.seed === undefined ? 1 : opts.seed | 0,
       golden: [], // the levels whose golden glove has been found
       secrets: 0, // secret rooms and hidden stairs found
+      from: 0, // the level this adventure started on (kept through a save)
       players: names.map((name) => makePlayer(name)),
       over: false,
       won: false,
       events: [],
     };
-    loadLevel(g, Math.max(0, Math.min(LEVELS.length - 1, opts.level | 0)));
+    // Carrying on from a save: where it got to at the start of that level.
+    if (opts.resume) {
+      const r = opts.resume;
+      g.score = Math.max(0, Math.floor(Number(r.score) || 0));
+      g.lives = Math.max(1, Math.floor(Number(r.lives) || 1)) + LIVES_EACH * Math.max(0, n - 1);
+      g.golden = (Array.isArray(r.golden) ? r.golden : []).filter((k) => Number.isInteger(k) && k >= 0 && k < LEVELS.length);
+      g.secrets = Math.max(0, Math.floor(Number(r.secrets) || 0));
+      g.from = Math.max(0, Math.min(LEVELS.length - 1, Math.floor(Number(r.from) || 0)));
+      if (g.golden.length === LEVELS.length) for (const p of g.players) p.gold = true;
+    }
+    const start = Math.max(0, Math.min(LEVELS.length - 1, (opts.resume ? opts.resume.level : opts.level) | 0));
+    if (!opts.resume) g.from = start;
+    loadLevel(g, start);
     return g;
+  }
+
+  /**
+   * What a save keeps: where the team was at the start of this level (a
+   * save point is a level's start, so carrying on means playing it again).
+   */
+  function progress(g) {
+    const c = g.checkpoint;
+    return { level: c.level, score: c.score, lives: Math.max(1, c.lives), golden: c.golden.slice(), secrets: c.secrets, from: g.from };
   }
 
   /** Sets up a level: everyone in at the start, back on their feet. */
   function loadLevel(g, level) {
     g.level = level;
     g.L = LEVELS[level];
+    // The save point: how things stood as this level began.
+    g.checkpoint = { level, score: g.score, lives: g.lives, golden: g.golden.slice(), secrets: g.secrets };
     g.phase = 'ready';
     g.phaseT = 0;
     g.camX = 0;
@@ -2997,7 +3021,7 @@
     CODES, POWER_TICKS, FIST_WARN, FIST_DAMAGE, CAR_DAMAGE, RUGBY_DAMAGE, FREEZE_TICKS, PIANO_TICKS, JUGGLE_TICKS,
     SNACK_HEAL, CUDDLE_STEAL, LOVE_RADIUS, PIE_DAMAGE, POISON_DAMAGE, POISON_EVERY, STOP_TICKS, FLOOD_TICKS, CHESS, PIECES,
     ROCK_HITS, IDLE_TICKS, GOLD_DAMAGE, ROOM_X,
-    createGame, loadLevel, step, setHeld, pressAction, typeKey, cheat, removePlayer, snapshot, surfaceBelow,
+    createGame, progress, loadLevel, step, setHeld, pressAction, typeKey, cheat, removePlayer, snapshot, surfaceBelow,
     spawnEnemy, spawnBoss, hurtEnemy, hurtPlayer, attackBox, sizeOf,
   };
 

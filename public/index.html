@@ -62,6 +62,13 @@
             <button class="btn btn-adventure" id="adventure-solo">Play solo</button>
             <button class="btn btn-adventure" id="adventure-team">Team up <span class="sub">1–4 players</span></button>
           </div>
+          <div id="adv-continue" class="adv-continue" hidden>
+            <p id="adv-continue-text"></p>
+            <div class="bot-levels">
+              <button class="btn btn-adventure" id="adv-continue-solo">Continue</button>
+              <button class="btn btn-adventure" id="adv-continue-team">Continue with friends</button>
+            </div>
+          </div>
           <div class="adv-levels" role="radiogroup" aria-label="Start at level">
             <button class="on" data-adv-level="0" role="radio" aria-checked="true">1 <span>Meadow</span></button>
             <button data-adv-level="1" role="radio" aria-checked="false">2 <span>Forest</span></button>
@@ -208,6 +215,16 @@
           </div>
         </div>
         <div id="adv-kb" class="kb" hidden aria-label="Cheat code keyboard"></div>
+        <button id="adv-menu-btn" class="adv-menu-btn" aria-label="Menu">❚❚</button>
+        <div id="adv-menu" class="result adv-menu" hidden>
+          <h2>Menu</h2>
+          <p id="adv-menu-note" class="note"></p>
+          <div class="actions adv-menu-actions">
+            <button id="adv-menu-back" class="btn btn-primary">Keep playing</button>
+            <button id="adv-menu-save" class="btn">Save &amp; quit</button>
+            <button id="adv-menu-quit" class="btn btn-ghost">Quit without saving</button>
+          </div>
+        </div>
         <div id="adv-notice" class="notice" hidden>
           <p id="adv-notice-text"></p>
           <button id="adv-notice-ok" class="btn btn-primary">Back to lobby</button>
@@ -227,7 +244,7 @@
           <button data-adv-act="jump" data-adv-hold="jump">Jump</button>
         </div>
       </div>
-      <p class="hint">← → move · Space or ↑ jump · A punch · B kick · C block · ↓ + jump drop through · type a cheat code · M sound</p>
+      <p class="hint">← → move · Space or ↑ jump · A punch · B kick · C block · ↓ + jump drop through · type a cheat code · M sound · Esc menu</p>
     </section>
   </main>
 

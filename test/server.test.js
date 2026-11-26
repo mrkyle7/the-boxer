@@ -8,6 +8,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { createScores } = require('../scores.js');
+const { createSaves } = require('../saves.js');
 
 // Stands in for auth.js: the cookie "userjwt=<name>" is that player signed in.
 const fakeAuth = {
@@ -48,7 +49,7 @@ function client(port, cookie) {
 
 async function withServer(fn) {
   const board = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'boxer-test-')), 'board.json');
-  const server = createServer({ auth: fakeAuth, scores: createScores({ file: board }) });
+  const server = createServer({ auth: fakeAuth, scores: createScores({ file: board }), saves: createSaves({ dir: path.join(path.dirname(board), 'saves') }) });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
   const port = server.address().port;
   const clients = [];
@@ -419,5 +420,65 @@ test('an adventure that ends goes on the leaderboard, for everyone to see', asyn
     const after = await (await fetch(`http://127.0.0.1:${port}/api/leaderboard`)).json();
     assert.strictEqual(after.scores.length, 1);
     assert.strictEqual(after.scores[0].score, 4321);
+  });
+});
+
+test('save & quit: your place is kept, and carrying on uses it up', async () => {
+  await withServer(async (port, connect) => {
+    const guest = 'abcdef0123456789abcdef';
+    const a = await connect();
+    a.send({ t: 'hello', name: 'Ann', guest });
+    assert.strictEqual((await a.next((m) => m.t === 'save')).save, null, 'nothing saved yet');
+    a.send({ t: 'adventure', solo: true, level: 1 });
+    await a.next((m) => m.t === 'start' && m.mode === 'adventure');
+    const room = [...rooms.values()].find((r) => r.kind === 'adventure');
+    room.game.score = 777; // what the level started with
+    room.game.checkpoint.score = 777;
+    // Pausing, on your own, stops the game.
+    a.send({ t: 'pause', on: true });
+    await new Promise((r) => setTimeout(r, 50));
+    const t0 = room.game.tick;
+    await new Promise((r) => setTimeout(r, 100));
+    assert.strictEqual(room.game.tick, t0, 'paused');
+    a.send({ t: 'saveQuit' });
+    const saved = await a.next((m) => m.t === 'saved');
+    assert.ok(saved.ok);
+    assert.strictEqual(saved.save.level, 1);
+    assert.strictEqual(saved.save.score, 777);
+    assert.ok(![...rooms.values()].includes(room), 'out of the adventure');
+
+    // Another day, another connection: the lobby hears about the save.
+    const b = await connect();
+    b.send({ t: 'hello', name: 'Ann', guest });
+    const got = await b.next((m) => m.t === 'save');
+    assert.strictEqual(got.save.level, 1);
+    b.send({ t: 'resume', solo: true });
+    const start = await b.next((m) => m.t === 'start' && m.mode === 'adventure');
+    assert.ok(start);
+    const again = [...rooms.values()].find((r) => r.kind === 'adventure' && r.players.length);
+    assert.strictEqual(again.game.level, 1);
+    assert.strictEqual(again.game.score, 777);
+    // Used up: it isn't there to carry on from twice.
+    const c = await connect();
+    c.send({ t: 'hello', name: 'Ann', guest });
+    assert.strictEqual((await c.next((m) => m.t === 'save')).save, null);
+  });
+});
+
+test("one guest's save isn't another's; a signed-in player's goes with their account", async () => {
+  await withServer(async (port, connect) => {
+    const a = await connect('userjwt=Kim');
+    a.send({ t: 'hello', name: 'whatever' });
+    await a.next((m) => m.t === 'save');
+    a.send({ t: 'adventure', solo: true, level: 0 });
+    await a.next((m) => m.t === 'start' && m.mode === 'adventure');
+    a.send({ t: 'saveQuit' });
+    assert.ok((await a.next((m) => m.t === 'saved')).ok);
+    const other = await connect();
+    other.send({ t: 'hello', name: 'Kim', guest: 'zzzzzzzzzzzzzzzzzzzz' });
+    assert.strictEqual((await other.next((m) => m.t === 'save')).save, null);
+    const kim = await connect('userjwt=Kim');
+    kim.send({ t: 'hello', name: 'x' });
+    assert.strictEqual((await kim.next((m) => m.t === 'save')).save.level, 0);
   });
 });

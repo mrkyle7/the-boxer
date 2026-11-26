@@ -500,6 +500,64 @@
     $('adv-notice').hidden = false;
   }
 
+  // ---- The menu: pause (on your own), save & quit, or quit ---------------------
+
+  let savedNow = null; // your save, as the lobby shows it
+  const solo = () => !!snap && snap.players.filter((p) => !p.left).length === 1;
+
+  function openMenu() {
+    if (!isActive() || !snap || !$('adv-result').hidden || !$('adv-notice').hidden) return;
+    $('adv-menu-note').textContent = solo()
+      ? 'Paused. Saving keeps your place at the start of this level.'
+      : 'The others keep playing. Saving keeps your place at the start of this level.';
+    $('adv-menu').hidden = false;
+    if (solo()) art().send({ t: 'pause', on: true });
+    for (const k of Object.keys(held)) if (held[k]) setHold(k, false);
+    $('adv-menu-back').focus();
+  }
+  function closeMenu() {
+    if ($('adv-menu').hidden) return;
+    $('adv-menu').hidden = true;
+    art().send({ t: 'pause', on: false });
+  }
+  $('adv-menu-btn').addEventListener('click', () => ($('adv-menu').hidden ? openMenu() : closeMenu()));
+  $('adv-menu-back').addEventListener('click', closeMenu);
+  $('adv-menu-save').addEventListener('click', () => {
+    $('adv-menu').hidden = true;
+    art().send({ t: 'saveQuit' });
+    showKeyboard(false);
+    snap = null;
+    art().show('lobby');
+    $('adv-continue-text').textContent = 'Saving…';
+    $('adv-continue').hidden = false;
+  });
+  $('adv-menu-quit').addEventListener('click', () => {
+    $('adv-menu').hidden = true;
+    toLobby();
+  });
+
+  /** The lobby's "carry on" box: where your save had got to. */
+  function showSave(save, note) {
+    savedNow = save || null;
+    const box = $('adv-continue');
+    if (!save) {
+      box.hidden = !note;
+      $('adv-continue-text').textContent = note || '';
+      $('adv-continue-solo').hidden = $('adv-continue-team').hidden = true;
+      return;
+    }
+    const L = A.LEVELS[save.level];
+    $('adv-continue-text').textContent = `${note || 'Your saved adventure:'} Level ${save.level + 1}${L ? `: ${L.name}` : ''} \u00B7 Score ${Number(save.score).toLocaleString()} \u00B7 Lives ${save.lives}`;
+    $('adv-continue-solo').hidden = $('adv-continue-team').hidden = false;
+    box.hidden = false;
+  }
+  const carryOn = (soloPlay) => {
+    art().send({ t: 'resume', solo: soloPlay });
+    $('adv-continue').hidden = true;
+  };
+  $('adv-continue-solo').addEventListener('click', () => { play('unlock'); carryOn(true); });
+  $('adv-continue-team').addEventListener('click', () => { play('unlock'); carryOn(false); });
+
   function toLobby() {
     showKeyboard(false);
     art().send({ t: 'leave' });
@@ -519,7 +577,14 @@
   // ---- Messages (routed here by client.js) ----------------------------------
 
   function handle(msg) {
+    // Your saved adventure (or none), and what happened when you saved.
+    if (msg.t === 'save') { showSave(msg.save); return true; }
+    if (msg.t === 'saved') {
+      showSave(msg.ok ? msg.save : savedNow, msg.ok ? 'Saved! Carry on any time.' : 'Sorry, that didn’t save.');
+      return true;
+    }
     if (msg.t === 'start' && msg.mode === 'adventure') {
+      closeMenu();
       // A new game: last game's leaderboard place goes.
       $('adv-rank').hidden = true;
       $('adv-board').hidden = true;
@@ -588,6 +653,8 @@
 
   window.addEventListener('keydown', (e) => {
     if (!isActive() || e.target.tagName === 'INPUT') return;
+    if (e.code === 'Escape') { e.preventDefault(); if ($('adv-menu').hidden) openMenu(); else closeMenu(); return; }
+    if (!$('adv-menu').hidden) return; // the menu's open: no playing underneath it
     play('unlock');
     const letter = /^Key[A-Z]$/.test(e.code);
     const cheating = checkCheat(e);
