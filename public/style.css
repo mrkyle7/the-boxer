@@ -203,6 +203,8 @@ canvas {
   box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
 }
 .result[hidden], .notice[hidden] { display: none; }
+/* Taller than the game (a long leaderboard, a short phone screen): scroll inside it. */
+.result { max-height: calc(100% - 16px); overflow-y: auto; }
 .result h2 { font-size: 40px; margin-bottom: 14px; }
 .stats { width: 100%; border-collapse: collapse; font-size: 15px; }
 .stats th, .stats td { padding: 6px 8px; border-bottom: 1px solid var(--line); }
@@ -374,3 +376,16 @@ body.ring .side-only { display: none !important; }
 }
 
 body.ring.flat .side-only { display: inline-flex !important; align-items: center; justify-content: center; }
+
+/* The adventure leaderboard (lobby and the end of an adventure). */
+.board { list-style: none; margin: 10px 0 0; padding: 0; counter-reset: rank; }
+.board li { display: grid; grid-template-columns: 2em 1fr auto; gap: 8px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 15px; }
+.board li::before { counter-increment: rank; content: counter(rank) "."; color: var(--muted); font-weight: 700; }
+.board li.board-empty { display: block; color: var(--muted); border: 0; }
+.board li.board-empty::before { content: none; }
+.board .who { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.board .who small { display: block; color: var(--muted); font-size: 12px; }
+.board .pts { font-weight: 700; color: var(--gold); font-variant-numeric: tabular-nums; }
+.board li.mine { background: rgba(244, 197, 66, 0.12); }
+.adv-rank { font-weight: 700; color: var(--gold); margin: 0 0 4px; }
+#adv-board { margin: 0 0 12px; max-width: 360px; margin-inline: auto; text-align: left; }

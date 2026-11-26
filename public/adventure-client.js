@@ -430,6 +430,70 @@
     $('adv-result').hidden = false;
   }
 
+  // ---- The leaderboard ----------------------------------------------------------
+
+  /** Fills a list with leaderboard entries (the one at `mine`, 1-based, picked out). */
+  function fillBoard(list, scores, mine = 0) {
+    list.textContent = '';
+    if (!scores.length) {
+      const li = document.createElement('li');
+      li.className = 'board-empty';
+      li.textContent = 'No scores yet. Be the first!';
+      list.append(li);
+      return;
+    }
+    scores.forEach((e, k) => {
+      const li = document.createElement('li');
+      if (k + 1 === mine) li.className = 'mine';
+      const who = document.createElement('span');
+      who.className = 'who';
+      who.textContent = e.name;
+      const how = document.createElement('small');
+      const L = A.LEVELS[e.level - 1];
+      how.textContent = (e.won ? 'Beat every boss' : `Reached level ${e.level}${L ? `: ${L.name}` : ''}`)
+        + (e.from > 1 ? ` (from level ${e.from})` : '');
+      who.append(how);
+      const pts = document.createElement('span');
+      pts.className = 'pts';
+      pts.textContent = e.score.toLocaleString();
+      li.append(who, pts);
+      list.append(li);
+    });
+  }
+
+  /** The end of an adventure: where the team came. */
+  function showRank(msg) {
+    const rank = $('adv-rank');
+    rank.hidden = false;
+    rank.textContent = msg.rank === 1 ? 'Top of the leaderboard!'
+      : msg.rank ? `Number ${msg.rank} on the leaderboard!`
+        : 'Not on the leaderboard this time.';
+    const board = $('adv-board');
+    fillBoard(board, msg.top.slice(0, 5), msg.rank);
+    board.hidden = false;
+  }
+
+  /** The lobby's leaderboard: fetched when the page opens, and fresh whenever it's opened. */
+  async function loadBoard() {
+    const list = $('leaderboard-list');
+    if (!list) return;
+    try {
+      const res = await fetch('/api/leaderboard', { cache: 'no-store' });
+      const data = await res.json();
+      fillBoard(list, (data.scores || []).slice(0, 10));
+    } catch {
+      list.textContent = '';
+      const li = document.createElement('li');
+      li.className = 'board-empty';
+      li.textContent = 'The leaderboard is taking a break. Try again in a moment.';
+      list.append(li);
+    }
+  }
+  if ($('leaderboard')) {
+    $('leaderboard').addEventListener('toggle', () => { if ($('leaderboard').open) loadBoard(); });
+    loadBoard();
+  }
+
   function showNotice(text) {
     $('adv-result').hidden = true;
     $('adv-notice-text').textContent = text;
@@ -455,11 +519,18 @@
   // ---- Messages (routed here by client.js) ----------------------------------
 
   function handle(msg) {
-    if (msg.t === 'start' && msg.mode === 'adventure') { start(msg); return true; }
+    if (msg.t === 'start' && msg.mode === 'adventure') {
+      // A new game: last game's leaderboard place goes.
+      $('adv-rank').hidden = true;
+      $('adv-board').hidden = true;
+      start(msg);
+      return true;
+    }
     if (!isActive()) return false;
     switch (msg.t) {
       case 'state': onState(msg.s, msg.e || []); return true;
       case 'adventureOver': setTimeout(() => showResult(msg.won), 400); return true;
+      case 'leaderboard': setTimeout(() => showRank(msg), 500); return true;
       case 'playerLeft':
         if (snap && $('adv-result').hidden) announce(`${msg.name} left`, 'The rest play on', '#ffffff', 90);
         else $('adv-note').textContent = `${msg.name} left.`;
@@ -1090,7 +1161,9 @@
     fairy: { wall: '#ffb0dc', wall2: '#ffc8e6', floor: '#8a4a2a', top: '#ff7ab8', glow: 'rgba(255,255,255,0.25)', say: 'Welcome to the sweet shop! Everything’s free.' },
     astronaut: { wall: '#0a0e24', wall2: '#141a3a', floor: '#8a8c98', top: '#b0b2bc', glow: 'rgba(120,200,255,0.18)', say: 'Houston, we have a visitor.' },
   };
-  const roomNow = () => (snap && snap.inRoom !== null && snap.inRoom !== undefined ? lvl().rooms[snap.inRoom] : null);
+  // The room you're in, and who lives there this game.
+  const roomNow = () => (snap && snap.inRoom !== null && snap.inRoom !== undefined
+    ? { ...lvl().rooms[snap.inRoom], npc: (snap.roomNpcs || [])[snap.inRoom] || 'bunny' } : null);
 
   /** Inside a secret room: its own walls instead of the sky. */
   function drawRoomBack(room, clock) {
@@ -1329,8 +1402,8 @@
   /** Cracked rocks, and the doors (open or hidden behind a rock). */
   function drawDoorsAndRocks(clock) {
     const L = lvl();
-    // Only this game's way into the secret room (it moves about).
-    const inPlay = (x) => x.alt === undefined || x.alt === snap.secretAlt;
+    // Only this game's ways into its secret rooms (they move about).
+    const inPlay = (x) => x.way === undefined || (snap.secretWays || []).includes(x.way);
     for (const d of L.doors) {
       if (!inPlay(d) || d.x < cam - 100 || d.x > cam + W + 100) continue;
       const open = d.rock === null || d.rock === undefined || snap.broken.includes(d.rock);

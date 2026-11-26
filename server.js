@@ -6,6 +6,7 @@ const path = require('path');
 const { WebSocketServer } = require('ws');
 const Game = require('./public/game.js');
 const Adventure = require('./public/adventure.js');
+const { createScores } = require('./scores.js');
 const { createAuth } = require('./auth');
 const Bot = require('./bot');
 
@@ -68,6 +69,7 @@ const MAX_PLAYERS = Game.MAX_FIGHTERS;
 const VENUES = ['ring', 'meadow', 'forest', 'snow', 'volcano'];
 const cleanVenue = (v) => (VENUES.includes(v) ? v : 'ring');
 const rooms = new Map();
+let scores = null; // the adventure leaderboard (scores.js), set up by createServer
 let quickQueue = null; // a room waiting for a random opponent
 
 function makeCode() {
@@ -158,8 +160,27 @@ function startAdventure(room) {
     if (room.game.over) {
       stopLoop(room);
       for (const p of room.fighters) send(p, { t: 'adventureOver', won: room.game.won });
+      recordScore(room);
     }
   }, 1000 / Adventure.TICK_RATE);
+}
+
+/** An adventure's over: its score goes on the leaderboard, and the team hears where it came. */
+function recordScore(room) {
+  const g = room.game;
+  if (!scores || !g) return;
+  const entry = {
+    team: g.players.map((p) => p.name),
+    score: g.score,
+    level: g.level + 1,
+    from: (room.level || 0) + 1,
+    won: !!g.won,
+    secrets: g.secrets,
+  };
+  const fighters = room.fighters.slice();
+  scores.add(entry).then(({ rank, top }) => {
+    for (const p of fighters) send(p, { t: 'leaderboard', rank, top });
+  }, (err) => console.error('Leaderboard:', err.message));
 }
 
 function startMatch(room) {
@@ -384,10 +405,23 @@ async function serveMe(auth, req, res) {
     : { signedIn: false, loginUrl: auth.loginUrl() }));
 }
 
-function createServer({ auth = createAuth() } = {}) {
+/** The leaderboard, for anyone to see. */
+async function serveLeaderboard(res) {
+  const top = await scores.top(20);
+  res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify({ scores: top }));
+}
+
+function createServer({ auth = createAuth(), scores: board = createScores() } = {}) {
+  scores = board;
   const server = http.createServer((req, res) => {
-    if (new URL(req.url, 'http://x').pathname === '/api/me') {
+    const route = new URL(req.url, 'http://x').pathname;
+    if (route === '/api/me') {
       serveMe(auth, req, res).catch(() => res.writeHead(500).end());
+      return;
+    }
+    if (route === '/api/leaderboard') {
+      serveLeaderboard(res).catch(() => res.writeHead(500).end());
       return;
     }
     serveStatic(req, res);
@@ -446,8 +480,9 @@ function createServer({ auth = createAuth() } = {}) {
 
 if (require.main === module) {
   createServer().listen(PORT, () => {
-    console.log(`The Boxer is up on http://localhost:${PORT}`);
+    console.log(`The Boxer is up on http://localhost:${PORT} (leaderboard: ${scores.where})`);
   });
 }
 
-module.exports = { createServer };
+// rooms: for the tests, to reach into a game.
+module.exports = { createServer, rooms };

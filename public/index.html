@@ -84,6 +84,11 @@
 
         <p id="lobby-error" class="error" role="alert"></p>
 
+        <details class="howto" id="leaderboard">
+          <summary>Adventure leaderboard</summary>
+          <ol id="leaderboard-list" class="board"><li class="board-empty">Loading…</li></ol>
+        </details>
+
         <details class="howto">
           <summary>How to fight</summary>
           <dl class="keys">
@@ -194,6 +199,8 @@
             <thead><tr id="adv-stat-head"></tr></thead>
             <tbody id="adv-stat-body"></tbody>
           </table>
+          <p id="adv-rank" class="adv-rank" hidden></p>
+          <ol id="adv-board" class="board" hidden></ol>
           <p id="adv-note" class="note"></p>
           <div class="actions">
             <button id="adv-again" class="btn btn-primary">Play again</button>
